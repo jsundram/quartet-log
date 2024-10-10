@@ -10,5 +10,5 @@
 
 ## About
 There are a few interesting things about this project. 
-1. Making data visualization from a Google Sheet (see [about.md](./about.md))
+1. Making data visualization from a Google Sheet (see [Data Visualization on the Go](./about.md))
 2. Converting markdown pages to html to create simple content (see [md_to_html.md](./md_to_html.md))
