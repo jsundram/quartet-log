@@ -1,8 +1,13 @@
 # TODO:
 * split things into separate files for easier updates
-* create git repo
-* Add sortable data table containing all data as a tab.
+    * viz.js for javascript
+    * viz.css for css (requires updating update.sh)
+    * move assets to their own folder
+        * requires updating index.html
+        * requires updating update.sh and snapshot.sh
+* Add Mendelssohn
 * add "days since" for dvorak and mendelssohn
+* Add sortable data table containing all data as a tab.
 * Update work rows to link to quartet roulette (currently slug is in tooltip which is hard to use)
 * Link to QuartetRoulette
 * Remove K546 (adagio and fugue?)
@@ -58,3 +63,4 @@
 * Add caching with localstorage in case of network unavailability etc.
 * Show timestamp of last data and last playing date on main page.
 * change update.sh to create a local copy of what is going to be deployed for easier diffing in future
+* create git repo

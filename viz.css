@@ -1,0 +1,163 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    font-size: 16px; /* Adjust base font-size if needed */
+}
+h1 {
+    margin-top: 5px;
+
+}
+
+/* Container for the hamburger menu */
+#menu {
+    position: absolute;
+    padding: 10px;
+    z-index: 1000;
+}
+
+.hamburger-menu {
+    cursor: pointer;
+    margin-bottom: 10px;
+}
+
+.bar {
+    display: block;
+    width: 25px;
+    height: 3px;
+    margin: 5px 0;
+    background-color: #333;
+}
+
+.menu-items {
+    display: none;
+    background-color: #f1f1f1;
+    padding: 10px;
+}
+
+.menu-item {
+    display: block;
+    color: #333;
+    text-decoration: none;
+    margin: 5px 0;
+}
+
+#radioButtons, #dateSlider, #tabs {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin: 5px 0;
+}
+
+#dateSlider div {
+    width: 100%;  /* Adjust to fit the width of your container */
+}
+
+#dateSlider input[type="range"] {
+    flex-grow: 1; /* Allows the slider to take up available space */
+}
+
+#tabs {
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on touch devices */
+    justify-content: flex-start; /* Aligns tabs to the start */
+    max-width: 100%; /* Adjust as necessary */
+}
+
+#tabs button {
+    display: inline-block; /* Inline-block for horizontal layout */
+    background-color: #f1f1f1;
+    border: 1px solid #ccc;
+    border-bottom: none;
+    padding: 5px 10px;
+    margin-right: 2px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    flex-shrink: 0;
+}
+
+#tabs button:hover {
+    background-color: #ddd;
+}
+
+#tabs button.active-tab-button {
+    background-color: #fff;
+    border-top: 2px solid #4CAF50; /* Highlight color for active tab */
+}
+
+.tab {
+    border: 1px solid #ccc;
+    padding: 10px;
+}
+
+.tab, .tooltip {
+    display: none;
+}
+
+.active-tab {
+    display: block;
+}
+
+.random-button-container {
+    margin: 10px 0;
+    display: flex;
+    align-items: center;
+}
+
+.random-button {
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+.random-work-display {
+    margin-left: 10px;
+    color: gray;
+}
+
+.tooltip {
+    position: absolute;
+    background: white;
+    border: 1px solid black;
+    padding: 5px;
+    border-radius: 5px;
+}
+
+.work-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    /*
+    margin-bottom: 5px;
+    gap: 10px;
+    */
+}
+
+.work-label-container {
+    margin-left: 10px;
+    width: 50px;
+    /* Adjust this to suit your design, e.g., max-width or fixed width */
+}
+
+.squares-container {
+    display: flex;
+    align-items: center;
+    overflow-x: auto; /* In case of many squares */
+}
+
+.play-square {
+    width: 10px;
+    height: 10px;
+    margin-right: 2px;
+}
+
+@media only screen and (max-width: 800px) { /* iPhone screen size (2x pixels)*/
+    /* Adjust styles for smaller screens */
+    body {
+        font-size: 12px;
+    }
+    .tab {
+        font-size: 12px;
+    }
+}

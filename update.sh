@@ -9,10 +9,10 @@ done
 
 # assumes aws command line tool is installed and configured
 aws s3 sync . s3://viz.runningwithdata.com/musiclog \
-    --exclude "*.css" \
     --exclude "*.csv" \
     --exclude "*.md" \
     --exclude "*.py" \
     --exclude "*.sh" \
     --exclude "*.zip" \
+    --exclude "github-markdown.css" \
     --exclude .DS_Store
