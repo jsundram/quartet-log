@@ -2,9 +2,11 @@
 * split things into separate files for easier updates
     * viz.js for javascript
     * viz.css for css (requires updating update.sh)
-    * move assets to their own folder
-        * requires updating index.html
+    * change update.sh to create a folder "deploy" that has everything in it.
+        * favicons can be copied from a subfolder into the root [as recommended](https://realfavicongenerator.net/faq)
+    * move favicon files to their own folder
         * requires updating update.sh and snapshot.sh
+* Update generated md html to use the same background color for the whole window
 * Add Mendelssohn
 * add "days since" for dvorak and mendelssohn
 * Add sortable data table containing all data as a tab.
