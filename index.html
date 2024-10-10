@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Music Log</title>
+    <!-- Use `ngrok http http://0.0.0.0:8000` to test on mobile without deploying -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=.75">
+
+
+    <!-- Use RealFaviconGenerator for the following-->
+    <link rel="apple-touch-icon" sizes="152x152" href="./apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png">
+    <link rel="manifest" href="./site.webmanifest">
+    <link rel="mask-icon" href="./safari-pinned-tab.svg" color="#5bbad5">
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="theme-color" content="#ffffff">
+
+
+    <script src="./d3.v7.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            font-size: 16px; /* Adjust base font-size if needed */
+        }
+        h1 {
+            margin-top: 5px;
+
+        }
+
+        /* Container for the hamburger menu */
+        #menu {
+            position: absolute;
+            padding: 10px;
+            z-index: 1000;
+        }
+
+        .hamburger-menu {
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .bar {
+            display: block;
+            width: 25px;
+            height: 3px;
+            margin: 5px 0;
+            background-color: #333;
+        }
+
+        .menu-items {
+            display: none;
+            background-color: #f1f1f1;
+            padding: 10px;
+        }
+
+        .menu-item {
+            display: block;
+            color: #333;
+            text-decoration: none;
+            margin: 5px 0;
+        }
+
+        #radioButtons, #dateSlider, #tabs {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin: 5px 0;
+        }
+
+        #dateSlider div {
+            width: 100%;  /* Adjust to fit the width of your container */
+        }
+
+        #dateSlider input[type="range"] {
+            flex-grow: 1; /* Allows the slider to take up available space */
+        }
+
+        #tabs {
+            overflow-x: auto;
+            white-space: nowrap;
+            -webkit-overflow-scrolling: touch; /* Smooth scrolling on touch devices */
+            justify-content: flex-start; /* Aligns tabs to the start */
+            max-width: 100%; /* Adjust as necessary */
+        }
+
+        #tabs button {
+            display: inline-block; /* Inline-block for horizontal layout */
+            background-color: #f1f1f1;
+            border: 1px solid #ccc;
+            border-bottom: none;
+            padding: 5px 10px;
+            margin-right: 2px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            flex-shrink: 0;
+        }
+
+        #tabs button:hover {
+            background-color: #ddd;
+        }
+
+        #tabs button.active-tab-button {
+            background-color: #fff;
+            border-top: 2px solid #4CAF50; /* Highlight color for active tab */
+        }
+
+        .tab {
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        .tab, .tooltip {
+            display: none;
+        }
+
+        .active-tab {
+            display: block;
+        }
+
+        .random-button-container {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .random-button {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        .random-work-display {
+            margin-left: 10px;
+            color: gray;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: white;
+            border: 1px solid black;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .work-row {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            align-items: center;
+            /*
+            margin-bottom: 5px;
+            gap: 10px;
+            */
+        }
+
+        .work-label-container {
+            margin-left: 10px;
+            width: 50px;
+            /* Adjust this to suit your design, e.g., max-width or fixed width */
+        }
+
+        .squares-container {
+            display: flex;
+            align-items: center;
+            overflow-x: auto; /* In case of many squares */
+        }
+
+        .play-square {
+            width: 10px;
+            height: 10px;
+            margin-right: 2px;
+        }
+
+        @media only screen and (max-width: 800px) { /* iPhone screen size (2x pixels)*/
+            /* Adjust styles for smaller screens */
+            body {
+                font-size: 12px;
+            }
+            .tab {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <div class="hamburger-menu">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+        </div>
+        <div class="menu-items">
+            <a href="#" class="menu-item" data-view="main">Home</a>
+            <a href="#" class="menu-item" data-view="calendar">Calendar</a>
+            <a href="todo.html" class="menu-item" data-view="todo">Progress</a>
+            <a href="about.html" class="menu-item" data-view="about">About</a>
+        </div>
+    </div>
+
+    <div id="mainContent" style="display: block">
+        <h1 style="text-align: center">Music Log</h1>
+        <div id="radioButtons"></div>
+        <div id="dateSlider"></div>
+        <div id="tabs"></div>
+        <div id="tabContent"></div>
+        <div class="tooltip" id="tooltip"></div>
+    </div>
+
+    <div id="calendar" style="display: none">
+        <h1 style="text-align: center">Quartet Days</h1>
+        <div class="tooltip" id="daytooltip"></div>
+
+        <!-- Calendar will be rendered here -->
+    </div>
+
+    <div id="update"/>
+
+<script>
+// Global Variables
+let data;
+let all_works = {};
+let stop2date = null;
+const BEGIN = new Date("2016/07/01 00:00:00");
+
+// Can't show every composer, limited tab space with current design. keep to most important
+const composers = new Set(['Bartok', 'Beethoven', 'Brahms', 'Boccherini', 'Haydn', 'Mozart', 'Schumann', 'Shostakovich']);
+all_works["Mozart"] = "K80, K155, K156, K157, K158, K159, K160, K168, K169, K170, K171, K172, K173, K387, K421, K428, K458, K464, K465, K499, K546, K575, K589, K590".split(", ");
+
+all_works["Brahms"] = ["1", "2", "3"];
+all_works["Schumann"] = ["1", "2", "3"];
+all_works["Shostakovich"] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"];
+
+all_works["Boccherini"] = "2#1, 2#2, 2#3, 2#4, 2#5, 2#6, 8#1, 8#2, 8#3, 8#4, 8#5, 8#6, 9#1, 9#2, 9#3, 9#4, 9#5, 9#6, 15#1, 15#2, 15#3, 15#4, 15#5, 15#6, 22#1, 22#2, 22#3, 22#4, 22#5, 22#6, 24#1, 24#2, 24#3, 24#4, 24#5, 24#6, 26#1, 26#2, 26#3, 26#4, 26#5, 26#6, 32#1, 32#2, 32#3, 32#4, 32#5, 32#6, 33#1, 33#2, 33#3, 33#4, 33#5, 33#6, 39, 41#1, 41#2, 42#1, 42#2, 43#1, 43#2, 44#1, 44#2, 44#3, 44#4, 44#5, 44#6, 48#1, 48#2, 48#3, 48#4, 48#5, 48#6, 52#1, 52#2, 52#3, 52#4, 53#1, 53#2, 53#3, 53#4, 53#5, 53#6, 58#1, 58#2, 58#3, 58#4, 58#5, 58#6, 64#1, 64#2".split(", ");
+const wamq = new Set(all_works["Mozart"]);
+
+// Read the CSV
+const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRuHAA5pgFsNl9NOdB4e6oLWluKnJFk2604I-vT0z3Ew_ZUL3Gx1ra8lW2h9MSjFXUl2suMzbL5tZTO/pub?output=csv";
+
+
+function fillForward(d){
+    const regulars = {"I": "Isaac", "E": "Elaine", "S": "Shay", "J": "Josh"};
+    ["player1", "player2", "player3"].forEach(voice => {
+        let prev = d[0];
+        let prevPlayer = prev[voice];
+
+        d.slice(1).forEach(row => {
+            const player = row[voice].trim();
+            if (player != '-'){
+                const hours = (row.timestamp - prev.timestamp)/1000/60/60;
+                if (hours < 4 && prevPlayer.indexOf(player) != -1){
+                    // use last seen if it's the same session
+                    row[voice] = prevPlayer;
+                }
+                else if (regulars.hasOwnProperty(player)){
+                    // look for common abbreviations
+                    prevPlayer = regulars[player];
+                    // console.log(row.ts, "writing ", prevPlayer, "over ", player);
+                    row[voice] = prevPlayer;
+                }
+                else {
+                    // no write required
+                    prevPlayer = player;
+                }
+
+                prev = row;
+            }
+        });
+    });
+
+    return d;
+}
+
+function parseWork(title){
+    let skip = title.indexOf(":") != -1 || title.indexOf(" ") != -1;  // isNaN(parseInt(title))
+    if (title[0] == "K" && !wamq.has(title))
+        skip = true;
+    const pound = title.indexOf('#');
+    const number = pound == -1 ? null : title.substr(pound + 1);
+    let catalog = null;
+    if (number === null)
+        catalog = parseInt(title);
+    else {
+        catalog = parseInt(title.substr(0, pound));
+    }
+    if (isNaN(catalog)) {
+        catalog = parseInt(title.substr(1));
+    }
+
+    return {
+        "title": title,
+        "skip": skip,
+        "catalog": catalog,
+        "number": number
+    };
+}
+
+function emptyRow(composer, work)
+{
+    return {
+        "timestamp": null,
+        "composer": composer,
+        "work": parseWork(work),
+        "part": null,
+        "player1": null,
+        "player2": null,
+        "player3": null,
+        "others": null,
+        "location": null,
+        "comments": ""
+    };
+}
+
+function row(d){
+    return {
+        "timestamp": new Date(d.Timestamp),
+        "composer": d.Composer.trim(),
+        "work": parseWork(d["Work Title"].trim()),
+        "part": d["Which Part"] == "VA1" ? "VA" : d["Which Part"],
+        "player1": d["Player 1"].trim(),
+        "player2": d["Player 2"].trim(),
+        "player3": d["Player 3"].trim(),
+        "others": d["Others?"].trim(),
+        "location": d.Location.trim(),
+        "comments": d.Comments.trim()
+    };
+}
+
+// wrap d3.csv so that we can retrieve the last cached result from localstorage
+// if necessary.
+function fetchCSV(url, row) {
+    const cachedData = localStorage.getItem(url);
+    const cachedTimestamp = localStorage.getItem(`${url}_timestamp`);
+    const timeoutDuration = 5000; // 5 seconds timeout
+
+
+    return new Promise((resolve, reject) => {
+        const useCached = () => {
+            if (cachedData) {
+                console.log(`Error: Using cached data from ${new Date(parseInt(cachedTimestamp))}`);
+
+                // We used JSON.stringify to store the data, the dates got stored as strings
+                // need to make date objects again.
+                let parsed = JSON.parse(cachedData);
+                parsed.forEach(d => d.timestamp = new Date(d.timestamp));
+
+                resolve({
+                    parsed: parsed,
+                    timestamp: parseInt(cachedTimestamp),
+                    source: 'cache'
+                });
+            } else {
+                reject(error);
+            }
+        };
+
+        const timeoutId = setTimeout(useCached, timeoutDuration)
+        // https://devdocs.io/d3~7/d3-request#csv
+        d3.csv(url, row).then(d => {
+            clearTimeout(timeoutId);
+            const timestamp = Date.now();
+            localStorage.setItem(url, JSON.stringify(d));
+            localStorage.setItem(`${url}_timestamp`, timestamp.toString());
+            resolve({
+                parsed: d,
+                timestamp: timestamp,
+                source: 'fresh'
+            });
+        }).catch(error => {
+            clearTimeout(timeoutId);
+            useCached();
+        });
+    });
+}
+
+function timeSince(previous) {
+    const current = Date.now();
+
+    const msPerMinute = 60 * 1000;
+    const msPerHour = msPerMinute * 60;
+    const msPerDay = msPerHour * 24;
+    const msPerMonth = msPerDay * 30;
+    const msPerYear = msPerDay * 365;
+
+    const elapsed = current - previous;
+
+    if (elapsed < msPerMinute) {
+        return 'a few seconds ago';
+    } else if (elapsed < msPerHour) {
+        return Math.round(elapsed / msPerMinute) + ' minutes ago';
+    } else if (elapsed < msPerDay) {
+        return Math.round(elapsed / msPerHour) + ' hours ago';
+    } else if (elapsed < msPerMonth) {
+        return Math.round(elapsed / msPerDay) + ' days ago';
+    } else if (elapsed < msPerYear) {
+        return Math.round(elapsed / msPerMonth) + ' months ago';
+    } else {
+        return Math.round(elapsed / msPerYear) + ' years ago';
+    }
+}
+
+fetchCSV(url, row).then(result => {
+    const { parsed, timestamp, source } = result;
+    console.log(`Data source: ${source}`);
+    console.log(`Timestamp: ${new Date(timestamp)}`);
+    console.log(parsed);
+    const line2 = `last session ${timeSince(parsed[parsed.length-1].timestamp)}`
+    console.log(line2)
+
+    if (source === 'cache') {
+        d3.select('#update')
+            .text(`Data Loaded from cache. Age: ${timeSince(timestamp).replace("ago", "old")}; ${line2}`)
+            .style("margin-left", "10px")
+            .style("color", "#E63946");
+
+    } else {
+        d3.select('#update')
+            .text(`Data updated ${timeSince(timestamp)}; ${line2}`)
+            .style("margin-left", "10px")
+            .style("color", "gray");
+    }
+
+    data = fillForward(parsed);
+
+    // Filter out "skip"
+    // console.log("Skipping: ", data.filter(d => d.work.skip).map(d => d.work.title));
+    data = data.filter(d => !d.work.skip)
+    data = data.filter(d => !all_works.hasOwnProperty(d.composer) || all_works[d.composer].includes(d.work.title));
+
+    // populate all_works
+    composers.forEach(composer => {
+        if (!all_works.hasOwnProperty(composer)){
+            let m = new Map();
+            data.filter(d => d.composer == composer).forEach(d => m.set(d.work.title, d));
+            const entries = Array.from(m.values());
+            entries.sort((a, b) => (
+                a.work.catalog ==  b.work.catalog ? (a.work.number - b.work.number) : a.work.catalog -  b.work.catalog
+            ));
+            all_works[composer] = entries.map(d => d.work.title);
+        }
+    });
+
+    createMenu();
+    createCalendar(data);
+    createRadioButtons();
+    createDateSlider(0);
+    createDateSlider(1);
+    createTabs();
+    showTab("Haydn");
+    filterData();
+    // show calendar first (for debugging / iterating)
+    // d3.select("#mainContent").style("display", "none");
+    // d3.select("#calendar").style("display", "block");
+}).catch(error => {
+    console.error('Error:', error);
+});
+
+
+function createMenu() {
+    const hamburgerMenu = d3.select(".hamburger-menu");
+    const menuItems = d3.select(".menu-items");
+
+    hamburgerMenu.on("click", function() {
+        menuItems.style("display", menuItems.style("display") === "block" ? "none" : "block");
+    });
+
+    d3.selectAll(".menu-item").on("click", function(event) {
+        event.preventDefault();
+        const view = d3.select(this).attr("data-view");
+        switchView(view);
+    });
+
+    function switchView(view) {
+        if (view === "calendar") {
+            d3.select("#mainContent").style("display", "none");
+            d3.select("#calendar").style("display", "block");
+        } else if (view === "todo") {
+            window.location.href = "./TODO.html";
+        } else if (view === "about") {
+            window.location.href = "./about.html";
+        } else {
+            d3.select("#mainContent").style("display", "block");
+            d3.select("#calendar").style("display", "none");
+        }
+
+        const menuItems = d3.select(".menu-items");
+        menuItems.style("display", menuItems.style("display") === "block" ? "none" : "block");
+    }
+}
+
+function createRadioButtons() {
+    const parts = ["V1", "V2", "VA", "ANY"];
+    const container = d3.select("#radioButtons");
+
+    parts.forEach(part => {
+        const radioButtonContainer = container.append("div")
+            .style("display", "flex")
+            .style("align-items", "center")
+            .style("margin-right", "10px");
+
+        radioButtonContainer.append("input")
+            .attr("type", "radio")
+            .attr("name", "part")
+            .attr("value", part)
+            .attr("id", part)
+            .attr("checked", d => part == "ANY" ? "true": null)
+            .on("change", () => filterData());
+
+        radioButtonContainer.append("label")
+            .attr("for", part)
+            .text(part);
+
+        part != "ANY" && radioButtonContainer.append("div")
+            .style("width", "10px")
+            .style("height", "10px")
+            .style("background-color", getColorForPart(part))
+            .style("margin-left", "5px");
+    });
+}
+
+function createDateSlider(endpoint){
+    const now = new Date();
+    let stops = d3.timeMonth.range(BEGIN, now);
+    stops.push(now);
+
+    // Create a container for the slider and its value display
+    const container = d3.select("#dateSlider")
+          .append("div")
+          .style("display", "flex")
+          .style("align-items", "center")
+          .style("margin-bottom", "10px"); // Adjust margin as needed
+
+    // Add a label before the slider
+    container.append("span")
+             .text(endpoint === 0 ? "Start" : "End")
+             .style("margin-right", "10px") // Adjust padding as needed
+             .style("margin-left", "20px"); // Adjust padding as needed
+
+
+    stop2date = v => v < stops.length ? stops[v] : stops[stops.length - 1];
+    v2d = v => stop2date(v).toLocaleDateString();
+    const slider = container.append("input")
+        .attr("id", `range-${endpoint}`)
+        .attr("type", "range")
+        .attr("min", 0)
+        .attr("max", stops.length)
+        .attr("step", 1)
+        .attr("value", endpoint == 0 ? stops.length - 14: stops.length)
+        .style("margin-right", "10px") //
+        .on("input", () => {
+            const value = d3.select(`#range-${endpoint}`).node().value;
+            sliderValueDisplay.text(v2d(value));
+            filterData();
+        });
+
+    // Create an element to display the slider value
+    const sliderValueDisplay = container.append("span")
+        .text(v2d(slider.node().value))
+        .style("margin-right", "10px");
+}
+
+function showTab(composer) {
+    // Hide all tabs and remove active class from all tab buttons
+    d3.selectAll(".tab").classed("active-tab", false);
+    d3.selectAll("#tabs button").classed("active-tab-button", false);
+
+    // Show selected tab and add active class to the tab button
+    d3.select(`#${composer}`).classed("active-tab", true);
+    d3.select(`#tabs button[data-composer='${composer}']`).classed("active-tab-button", true);
+
+    // Scroll the active tab button into view
+    const activeTabButton = d3.select("#tabs button[data-composer='" + composer + "']").node();
+    if (activeTabButton) {
+        activeTabButton.scrollIntoView({ inline: "center", behavior: "smooth" });
+    }
+}
+
+
+function createTabs() {
+    composers.forEach(composer => {
+        // Create tab button
+        d3.select("#tabs").append("button")
+            .attr("data-composer", composer)
+            .text(composer)
+            .on("click", function() { showTab(composer); });
+
+        // Create tab content div
+        d3.select("#tabContent").append("div")
+            .attr("class", "tab")
+            .attr("id", composer);
+
+        // Initial population of the tab with all data
+        updateTabContent(composer, data);
+    });
+}
+
+function showTooltip(event, d) {
+    // Show tooltip with details from the data 'd'
+    const ts = d.timestamp ? d.timestamp.toLocaleDateString() : "Unplayed";
+
+    const opus = d => `${d.composer.toLowerCase()}-opus-${d.work.catalog}${d.work.number ? "-" + d.work.number : ""}/`;
+    const num = d => `${d.composer.toLowerCase()}-${d.work.catalog}/`;
+    const moz = d => `mozart-k-${d.work.catalog}`;
+    const map = {
+            'Bartok': num,
+            'Beethoven': opus,
+            'Boccherini': d => 'Boccherini/', // TODO: Opus => G Number required
+            'Brahms': num,
+            'Haydn': opus,
+            'Mozart': moz,
+            'Schumann': num,
+            'Shostakovich': num
+    }
+    const slugger = d => map[d.composer](d);
+    const url = 'https://quartetroulette.com/'
+    const link = d => url + slugger(d)
+
+    let html = `<h4><a href="${link(d)}">${d.composer} - ${d.work.title}</a></h4>`;
+    html += "<ul>";
+    html += "<li>" + ts + (d.location ? " - " + d.location : "") +  "</li>";
+    if (d.part != null)
+        html += "<li>" + d.part + "</li>";
+    if (d.player1 != null)
+        html += "<li>" + [d.player1, d.player2, d.player3].join(", ") + "</li>";
+    if (d.comments.trim() != "")
+        html += "<li>" + d.comments + "</li>";
+    html += "</ul>";
+
+    const tooltip = d3.select("#tooltip")
+                      .html(html)
+                      .style("display", "block");
+
+    const tRect = tooltip.node().getBoundingClientRect();
+
+    const margin = 10;
+    let [left, top] = [event.pageX + margin, event.pageY + margin];
+
+    // Adjust tooltip position to ensure it stays within the viewport
+    if (left + tRect.width > window.innerWidth) {
+        left = d3.max([margin, event.pageX - tRect.width - margin]);
+    }
+    if (top + tRect.height > window.innerHeight) {
+        top = d3.max([margin, event.pageY - tRect.height - margin]);
+    }
+
+    tooltip.style("left", left + "px")
+           .style("top", top + "px");
+}
+
+function hideTooltip() {
+    // Hide tooltip
+    d3.select("#tooltip").style("display", "none");
+}
+
+function getColorForPart(part, highlight=false) {
+    if (highlight){
+        return "#ffcc00";
+    }
+    // Colors from colorgorical: http://vrl.cs.brown.edu/color
+    const colorMap = {
+        "V1": "#1ceaf9",
+        "V2": "#01c472",
+        "VA": "#007961"
+    };
+    return colorMap[part] || "gray"; // Default color if part is not recognized
+}
+
+function updateTabContent(composer, dataset) {
+    // dataset is the currently filtered view of `data`
+    const composerData = dataset.filter(d => d.composer === composer);
+    const part = getPart(); // see what that ui is filtering for
+    const allPlays = new Map(d3.groups(data.filter(d => d.composer === composer && ["ANY", d.part].includes(part)), d => d.work.title));
+
+    function cmpWork(aw, bw){
+        return aw.catalog ==  bw.catalog ? (aw.number - bw.number) : aw.catalog -  bw.catalog;
+    }
+
+    const works = d3.groups(composerData, d => d.work.title);
+    const worksRepresented = new Set(works.map(d => d[0]));
+
+    all_works[composer].forEach(title => {
+        if (!worksRepresented.has(title)){
+            works.push([title, []])
+        }
+    });
+    works.sort(function(a, b) {
+        const aw = a[1][0] ? a[1][0].work: parseWork(a[0]);
+        const bw = b[1][0] ? b[1][0].work: parseWork(b[0]);
+        return cmpWork(aw, bw);
+    });
+
+    const composerDiv = d3.select("#" + composer);
+    const randomButtonContainer = composerDiv.selectAll(".random-button-container")
+        .data([composer])
+        .join(
+            enter => {
+                const container = enter.append("div")
+                    .attr("class", "random-button-container")
+                    .style("display", "flex")
+                    .style("align-items", "center");
+
+                container.append("button")
+                    .attr("class", "random-button")
+                    .text("Random")
+                    .on("click", (e ) => {
+                        const now = new Date();
+                        const part = getPart();
+                        const max = d3.timeDay.count(BEGIN, now);
+                        // probability of getting chosen should be proportional to the number of days since
+                        // played.
+                        const probs = works.map(([label, plays]) => {
+                            const match = plays.filter(d => part == 'ANY' || d.part === part);
+                            const n = match.length;
+                            const d = 0 < n ? match[n-1].timestamp : BEGIN;
+                            return [label, d3.timeDay.count(d, now)];
+                        });
+                        let sum = 0;  // probs.reduce((X, [label, t]) => X + t, 0);
+                        // compute the cumulative distribution.
+                        let cumSum = probs.map(([label, ago]) => {
+                            sum += ago;
+                            return sum;
+                        });
+                        const X = Math.random() * sum;
+                        const ix = d3.bisect(cumSum, X);
+                        let [label, elapsed] = probs[ix];
+
+                        if (elapsed < max)
+                            d3.select("#" + composer + " .random-work-display").text(label + " - (last played " + elapsed + " days ago)");
+                        else
+                            d3.select("#" + composer + " .random-work-display").text(label + " - not played in recorded history!");
+                    });
+
+                container.append("span")
+                    .attr("class", "random-work-display")
+                    .style("margin-left", "10px");
+            },
+            update => update,
+            exit => exit.remove()
+        );
+
+    const rows = composerDiv.selectAll(".work-row")
+        .data(works, d => d[0])
+        .join(
+            enter => enter.append("div").attr("class", "work-row"),
+            update => update,
+            exit => exit.remove()
+        );
+
+    rows.each(function(group) {
+        const row = d3.select(this);
+        const [label, entries] = group;
+
+        // Create or update the label container
+        const labelContainer = row.selectAll(".work-label-container")
+            .data([label])
+            .join("div")
+                .attr("class", "work-label-container");
+
+        labelContainer.selectAll(".work-label")
+            .data([label])
+            .join("div")
+                .attr("class", "work-label")
+                .text(d => d)
+                .on("mouseover", (event, d) => {
+                    const plays = allPlays.get(d);
+                    showTooltip(event, plays ? plays.at(-1) : emptyRow(composer, label));
+                })
+                .on("mouseout", hideTooltip);
+
+        // Create or update the squares container
+        const squaresContainer = row.selectAll(".squares-container")
+            .data([entries])
+            .join("div")
+                .attr("class", "squares-container");
+
+        squaresContainer.selectAll(".play-square")
+            .data(d => d, d => d.timestamp)
+            .join(
+                enter => enter.append("div")
+                              .attr("class", "play-square")
+                              .style("background-color", d => getColorForPart(d.part))
+                              .on("mouseover", function(event, d) {
+                                  d3.select(this).style("background-color", getColorForPart(d.part, true));
+                                  showTooltip(event, d);
+                              })
+                              .on("mouseout", function(event, d) {
+                                  d3.select(this).style("background-color", getColorForPart(d.part));
+                                  hideTooltip();
+                              }),
+                update => update.style("background-color", d => getColorForPart(d.part))
+                               .on("mouseover", function(event, d) {
+                                   d3.select(this).style("background-color", getColorForPart(d.part, true));
+                                   showTooltip(event, d);
+                               })
+                               .on("mouseout", function(event, d) {
+                                   d3.select(this).style("background-color", getColorForPart(d.part));
+                                   hideTooltip();
+                               }),
+                exit => exit.remove()
+            );
+
+        // Clear the old count and append a new one at the end of the squares container
+        squaresContainer.selectAll(".count-display").remove();  // Clear old count
+        squaresContainer.append("span")  // Append new count
+            .attr("class", "count-display")
+            .text(entries.length < 4 ? "" : ` (${entries.length})`) // don't show low counts
+            .style("margin-left", "5px")
+            .style("color", "gray");
+    });
+
+    composerDiv.selectAll("p")
+        .data([composerData])
+        .join(
+            enter => enter.append("p").text(d => "total: " + d.length),
+            update => update.text(d => "total: " + d.length),
+            exit => exit.remove()
+        );
+}
+
+function getPart(){
+    return d3.select('input[name="part"]:checked').node().value;
+}
+
+function filterData() {
+
+    // Get data slider values.
+    let id2d = id => stop2date(parseInt(d3.select(id).node().value));
+    const [start, end] = [id2d("#range-0"), id2d("#range-1")];
+
+    const part = getPart();
+    const filteredData = data.filter(d => {
+        return ["ANY", d.part].includes(part) && start <= d.timestamp && d.timestamp <= end;
+    });
+
+    composers.forEach(composer => {
+        updateTabContent(composer, filteredData);
+    });
+}
+
+function createCalendar(data){
+    // https://observablehq.com/@d3/calendar/2
+    const width = 964; // width of the chart
+    const cellSize = 17; // height of a day
+    const height = cellSize * 9; // height of a week (7 days + padding)
+
+    // Define formatting functions for the axes/form and tooltips.
+    const formatDate = d3.utcFormat("%x");
+    const formatDay = i => "SMTWTFS"[i];
+    const formatMonth = d3.utcFormat("%b");
+
+    // Helpers to compute a day’s position in the week.
+    const timeWeek = d3.utcSunday;
+    const countDay = i => i; // i => (i + 6) % 7;
+
+    // First group by day, and then store works played that day.
+    const sessions = new Map(d3.group(data, d => d3.timeDay(d.timestamp).getTime()));
+    // Then, get a list of all days, and populate the value if there was a session that day.
+    const v = d => sessions.has(d.getTime()) ? sessions.get(d.getTime()).length : 0;
+    const days = d3.timeDay.range(BEGIN, new Date()).map(d => ({date: d, value: v(d)}));
+    const values = d3.sort(Array.from(sessions.values()).map(v => v.length));
+
+    // 10 quartets is a lot for a day, more than that is pretty epic
+    const color = d3.scaleSequential(d3.interpolateGreens).domain([0, 10]);
+
+    // Group data by year, in reverse input order. (Since the dataset is chronological,
+    // this will show years in reverse chronological order.)
+    const years = d3.groups(days, d => d.date.getUTCFullYear()).reverse();
+
+    // A function that draws a thin white line to the left of each month.
+    function pathMonth(t) {
+        const d = t.getUTCDay();                     // day of week
+        const w = timeWeek.count(d3.utcYear(t), t);  // week of year
+        // https://css-tricks.com/svg-path-syntax-illustrated-guide/
+        // I still don't really understand the logic here.
+        return `${d === 0 ? `M${w * cellSize},0`
+            : `M${(w + 1) * cellSize},0V${d * cellSize}H${w * cellSize}`}V${7 * cellSize}`;
+    }
+
+    function fmt(i){
+        return (i == 10) ? "10+" : d3.format("d")(i);
+    }
+    legend({
+        color: color,
+        title: "# Quartets Played",
+        element: d3.select("#calendar").append("svg"),
+        marginLeft: 40.5,
+        tickFormat: fmt
+    })
+
+    const svg = d3.select("#calendar").append("svg")
+        .attr("width", width)
+        .attr("height", height * years.length)
+        .attr("viewBox", [0, 0, width, height * years.length])
+        .attr("style", "max-width: 100%; height: auto; font: 10px sans-serif;");
+
+    const year = svg.selectAll("g")
+        .data(years)
+        .join("g")
+          .attr("transform", (d, i) => `translate(40.5,${height * i + cellSize * 1.5})`);
+
+    // Year Label
+    year.append("text")
+        .attr("x", -5)
+        .attr("y", -5)
+        .attr("font-weight", "bold")
+        .attr("text-anchor", "end")
+        .text(([key]) => key);
+
+    // Day of Week
+    year.append("g")
+        .attr("text-anchor", "end")
+    .selectAll()
+    .data(d3.range(0, 7))
+    .join("text")
+        .attr("x", -5)
+        .attr("y", i => (countDay(i) + 0.5) * cellSize)
+        .attr("dy", "0.31em")
+        .text(formatDay);
+
+    // Data Squares
+    year.append("g")
+        .selectAll()
+        .data(([, values]) => values.filter(d => true))
+        .join("rect")
+            .attr("width", cellSize - 1)
+            .attr("height", cellSize - 1)
+            .attr("x", d => timeWeek.count(d3.utcYear(d.date), d.date) * cellSize + 0.5)
+            .attr("y", d => countDay(d.date.getUTCDay()) * cellSize + 0.5)
+            .attr("fill", d => d.value == 0 ? "#eee" : color(d.value))
+        .append("title")
+            .text(d => `${formatDate(d.date)}: ${d.value}`)
+
+    // Data Labels: Pieces / year
+    let yearQ = new Map(d3.group(data, d => d.timestamp.getFullYear()));
+    year.append("g")
+        .attr("text-anchor", "start")
+        .selectAll()
+        .data(([year, days]) => [year])
+        .join("text")
+            .attr("x", d => cellSize*53 + 5)
+            .attr("y", d => 3 * cellSize)
+            .attr("dy", "0.31em")
+            .text(d => yearQ.get(d).length)
+        .append("title").text(d => `Quartets Played in ${d}`);
+
+    // Data Labels: Sessions / year
+    let yearS = new Map(d3.group(sessions.keys(), d => new Date(d).getFullYear()));
+    year.append("g")
+        .attr("text-anchor", "start")
+        .selectAll()
+        .data(([year, days]) => [year])
+        .join("text")
+            .attr("x", d => cellSize*53 + 5)
+            .attr("y", d => 4 * cellSize)
+            .attr("dy", "0.31em")
+            .text(d => yearS.get(d).length)
+        .append("title").text(d => `Sessions in ${d}`);
+
+    // Month labels
+    const month = year.append("g")
+        .selectAll()
+        .data(([, values]) => d3.utcMonths(d3.utcMonth(values[0].date), values.at(-1).date))
+        .join("g");
+
+    // White dividing lines between months
+    month.filter((d, i) => i).append("path")
+      .attr("fill", "none")
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 3)
+      .attr("d", pathMonth);
+
+    month.append("text")
+      .attr("x", d => timeWeek.count(d3.utcYear(d), timeWeek.ceil(d)) * cellSize + 2)
+      .attr("y", -5)
+      .text(formatMonth);
+
+    // Set up Tooltips for Mobile
+    var nodes = d3.selectAll('rect');
+    function showDayTip(event, d) {
+        const title = d3.select(this).select('title').text();
+        const tooltip = d3.select("#daytooltip");
+
+        tooltip.style("display", "block").html(title);
+
+        // Try to keep the tooltip on the screen.
+        const r = tooltip.node().getBoundingClientRect();
+        let [x, y] = [event.pageX, event.pageY];
+        if (window.innerWidth < x + r.width)
+            x -= r.width;
+        if (window.innerHeight < y + r.height)
+            y -= r.height;
+
+      tooltip
+        .style("left", `${x}px`)
+        .style("top",  `${y}px`)
+    }
+
+    // Add touch event listeners
+    nodes
+        .on('touchstart', showDayTip)
+        // .on('click', showDayTip)  // testing
+        .on('touchend', () => {
+            d3.select("#daytooltip").style("display", "hidden");
+        });
+}
+
+// https://stackoverflow.com/questions/64803258/
+function legend({
+  color,
+  title,
+  element,
+  tickSize = 6,
+  width = 320,
+  height = 44 + tickSize,
+  marginTop = 18,
+  marginRight = 0,
+  marginBottom = 16 + tickSize,
+  marginLeft = 0,
+  ticks = width / 64,
+  tickFormat,
+  tickValues
+} = {}) {
+  if (element === undefined) element = d3.select("svg");
+
+  const svg = element
+    .attr("width", width)
+    .attr("height", height)
+    .attr("viewBox", [0, 0, width, height])
+    .style("overflow", "visible")
+    .style("display", "block");
+
+  let tickAdjust = g => g.selectAll(".tick line").attr("y1", marginTop + marginBottom - height);
+  let x;
+
+  // Continuous
+  if (color.interpolate) {
+    const n = Math.min(color.domain().length, color.range().length);
+
+    x = color.copy().rangeRound(d3.quantize(d3.interpolate(marginLeft, width - marginRight), n));
+
+    svg.append("image")
+      .attr("x", marginLeft)
+      .attr("y", marginTop)
+      .attr("width", width - marginLeft - marginRight)
+      .attr("height", height - marginTop - marginBottom)
+      .attr("preserveAspectRatio", "none")
+      .attr("xlink:href", ramp(color.copy().domain(d3.quantize(d3.interpolate(0, 1), n))).toDataURL());
+  }
+
+  // Sequential
+  else if (color.interpolator) {
+    x = Object.assign(color.copy()
+      .interpolator(d3.interpolateRound(marginLeft, width - marginRight)), {
+        range() {
+          return [marginLeft, width - marginRight];
+        }
+      });
+
+    svg.append("image")
+      .attr("x", marginLeft)
+      .attr("y", marginTop)
+      .attr("width", width - marginLeft - marginRight)
+      .attr("height", height - marginTop - marginBottom)
+      .attr("preserveAspectRatio", "none")
+      .attr("xlink:href", ramp(color.interpolator()).toDataURL());
+
+    // scaleSequentialQuantile doesn’t implement ticks or tickFormat.
+    if (!x.ticks) {
+      if (tickValues === undefined) {
+        const n = Math.round(ticks + 1);
+        tickValues = d3.range(n).map(i => d3.quantile(color.domain(), i / (n - 1)));
+      }
+      if (typeof tickFormat !== "function") {
+        tickFormat = d3.format(tickFormat === undefined ? ",f" : tickFormat);
+      }
+    }
+  }
+
+  // Threshold
+  else if (color.invertExtent) {
+    const thresholds = color.thresholds ? color.thresholds() // scaleQuantize
+      :
+      color.quantiles ? color.quantiles() // scaleQuantile
+      :
+      color.domain(); // scaleThreshold
+
+    const thresholdFormat = tickFormat === undefined ? d => d :
+      typeof tickFormat === "string" ? d3.format(tickFormat) :
+      tickFormat;
+
+    x = d3.scaleLinear()
+      .domain([-1, color.range().length - 1])
+      .rangeRound([marginLeft, width - marginRight]);
+
+    svg.append("g")
+      .selectAll("rect")
+      .data(color.range())
+      .join("rect")
+      .attr("x", (d, i) => x(i - 1))
+      .attr("y", marginTop)
+      .attr("width", (d, i) => x(i) - x(i - 1))
+      .attr("height", height - marginTop - marginBottom)
+      .attr("fill", d => d);
+
+    tickValues = d3.range(thresholds.length);
+    tickFormat = i => thresholdFormat(thresholds[i], i);
+  }
+
+  // Ordinal
+  else {
+    x = d3.scaleBand()
+      .domain(color.domain())
+      .rangeRound([marginLeft, width - marginRight]);
+
+    svg.append("g")
+      .selectAll("rect")
+      .data(color.domain())
+      .join("rect")
+      .attr("x", x)
+      .attr("y", marginTop)
+      .attr("width", Math.max(0, x.bandwidth() - 1))
+      .attr("height", height - marginTop - marginBottom)
+      .attr("fill", color);
+
+    tickAdjust = () => {};
+  }
+
+  svg.append("g")
+    .attr("transform", `translate(0,${height - marginBottom})`)
+    .call(d3.axisBottom(x)
+      .ticks(ticks, typeof tickFormat === "string" ? tickFormat : undefined)
+      .tickFormat(typeof tickFormat === "function" ? tickFormat : undefined)
+      .tickSize(tickSize)
+      .tickValues(tickValues))
+    .call(tickAdjust)
+    .call(g => g.select(".domain").remove())
+    .call(g => g.append("text")
+      .attr("x", marginLeft)
+      .attr("y", marginTop + marginBottom - height - 6)
+      .attr("fill", "currentColor")
+      .attr("text-anchor", "start")
+      .attr("font-weight", "bold")
+      .text(title));
+
+  return svg.node();
+}
+
+function ramp(color, n = 256) {
+  var canvas = document.createElement('canvas');
+  canvas.width = n;
+  canvas.height = 1;
+  const context = canvas.getContext("2d");
+  for (let i = 0; i < n; ++i) {
+    context.fillStyle = color(i / (n - 1));
+    context.fillRect(i, 0, 1, 1);
+  }
+  return canvas;
+}
+</script>
+</body>
+</html>
