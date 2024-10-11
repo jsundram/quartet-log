@@ -24,7 +24,7 @@ If not, [pandoc](https://pandoc.org/index.html) can be your friend. However, get
 
 Fortunately [Sindre Sorhus](https://github.com/sindresorhus) did most of the heavy lifting with the [github-markdown-css](https://github.com/sindresorhus/github-markdown-css) project. 
 
-What remained was to get pandoc to use that css. It's possible to export the template pandoc uses and modify using `pandoc -D html5 > template.html`. Once I did that, I modified the template file according to the [Usage](https://github.com/sindresorhus/github-markdown-css?tab=readme-ov-file#usage) instructions from the repo, adding the suggested css and wrapping pandoc's `$body$` in an `<article class="markdown-body">`.
+What remained was to get pandoc to use that css. It's possible to export the template pandoc uses and modify using `pandoc -D html5 > template.html`. Once I did that, I modified the template file according to the [Usage](https://github.com/sindresorhus/github-markdown-css?tab=readme-ov-file#usage) instructions from the repo, adding the suggested css and adding the property `class="markdown-body"` to the element surrounding pandoc's `$body$`.
 
 I also wanted a standalone file, with no external dependencies (no links to external css or images). pandoc supports this via the `--standalone` flag, in combination with `--embed-resources`.
 
