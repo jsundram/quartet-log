@@ -5,8 +5,14 @@
 ## TODO
 * See [TODO.md](./md/TODO.md)
 
+## Building
+* run `./build.sh`; output will be in `$DEPLOY`
+
+## Testing
+* serve the `$DEPLOY` folder
+
 ## Deploying
-* run `./update.sh`
+* run `./deploy.sh`, which will sync $DEPLOY to s3.
 
 ## About
 There are a few interesting things about this project:
