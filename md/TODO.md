@@ -1,10 +1,8 @@
 # TODO:
-* Add Mendelssohn
-* add "days since" for dvorak and mendelssohn
 * Add sortable data table containing all data as a tab.
 * Update work rows to link to quartet roulette (currently slug is in tooltip which is hard to use)
 * Link to QuartetRoulette
-* Remove K546 (adagio and fugue?)
+* Remove K546 (adagio and fugue)?
 * Add colored indicator for each row showing how long it's been?
 * Add a hit counter? https://github.com/abdheshnayak/static-website-views-counter
 * Add RSS for playing feed?
@@ -66,3 +64,5 @@
     * move favicon files to their own folder
         * requires updating update.sh and snapshot.sh
 * Update generated md html to use the same background color for the whole window
+* Add Mendelssohn & Dvorak
+* add "days since" last play. 
