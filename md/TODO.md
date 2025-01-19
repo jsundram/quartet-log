@@ -1,7 +1,8 @@
 # TODO:
 * make sorting by work title use work.catalog & int(work.number) instead of strcmp title.
-* refactor tablecomponent to not be quite so tied to the structure of our row data?
+* there's a sort state bug across tabs that could use some fixing...
 * add an "Other" tab containing just a datatable of everything that wasn't in the other tabs.
+* refactor tablecomponent to not be quite so tied to the structure of our row data?
 * Update work rows to link to quartet roulette (currently slug is in tooltip which is hard to use)
 * Link to QuartetRoulette
 * Remove K546 (adagio and fugue)?
