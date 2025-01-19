@@ -1,5 +1,7 @@
 # TODO:
-* Add sortable data table containing all data as a tab.
+* make sorting by work title use work.catalog & int(work.number) instead of strcmp title.
+* refactor tablecomponent to not be quite so tied to the structure of our row data?
+* add an "Other" tab containing just a datatable of everything that wasn't in the other tabs.
 * Update work rows to link to quartet roulette (currently slug is in tooltip which is hard to use)
 * Link to QuartetRoulette
 * Remove K546 (adagio and fugue)?
@@ -66,3 +68,4 @@
 * Update generated md html to use the same background color for the whole window
 * Add Mendelssohn & Dvorak
 * add "days since" last play. 
+* Add sortable data table for each tab

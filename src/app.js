@@ -3,12 +3,14 @@ import { DataService } from './dataService';
 import { NavigationComponent } from './navigationComponent';
 import { TabComponent } from './tabComponent';
 import { CalendarComponent } from './calendarComponent';
+import { TableComponent } from './tableComponent';
 
 export class App {
     constructor() {
         this.dataService = new DataService();
         this.navigationComponent = new NavigationComponent(() => this.filterData());
-        this.tabComponent = new TabComponent();
+        this.tableComponent = new TableComponent();
+        this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();
         this.data = null;
     }

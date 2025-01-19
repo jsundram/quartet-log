@@ -3,8 +3,9 @@ import { BEGIN, PART_COLORS } from './config';
 import { createEmptyRow } from './dataProcessor';
 
 export class TabComponent {
-    constructor() {
+    constructor(tableComponent) {
         this.tooltipDiv = d3.select("#tooltip");
+        this.tableComponent = tableComponent;
     }
 
     createTabs() {
@@ -47,6 +48,8 @@ export class TabComponent {
         this.updateRandomButton(composerDiv, composerData);
         this.updateWorkRows(composerDiv, composerData);
         this.updateTotalCount(composerDiv, composerData);
+        this.updateDataTable(composerDiv, composerData);
+
     }
 
     processComposerData(composer, filteredData, fullData) {
@@ -202,6 +205,21 @@ export class TabComponent {
             .join("p")
             .text(d => `Total: ${d.count}; Days since last ${composer}: ${d.days} (${d.piece}).`)
             .style("color", "gray");
+    }
+
+    updateDataTable(composerDiv, composerData){
+        composerDiv.selectAll(".table-container")
+            .data([composerData])  // This will update the bound data on the container
+            .join(
+                enter => {
+                    const container = enter.append("div")
+                        .attr("class", "table-container");
+                    this.tableComponent.createTable(container.node());
+                    return container;
+                },
+                update => update  // Existing containers keep their structure but get new data
+            )
+            .call(container => this.tableComponent.updateTable(composerData, container));
     }
 
     getColorForPart(part, highlight = false) {
