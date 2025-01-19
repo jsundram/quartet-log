@@ -43,21 +43,21 @@ export function processRow(d) {
 }
 
 export function fillForward(data) {
-    ["player1", "player2", "player3"].forEach(voice => {
+    ["player1", "player2", "player3", "location"].forEach(column => {
         let prev = data[0];
-        let prevPlayer = prev[voice];
+        let prevEntry = prev[column];
 
         data.slice(1).forEach(row => {
-            const player = row[voice].trim();
-            if (player != '-') {
+            const entry = row[column].trim();
+            if (entry != '-') {
                 const hours = (row.timestamp - prev.timestamp) / 1000 / 60 / 60;
-                if (hours < 4 && prevPlayer.indexOf(player) != -1) {
-                    row[voice] = prevPlayer;
-                } else if (PLAYER_ABBREVIATIONS.hasOwnProperty(player)) {
-                    prevPlayer = PLAYER_ABBREVIATIONS[player];
-                    row[voice] = prevPlayer;
+                if (hours < 4 && prevEntry.indexOf(entry) != -1) {
+                    row[column] = prevEntry;
+                } else if (PLAYER_ABBREVIATIONS.hasOwnProperty(entry)) {
+                    prevEntry = PLAYER_ABBREVIATIONS[entry];
+                    row[column] = prevEntry;
                 } else {
-                    prevPlayer = player;
+                    prevEntry = entry;
                 }
                 prev = row;
             }
