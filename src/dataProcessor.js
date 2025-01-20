@@ -7,7 +7,7 @@ export function parseWork(title) {
         skip = true;
 
     const pound = title.indexOf('#');
-    const number = pound == -1 ? null : title.substr(pound + 1);
+    const number = pound == -1 ? null : parseInt(title.substr(pound + 1));
     let catalog = null;
 
     if (number === null)
