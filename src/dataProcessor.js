@@ -1,10 +1,8 @@
 import { PLAYER_ABBREVIATIONS } from './config';
-import { MOZART_WORKS } from './catalog';
 
 export function parseWork(title) {
-    let skip = title.indexOf(":") != -1 || title.indexOf(" ") != -1;
-    if (title[0] == "K" && !MOZART_WORKS.has(title))
-        skip = true;
+    // skip incomplete works (played just a movement)
+    let skip = title.indexOf(":") != -1;
 
     const pound = title.indexOf('#');
     const number = pound == -1 ? null : parseInt(title.substr(pound + 1));
