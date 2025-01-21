@@ -1,8 +1,8 @@
 import { PLAYER_ABBREVIATIONS } from './config';
 
 export function parseWork(title) {
-    // skip incomplete works (played just a movement)
-    let skip = title.indexOf(":") != -1;
+    // Incompletely played works are usually noted like e.g. 17#2:I.
+    let incomplete = title.indexOf(":") != -1;
 
     const pound = title.indexOf('#');
     const number = pound == -1 ? null : parseInt(title.substr(pound + 1));
@@ -19,7 +19,7 @@ export function parseWork(title) {
 
     return {
         "title": title,
-        "skip": skip,
+        "incomplete": incomplete,
         "catalog": catalog,
         "number": number
     };
