@@ -208,13 +208,14 @@ export class TabComponent {
     }
 
     updateDataTable(composerDiv, composerData){
+        const composer = composerDiv.attr("id");
         composerDiv.selectAll(".table-container")
             .data([composerData])  // This will update the bound data on the container
             .join(
                 enter => {
                     const container = enter.append("div")
                         .attr("class", "table-container");
-                    this.tableComponent.createTable(container.node());
+                    this.tableComponent.createTable(container.node(), composer);
                     return container;
                 },
                 update => update  // Existing containers keep their structure but get new data

@@ -1,6 +1,5 @@
 # TODO:
 * make sorting by work title use work.catalog & int(work.number) instead of strcmp title.
-* there's a sort state bug across tabs that could use some fixing...
 * add an "Other" tab containing just a datatable of everything that wasn't in the other tabs.
 * less padding / spacing on datatable on mobile?
 * refactor tablecomponent to not be quite so tied to the structure of our row data?
@@ -71,3 +70,4 @@
 * Add Mendelssohn & Dvorak
 * add "days since" last play. 
 * Add sortable data table for each tab
+* there's a sort state bug across tabs that could use some fixing...
