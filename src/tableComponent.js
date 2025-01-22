@@ -125,7 +125,8 @@ export class TableComponent {
         tableContainer.selectAll('th')
             .text(d => {
                 const isCurrentSort = sortState.key === d.key;
-                return `${d.label} ${isCurrentSort ? (sortState.direction === 'asc' ? '↓' : '↑') : ''}`;
+                // &nbsp; => \u00A0 since we're using a template literal below
+                return `${d.label}${isCurrentSort ? `\u00A0${sortState.direction === 'asc' ? '↓' : '↑'}` : ''}`;
             });
     }
 }
