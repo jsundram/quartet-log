@@ -1,5 +1,4 @@
 # TODO:
-* less padding / spacing on datatable on mobile?
 * add an "Other" tab containing just a datatable of everything that wasn't in the other tabs.
 * Update work rows to link to quartet roulette (currently slug is in tooltip which is hard to use)
 * Remove K546 (adagio and fugue)?
@@ -69,3 +68,4 @@
 * Add sortable data table for each tab
 * there's a sort state bug across tabs that could use some fixing...
 * make sorting by work title use work.catalog & int(work.number) instead of strcmp title.
+* less padding / spacing on datatable rows 

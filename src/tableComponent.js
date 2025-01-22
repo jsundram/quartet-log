@@ -117,7 +117,7 @@ export class TableComponent {
                 format: column.format
             })))
             .join('td')
-            .style('padding', '8px')
+            .style('padding', '4px')
             .style('border', '1px solid #ddd')
             .text(d => d.format(d.value));
 
