@@ -42,7 +42,7 @@ export class TableComponent {
             .on('click', (event, d) => {
                 const composer = d3.select(event.target.closest('.table-wrapper')).attr('data-composer');
                 this.updateSort(composer, d.key);
-                
+
                 // Get data and update
                 const data = d3.select(event.target.closest('.table-container')).datum();
                 const container = d3.select(event.target.closest('.table-container'));
@@ -81,11 +81,25 @@ export class TableComponent {
 
         // Sort data
         const sortedData = [...flatData].sort((a, b) => {
-            const aValue = this.getValue(a, sortState.key);
-            const bValue = this.getValue(b, sortState.key);
-            
-            const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-            return sortState.direction === 'asc' ? comparison : -comparison;
+            if (sortState.key === 'work.title') {
+                // 'work.title' is a string, we want to sort by catalog (int) and then number (int or null)
+                const aCatalog = this.getValue(a, 'work.catalog') || 0;
+                const bCatalog = this.getValue(b, 'work.catalog') || 0;
+                if (aCatalog !== bCatalog) {
+                    return sortState.direction === 'asc' ? aCatalog - bCatalog : bCatalog - aCatalog;
+                }
+
+                const aNumber = this.getValue(a, 'work.number') || 0;
+                const bNumber = this.getValue(b, 'work.number') || 0;
+                return sortState.direction === 'asc' ? aNumber - bNumber : bNumber - aNumber;
+            }
+            else {
+                const aValue = this.getValue(a, sortState.key);
+                const bValue = this.getValue(b, sortState.key);
+
+                const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+                return sortState.direction === 'asc' ? comparison : -comparison;
+            }
         });
 
         // Update rows
