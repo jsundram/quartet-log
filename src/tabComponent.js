@@ -39,14 +39,14 @@ export class TabComponent {
         }
     }
 
-    updateTabContent(composer, filteredData, fullData) {
+    updateTabContent(composer, part, filteredData, fullData) {
         // Process data for this composer
         const composerData = this.processComposerData(composer, filteredData, fullData);
 
         // Update the UI
         const composerDiv = d3.select("#" + composer);
         this.updateRandomButton(composerDiv, composerData);
-        this.updateWorkRows(composerDiv, composerData);
+        this.updateWorkRows(composerDiv, composerData, part);
         this.updateTotalCount(composerDiv, composerData);
         this.updateDataTable(composerDiv, composerData);
 
@@ -115,7 +115,7 @@ export class TabComponent {
         }
     }
 
-    updateWorkRows(composerDiv, composerData) {
+    updateWorkRows(composerDiv, composerData, part) {
         const { filteredPlays, allPlays } = composerData;
         const rows = composerDiv.selectAll(".work-row")
             .data(filteredPlays, d => d[0])
@@ -127,12 +127,13 @@ export class TabComponent {
             const [label, entries] = group;
             const composer = composerDiv.attr("id");
 
-            this.updateWorkLabel(row, label, allPlays, composer);
+            this.updateWorkLabel(row, label, composerData, composer, part);
             this.updatePlaySquares(row, entries);
         });
     }
 
-    updateWorkLabel(row, label, allPlays, composer) {
+    updateWorkLabel(row, label, composerData, composer, part) {
+        const { filteredPlays, allPlays } = composerData;
         const labelContainer = row.selectAll(".work-label-container")
             .data([label])
             .join("div")
@@ -144,8 +145,18 @@ export class TabComponent {
             .attr("class", "work-label")
             .text(d => d)
             .on("mouseover", (event, d) => {
-                const plays = allPlays.get(d);
-                this.showTooltip(event, plays?.at(-1) || createEmptyRow(composer, label));
+                // Want to find the last time that this piece was played on this part
+                // before the filter start date and set that as a tooltip for the
+                // piece label.
+                const all = allPlays.get(d).filter(d => ["ANY", d.part].includes(part));
+                const ts = filteredPlays.get(d).at(0)?.timestamp;
+                let index = -1;
+                if (ts !== undefined) {
+                    index = all.findIndex(d => d.timestamp === ts);
+                    // if filtered includes everything, just use the first one.
+                    index = index === 0 ? index : (index - 1);
+                }
+                this.showTooltip(event, all?.at(index) || createEmptyRow(composer, label));
             })
             .on("mouseout", () => this.hideTooltip());
     }

@@ -97,7 +97,7 @@ export class App {
 
         // Update all composer tabs with filtered data
         COMPOSERS.forEach(composer => {
-            this.tabComponent.updateTabContent(composer, filteredData, this.data);
+            this.tabComponent.updateTabContent(composer, part, filteredData, this.data);
         });
     }
 
