@@ -79,6 +79,29 @@ export class CalendarComponent {
             .attr("dy", "0.31em")
             .text(formatDay);
 
+        // Pieces / Year
+        const yearQ = new Map(years);
+        year.append("g")
+            .attr("text-anchor", "start")
+            .selectAll()
+            .data(([year, values]) => [year])
+            .join("text")
+                .attr("x", d => this.cellSize*53 + 5)
+                .attr("y", d => this.cellSize*3)
+                .attr("dy", ".31em")
+                .text(year => d3.sum(yearQ.get(year), d => d.value));
+
+        // Playing Days / Year
+        year.append("g")
+            .attr("text-anchor", "start")
+            .selectAll()
+            .data(([year, values]) => [year])
+            .join("text")
+                .attr("x", d => this.cellSize*53 + 5)
+                .attr("y", d => this.cellSize*4)
+                .attr("dy", ".31em")
+                .text(year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0));
+
         // Calendar cells
         this.renderCalendarCells(year, timeWeek, countDay, color, formatDate);
 
