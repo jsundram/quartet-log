@@ -38,7 +38,7 @@
 * keep tooltips on the screen
 * Add Calendar view (https://observablehq.com/@d3/calendar/2?)
 * Add sessions/year and quartets/year to calendar view
-* Max calendar session shows 18 works played ... it happened! 
+* Max calendar session shows 18 works played ... it happened!
 * pandoc md -> html conversion doesn't look good on mobile
     * try https://github.com/sindresorhus/github-markdown-css
     * write a quick note about it, [md_to_html.md](./md_to_html.html)
@@ -64,8 +64,9 @@
         * requires updating update.sh and snapshot.sh
 * Update generated md html to use the same background color for the whole window
 * Add Mendelssohn & Dvorak
-* add "days since" last play. 
+* add "days since" last play.
 * Add sortable data table for each tab
 * there's a sort state bug across tabs that could use some fixing...
 * make sorting by work title use work.catalog & int(work.number) instead of strcmp title.
-* less padding / spacing on datatable rows 
+* less padding / spacing on datatable rows
+* Add Search/Dropdown to filter for frequent collaborators
