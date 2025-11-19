@@ -118,4 +118,26 @@ export class NavigationComponent {
     getSelectedPart() {
         return d3.select('input[name="part"]:checked').node().value;
     }
+
+    getSelectedPlayer() {
+        const selectElement = d3.select("#playerSelect").node();
+        return selectElement ? selectElement.value : "ANY";
+    }
+
+    populatePlayerDropdown(players) {
+        const select = d3.select("#playerSelect");
+
+        // Remove existing options except "ANY"
+        select.selectAll("option").filter((d, i) => i > 0).remove();
+
+        // Add all player options
+        players.forEach(player => {
+            select.append("option")
+                .attr("value", player)
+                .text(player);
+        });
+
+        // Add change listener
+        select.on("change", () => this.onFilterChange());
+    }
 }

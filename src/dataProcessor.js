@@ -78,3 +78,36 @@ export function createEmptyRow(composer, title) {
         "comments": ""
     };
 }
+
+export function extractUniquePlayers(data) {
+    const playerCounts = new Map();
+
+    data.forEach(d => {
+        let players = [];
+        if (d.part === "V1") {
+            if (d.player1) players.push(d.player1 + ".v2");
+            if (d.player2) players.push(d.player2 + ".va");
+            if (d.player3) players.push(d.player3 + ".vc");
+        } else if (d.part === "V2") {
+            if (d.player1) players.push(d.player1 + ".v1");
+            if (d.player2) players.push(d.player2 + ".va");
+            if (d.player3) players.push(d.player3 + ".vc");
+        } else if (d.part === "VA") {
+            if (d.player1) players.push(d.player1 + ".v1");
+            if (d.player2) players.push(d.player2 + ".v2");
+            if (d.player3) players.push(d.player3 + ".vc");
+        }
+
+        players.forEach(player => {
+            playerCounts.set(player, (playerCounts.get(player) || 0) + 1);
+        });
+    });
+
+    // Filter to only include players with 20+ entries
+    const filteredPlayers = Array.from(playerCounts.entries())
+        .filter(([player, count]) => count >= 20)
+        .map(([player, count]) => player)
+        .sort();
+
+    return filteredPlayers;
+}

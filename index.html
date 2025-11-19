@@ -37,7 +37,14 @@
 
     <div id="mainContent" style="display: block">
         <h1 style="text-align: center">Music Log</h1>
-        <div id="radioButtons"></div>
+        <div id="radioButtons">
+            <div style="display: flex; align-items: center; margin-left: 20px;">
+                <label for="playerSelect" style="margin-right: 5px;">Player:</label>
+                <select id="playerSelect">
+                    <option value="ANY">ANY</option>
+                </select>
+            </div>
+        </div>
         <div id="dateSlider"></div>
         <div id="tabs"></div>
         <div id="tabContent"></div>

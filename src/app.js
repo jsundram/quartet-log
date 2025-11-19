@@ -1,5 +1,6 @@
 import { COMPOSERS, DEFAULT_COMPOSER, loadWorkCatalog } from './catalog';
 import { DataService } from './dataService';
+import { extractUniquePlayers } from './dataProcessor';
 import { NavigationComponent } from './navigationComponent';
 import { TabComponent } from './tabComponent';
 import { CalendarComponent } from './calendarComponent';
@@ -28,6 +29,10 @@ export class App {
         this.navigationComponent.createRadioButtons();
         this.navigationComponent.createDateSlider(0);
         this.navigationComponent.createDateSlider(1);
+
+        // Populate player dropdown
+        const players = extractUniquePlayers(this.data);
+        this.navigationComponent.populatePlayerDropdown(players);
 
         // Initialize tabs
         this.tabComponent.createTabs();
@@ -88,17 +93,46 @@ export class App {
         const start = dates[0];
         const end = dates[1];
         const part = this.navigationComponent.getSelectedPart();
+        const player = this.navigationComponent.getSelectedPlayer();
 
         const filteredData = this.data.filter(d => {
-            return ["ANY", d.part].includes(part) &&
-                   start <= d.timestamp &&
-                   d.timestamp <= end;
+            const partMatch = ["ANY", d.part].includes(part);
+            const dateMatch = start <= d.timestamp && d.timestamp <= end;
+            const playerMatch = this.checkPlayerMatch(d, player);
+
+            return partMatch && dateMatch && playerMatch;
         });
 
         // Update all composer tabs with filtered data
         COMPOSERS.forEach(composer => {
             this.tabComponent.updateTabContent(composer, part, filteredData, this.data);
         });
+    }
+
+    checkPlayerMatch(d, selectedPlayer) {
+        if (selectedPlayer === "ANY") return true;
+
+        // Extract player name and instrument from selection (e.g., "John.v1")
+        const parts = selectedPlayer.split(".");
+        if (parts.length !== 2) return false;
+
+        const [playerName, instrument] = parts;
+
+        // Check if this player played this instrument in this record
+        if (instrument === "v1") {
+            return (d.part === "V2" && d.player1 === playerName) ||
+                   (d.part === "VA" && d.player1 === playerName);
+        } else if (instrument === "v2") {
+            return (d.part === "V1" && d.player1 === playerName) ||
+                   (d.part === "VA" && d.player2 === playerName);
+        } else if (instrument === "va") {
+            return (d.part === "V1" && d.player2 === playerName) ||
+                   (d.part === "V2" && d.player2 === playerName);
+        } else if (instrument === "vc") {
+            return d.player3 === playerName;
+        }
+
+        return false;
     }
 
     handleError(error) {
