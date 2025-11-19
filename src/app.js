@@ -30,10 +30,6 @@ export class App {
         this.navigationComponent.createDateSlider(0);
         this.navigationComponent.createDateSlider(1);
 
-        // Populate player dropdown with 20+ threshold
-        const players = extractUniquePlayers(this.data);
-        this.navigationComponent.populatePlayerDropdown(players);
-
         // Initialize tabs
         this.tabComponent.createTabs();
         this.tabComponent.showTab(DEFAULT_COMPOSER);
@@ -42,7 +38,7 @@ export class App {
         this.calendarComponent.createCalendar(this.data);
 
         // Initial data filter
-        this.filterData();
+        this.filterData("date");  // need players to update
     }
 
     async initialize() {
