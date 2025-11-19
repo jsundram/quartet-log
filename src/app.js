@@ -9,7 +9,7 @@ import { TableComponent } from './tableComponent';
 export class App {
     constructor() {
         this.dataService = new DataService();
-        this.navigationComponent = new NavigationComponent(() => this.filterData());
+        this.navigationComponent = new NavigationComponent((filterType) => this.filterData(filterType));
         this.tableComponent = new TableComponent();
         this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();
@@ -30,7 +30,7 @@ export class App {
         this.navigationComponent.createDateSlider(0);
         this.navigationComponent.createDateSlider(1);
 
-        // Populate player dropdown
+        // Populate player dropdown with 20+ threshold
         const players = extractUniquePlayers(this.data);
         this.navigationComponent.populatePlayerDropdown(players);
 
@@ -88,19 +88,29 @@ export class App {
             .style("color", source === 'cache' ? "#E63946" : "gray");
     }
 
-    filterData() {
+    filterData(filterType) {
         const dates = this.navigationComponent.getSelectedDates();
         const start = dates[0];
         const end = dates[1];
         const part = this.navigationComponent.getSelectedPart();
         const player = this.navigationComponent.getSelectedPlayer();
 
-        const filteredData = this.data.filter(d => {
+        // First filter by date and part only
+        const datePartFiltered = this.data.filter(d => {
             const partMatch = ["ANY", d.part].includes(part);
             const dateMatch = start <= d.timestamp && d.timestamp <= end;
-            const playerMatch = this.checkPlayerMatch(d, player);
+            return partMatch && dateMatch;
+        });
 
-            return partMatch && dateMatch && playerMatch;
+        // Only update player dropdown if date or part changed, not player
+        if (filterType === "date" || filterType === "part") {
+            const players = extractUniquePlayers(datePartFiltered);
+            this.navigationComponent.populatePlayerDropdown(players);
+        }
+
+        // Now apply player filter
+        const filteredData = datePartFiltered.filter(d => {
+            return this.checkPlayerMatch(d, player);
         });
 
         // Update all composer tabs with filtered data

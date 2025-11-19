@@ -56,7 +56,7 @@ export class NavigationComponent {
                 .attr("value", part)
                 .attr("id", part)
                 .attr("checked", part === "ANY" ? "true" : null)
-                .on("change", () => this.onFilterChange());
+                .on("change", () => this.onFilterChange("part"));
 
             radioButtonContainer.append("label")
                 .attr("for", part)
@@ -102,7 +102,7 @@ export class NavigationComponent {
             .on("input", () => {
                 const value = d3.select(`#range-${endpoint}`).node().value;
                 sliderValueDisplay.text(v2d(value));
-                this.onFilterChange();
+                this.onFilterChange("date");
             });
 
         const sliderValueDisplay = container.append("span")
@@ -126,6 +126,12 @@ export class NavigationComponent {
 
     populatePlayerDropdown(players) {
         const select = d3.select("#playerSelect");
+        const currentValue = select.node().value;
+
+        // Keep currently selected player in list even if not in players array
+        if (currentValue !== "ANY" && !players.includes(currentValue)) {
+            players = [...players, currentValue].sort();
+        }
 
         // Remove existing options except "ANY"
         select.selectAll("option").filter((d, i) => i > 0).remove();
@@ -137,7 +143,14 @@ export class NavigationComponent {
                 .text(player);
         });
 
+        // Restore previous selection if it still exists, otherwise reset to "ANY"
+        if (players.includes(currentValue)) {
+            select.node().value = currentValue;
+        } else {
+            select.node().value = "ANY";
+        }
+
         // Add change listener
-        select.on("change", () => this.onFilterChange());
+        select.on("change", () => this.onFilterChange("player"));
     }
 }
