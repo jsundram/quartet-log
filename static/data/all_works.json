@@ -258,5 +258,16 @@
         "13",
         "14",
         "15"
+    ],
+    "MISC": [
+        {"Britten": ["1", "2", "3"]},
+        {"Debussy": ["Quartet"]},
+        {"Grieg": ["Quartet"]},
+        {"Prokofiev": ["1", "2"]},
+        {"Ravel": ["Quartet"]},
+        {"Schubert": ["D703", "D804", "D810", "D887"]},
+        {"Smetana": ["1", "2"]},
+        {"Tchaikovsky": ["1", "2", "3"]},
+        {"Verdi": ["Quartet"]}
     ]
 }

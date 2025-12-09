@@ -1,4 +1,4 @@
-import { COMPOSERS, ALL_WORKS, generateQuartetRouletteUrl } from './catalog';
+import { COMPOSERS, ALL_WORKS, generateQuartetRouletteUrl, isMiscTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog';
 import { BEGIN, PART_COLORS } from './config';
 import { createEmptyRow } from './dataProcessor';
 
@@ -53,10 +53,18 @@ export class TabComponent {
     }
 
     processComposerData(composer, filteredData, fullData) {
-        // group by title
-        const m = D => new Map(d3.groups(D.filter(d => d.composer === composer), d => d.work.title));
+        const composers = getComposersForTab(composer);
+        const works = getWorksForTab(composer);
+
+        // For MISC tab, transform work titles to include composer prefix
+        const transformTitle = isMiscTab(composer)
+            ? d => `${d.composer}-${d.work.title}`
+            : d => d.work.title;
+
+        // group by title (with optional transformation)
+        const m = D => new Map(d3.groups(D.filter(d => composers.includes(d.composer)), d => transformTitle(d)));
         // make sure every title is present, fill in with [] if not.
-        const fm = M => new Map(ALL_WORKS[composer].map(t => [t, M.get(t) || []]));
+        const fm = M => new Map(works.map(t => [t, M.get(t) || []]));
 
         const filteredPlays = fm(m(filteredData));
         const allPlays = fm(m(fullData));
@@ -156,7 +164,12 @@ export class TabComponent {
                     // if filtered includes everything, just use the first one.
                     index = index === 0 ? index : (index - 1);
                 }
-                this.showTooltip(event, all?.at(index) || createEmptyRow(composer, label));
+
+                // For MISC tab, extract the real composer and original work title
+                const realComposer = all?.at(0)?.composer || getComposerForWork(composer, label);
+                const originalTitle = getOriginalWorkTitle(composer, label);
+
+                this.showTooltip(event, all?.at(index) || createEmptyRow(realComposer, originalTitle));
             })
             .on("mouseout", () => this.hideTooltip());
     }
@@ -202,19 +215,25 @@ export class TabComponent {
 
     updateTotalCount(composerDiv, composerData) {
         const { filteredPlays, allPlays } = composerData;
+        const tabName = composerDiv.attr("id");
 
         const count = Array.from(filteredPlays.values()).flat().length;
         const rawData = Array.from(allPlays.values()).flat();
-        const composer = rawData[0].composer || "played";
         const latest_ix = d3.maxIndex(rawData, d => d.timestamp);
-        const latest = rawData[latest_ix].timestamp;
-        const piece = rawData[latest_ix].work.title;
-        const days = d3.timeDay.count(latest, Date.now())
+        const latestEntry = rawData[latest_ix];
+        const latest = latestEntry.timestamp;
+        const days = d3.timeDay.count(latest, Date.now());
+
+        // For MISC tab, use "MISC" as composer name and show prefixed work title
+        const composerName = isMiscTab(tabName) ? tabName : (latestEntry.composer || "played");
+        const piece = isMiscTab(tabName)
+            ? `${latestEntry.composer}-${latestEntry.work.title}`
+            : latestEntry.work.title;
 
         composerDiv.selectAll("p")
             .data([{ count, days, piece}])
             .join("p")
-            .text(d => `Total: ${d.count}; Days since last ${composer}: ${d.days} (${d.piece}).`)
+            .text(d => `Total: ${d.count}; Days since last ${composerName}: ${d.days} (${d.piece}).`)
             .style("color", "gray");
     }
 

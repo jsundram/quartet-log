@@ -134,10 +134,15 @@ h1 {
     */
 }
 
+/* MISC tab needs wider first column for composer-prefixed titles */
+#MISC .work-row {
+    grid-template-columns: 130px 1fr;
+}
+
 .work-label-container {
     margin-left: 10px;
-    width: 50px;
-    /* Adjust this to suit your design, e.g., max-width or fixed width */
+    min-width: 50px;
+    white-space: nowrap;
 }
 
 .squares-container {

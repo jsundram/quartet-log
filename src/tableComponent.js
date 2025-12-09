@@ -1,7 +1,8 @@
 export class TableComponent {
     constructor() {
-        this.columns = [
+        this.allColumns = [
             { key: 'timestamp', label: 'Date', format: d => d.toLocaleDateString() },
+            { key: 'composer', label: 'Composer', format: d => d },
             { key: 'work.title', label: 'Work', format: d => d },
             { key: 'part', label: 'Part', format: d => d },
             { key: 'player1', label: 'Player 1', format: d => d },
@@ -14,7 +15,17 @@ export class TableComponent {
         this.sortStates = new Map();
     }
 
+    getColumnsForComposer(composer) {
+        // For non-MISC tabs, exclude the composer column
+        if (composer !== 'MISC') {
+            return this.allColumns.filter(col => col.key !== 'composer');
+        }
+        return this.allColumns;
+    }
+
     createTable(container, composer) {
+        const columns = this.getColumnsForComposer(composer);
+
         const tableWrapper = d3.select(container)
             .append('div')
             .attr('class', 'table-wrapper')
@@ -32,7 +43,7 @@ export class TableComponent {
         const headerRow = thead.append('tr');
 
         headerRow.selectAll('th')
-            .data(this.columns)
+            .data(columns)
             .join('th')
             .style('cursor', 'pointer')
             .style('padding', '8px')
@@ -73,6 +84,7 @@ export class TableComponent {
 
     updateTable(composerData, tableContainer) {
         const composer = tableContainer.select('.table-wrapper').attr('data-composer');
+        const columns = this.getColumnsForComposer(composer);
         const sortState = this.sortStates.get(composer) || { key: 'timestamp', direction: 'desc' };
 
         // Convert map to array of play records
@@ -112,7 +124,7 @@ export class TableComponent {
 
         // Update cells
         rows.selectAll('td')
-            .data(row => this.columns.map(column => ({
+            .data(row => columns.map(column => ({
                 value: this.getValue(row, column.key),
                 format: column.format
             })))

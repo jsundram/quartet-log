@@ -70,3 +70,12 @@
 * make sorting by work title use work.catalog & int(work.number) instead of strcmp title.
 * less padding / spacing on datatable rows
 * Add Search/Dropdown to filter for frequent collaborators
+* Add a "Rare" tab and include:
+    * Prokofiev 1/2
+    * Britten 1/2/3?
+    * Debussy
+    * Grieg
+    * Ravel
+    * Smetana
+    * Tchaikovsky 1/2/3?
+    * Verdi
