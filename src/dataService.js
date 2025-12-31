@@ -57,9 +57,7 @@ export class DataService {
         let processedData = fillForward(rawData);
 
         // Filter out incomplete works
-        processedData = processedData.filter(d => !d.work.incomplete);
-
-        return processedData;
+        return processedData.filter(d => !d.work.incomplete);
     }
 
     formatTimeSince(previous) {

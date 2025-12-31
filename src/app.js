@@ -9,7 +9,10 @@ import { TableComponent } from './tableComponent';
 export class App {
     constructor() {
         this.dataService = new DataService();
-        this.navigationComponent = new NavigationComponent((filterType) => this.filterData(filterType));
+        this.navigationComponent = new NavigationComponent(
+            (filterType) => this.filterData(filterType),
+            () => this.downloadCSV()
+        );
         this.tableComponent = new TableComponent();
         this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();
@@ -20,6 +23,7 @@ export class App {
         // Fetch and process data
         const result = await this.dataService.fetchCSV();
         this.data = this.dataService.processData(result.parsed);
+        window.data = this.data;
         return result;
     }
 
@@ -139,6 +143,65 @@ export class App {
         }
 
         return false;
+    }
+
+    downloadCSV() {
+        if (!this.data) {
+            console.error('No data available to download');
+            return;
+        }
+
+        // Format timestamp to match original format: "M/D/YYYY H:mm:ss" in local time
+        const formatTimestamp = d3.timeFormat("%-m/%-d/%Y %-H:%M:%S");
+
+        // CSV headers
+        const headers = ['Timestamp', 'Composer', 'Work Title', 'Which Part', 'Player 1', 'Player 2', 'Player 3', 'Others', 'Location', 'Comments'];
+
+        // Convert data to CSV rows
+        const rows = this.data.map(d => {
+            return [
+                formatTimestamp(d.timestamp),
+                d.composer,
+                d.work.title,
+                d.part,
+                d.player1,
+                d.player2,
+                d.player3,
+                d.others,
+                d.location,
+                d.comments
+            ];
+        });
+
+        // Escape CSV fields that contain commas, quotes, or newlines
+        const escapeField = (field) => {
+            if (field === null || field === undefined) return '';
+            const str = String(field);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        };
+
+        // Build CSV content
+        const csvContent = [
+            headers.map(escapeField).join(','),
+            ...rows.map(row => row.map(escapeField).join(','))
+        ].join('\n');
+
+        // Create blob and trigger download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+
+        link.setAttribute('href', url);
+        link.setAttribute('download', `music-log-${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     }
 
     handleError(error) {

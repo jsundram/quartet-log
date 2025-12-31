@@ -1,8 +1,9 @@
 import { BEGIN, PART_COLORS } from './config';
 
 export class NavigationComponent {
-    constructor(onFilterChange) {
+    constructor(onFilterChange, onDownloadCSV) {
         this.onFilterChange = onFilterChange;
+        this.onDownloadCSV = onDownloadCSV;
         this.stop2date = null;
     }
 
@@ -19,6 +20,15 @@ export class NavigationComponent {
         d3.selectAll(".menu-item").on("click", (event) => {
             event.preventDefault();
             const view = d3.select(event.currentTarget).attr("data-view");
+
+            if (view === "download-csv") {
+                if (this.onDownloadCSV) {
+                    this.onDownloadCSV();
+                }
+                menuItems.style("display", "none");
+                return;
+            }
+
             this.switchView(view);
         });
     }
