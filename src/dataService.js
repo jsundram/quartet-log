@@ -56,12 +56,8 @@ export class DataService {
 
         let processedData = fillForward(rawData);
 
-        // Filter out incomplete works and works not in catalog
+        // Filter out incomplete works
         processedData = processedData.filter(d => !d.work.incomplete);
-        processedData = processedData.filter(d =>
-            !ALL_WORKS.hasOwnProperty(d.composer) ||
-            ALL_WORKS[d.composer].includes(d.work.title)
-        );
 
         return processedData;
     }

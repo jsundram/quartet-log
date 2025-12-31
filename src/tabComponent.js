@@ -62,7 +62,14 @@ export class TabComponent {
             : d => d.work.title;
 
         // group by title (with optional transformation)
-        const m = D => new Map(d3.groups(D.filter(d => composers.includes(d.composer)), d => transformTitle(d)));
+        // Filter to only include works in the catalog for this tab
+        const m = D => new Map(d3.groups(
+            D.filter(d => {
+                const title = transformTitle(d);
+                return composers.includes(d.composer) && works.includes(title);
+            }),
+            d => transformTitle(d)
+        ));
         // make sure every title is present, fill in with [] if not.
         const fm = M => new Map(works.map(t => [t, M.get(t) || []]));
 
