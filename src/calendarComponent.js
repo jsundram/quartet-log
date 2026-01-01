@@ -5,6 +5,11 @@ export class CalendarComponent {
         this.width = CALENDAR_CONFIG.width;
         this.cellSize = CALENDAR_CONFIG.cellSize;
         this.height = CALENDAR_CONFIG.height;
+
+        // Create tooltip div
+        this.tooltipDiv = d3.select("body").append("div")
+            .attr("class", "tooltip")
+            .style("display", "none");
     }
 
     createCalendar(data) {
@@ -103,13 +108,13 @@ export class CalendarComponent {
                 .text(year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0));
 
         // Calendar cells
-        this.renderCalendarCells(year, timeWeek, countDay, color, formatDate);
+        this.renderCalendarCells(year, timeWeek, countDay, color, formatDate, sessions);
 
         // Add month paths and labels
         this.renderMonthLabels(year, timeWeek, formatMonth);
     }
 
-    renderCalendarCells(year, timeWeek, countDay, color, formatDate) {
+    renderCalendarCells(year, timeWeek, countDay, color, formatDate, sessions) {
         year.append("g")
             .selectAll()
             .data(([, values]) => values)
@@ -119,8 +124,10 @@ export class CalendarComponent {
             .attr("x", d => timeWeek.count(d3.utcYear(d.date), d.date) * this.cellSize + 0.5)
             .attr("y", d => countDay(d.date.getUTCDay()) * this.cellSize + 0.5)
             .attr("fill", d => d.value == 0 ? "#eee" : color(d.value))
-            .append("title")
-            .text(d => `${formatDate(d.date)}: ${d.value}`);
+            .style("cursor", "pointer")
+            .on("mouseenter", (event, d) => this.showTooltip(event, d, formatDate, sessions))
+            .on("mouseleave", () => this.hideTooltip())
+            .on("click", (event, d) => this.showTooltip(event, d, formatDate, sessions));
     }
 
     renderMonthLabels(year, timeWeek, formatMonth) {
@@ -224,5 +231,72 @@ export class CalendarComponent {
             context.fillRect(i, 0, 1, 1);
         }
         return canvas;
+    }
+
+    showTooltip(event, d, formatDate, sessions) {
+        if (d.value === 0) return; // Don't show tooltip for days with no activity
+
+        const pieces = d.value === 1 ? "piece" : "pieces";
+        let html = `<span class="tooltip-close">&times;</span>`;
+        html += `<h4>${formatDate(d.date)}</h4>`;
+        html += `<p>${d.value} ${pieces} played</p>`;
+
+        // Get session data for this date
+        const sessionData = sessions.get(d.date.getTime());
+        if (sessionData && sessionData.length > 0) {
+            html += `<table class="calendar-tooltip-table">`;
+            html += `<thead><tr><th>Composer</th><th>Work</th><th>Part</th><th>Players</th></tr></thead>`;
+            html += `<tbody>`;
+            sessionData.forEach(session => {
+                const composer = session.composer || '';
+                const work = session.work?.title || session.workTitle || '';
+                const part = session.part || '';
+                const players = [session.player1, session.player2, session.player3]
+                    .filter(p => p)
+                    .join(', ');
+                html += `<tr>`;
+                html += `<td>${composer}</td>`;
+                html += `<td>${work}</td>`;
+                html += `<td>${part}</td>`;
+                html += `<td>${players}</td>`;
+                html += `</tr>`;
+            });
+            html += `</tbody></table>`;
+        }
+
+        this.tooltipDiv
+            .html(html)
+            .style("display", "block");
+
+        // Add click handler to close button
+        this.tooltipDiv.select(".tooltip-close")
+            .on("click", () => this.hideTooltip());
+
+        this.positionTooltip(event);
+    }
+
+    positionTooltip(event) {
+        const tooltip = this.tooltipDiv.node();
+        const tRect = tooltip.getBoundingClientRect();
+        const margin = 10;
+
+        let left = event.pageX + margin;
+        let top = event.pageY + margin;
+
+        // Adjust position to keep tooltip within viewport
+        if (left + tRect.width > window.innerWidth) {
+            left = Math.max(margin, event.pageX - tRect.width - margin);
+        }
+        if (top + tRect.height > window.innerHeight) {
+            top = Math.max(margin, event.pageY - tRect.height - margin);
+        }
+
+        this.tooltipDiv
+            .style("left", left + "px")
+            .style("top", top + "px");
+    }
+
+    hideTooltip() {
+        this.tooltipDiv.style("display", "none");
     }
 }

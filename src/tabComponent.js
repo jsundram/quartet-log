@@ -271,7 +271,8 @@ export class TabComponent {
         const ts = d.timestamp ? d.timestamp.toLocaleDateString() : "Unplayed";
         const url = generateQuartetRouletteUrl(d);
 
-        let html = `<h4><a href="${url}">${d.composer} - ${d.work.title}</a></h4>`;
+        let html = `<span class="tooltip-close">&times;</span>`;
+        html += `<h4><a href="${url}">${d.composer} - ${d.work.title}</a></h4>`;
         html += "<ul>";
         html += `<li>${ts}${d.location ? " - " + d.location : ""}</li>`;
         if (d.part) html += `<li>${d.part}</li>`;
@@ -282,6 +283,10 @@ export class TabComponent {
         this.tooltipDiv
             .html(html)
             .style("display", "block");
+
+        // Add click handler to close button
+        this.tooltipDiv.select(".tooltip-close")
+            .on("click", () => this.hideTooltip());
 
         this.positionTooltip(event);
     }

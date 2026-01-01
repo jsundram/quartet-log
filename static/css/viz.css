@@ -124,6 +124,54 @@ h1 {
     border-radius: 5px;
 }
 
+.tooltip h4 {
+    margin: 0;
+}
+
+.tooltip p {
+    margin: 5px 0 0 0;
+}
+
+.calendar-tooltip-table {
+    margin-top: 10px;
+    border-collapse: collapse;
+    font-size: 12px;
+    width: 100%;
+}
+
+.calendar-tooltip-table th {
+    background: #f0f0f0;
+    padding: 4px 6px;
+    text-align: left;
+    border-bottom: 1px solid #ccc;
+    font-weight: bold;
+}
+
+.calendar-tooltip-table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid #eee;
+}
+
+.calendar-tooltip-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.tooltip-close {
+    position: absolute;
+    top: 2px;
+    right: 5px;
+    font-size: 20px;
+    font-weight: bold;
+    color: #999;
+    cursor: pointer;
+    line-height: 1;
+    user-select: none;
+}
+
+.tooltip-close:hover {
+    color: #000;
+}
+
 .work-row {
     display: grid;
     grid-template-columns: auto 1fr;
