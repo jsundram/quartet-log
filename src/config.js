@@ -21,7 +21,7 @@ export const PLAYER_ABBREVIATIONS = {
 
 // Calendar configurations
 export const CALENDAR_CONFIG = {
-    width: 964,
+    width: 1000,  // Extra width for day-of-week totals column
     cellSize: 17,
-    height: 17 * 9
+    height: 17 * 10  // Extra row for weekly totals
 };

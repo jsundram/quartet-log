@@ -84,14 +84,27 @@ export class CalendarComponent {
             .attr("dy", "0.31em")
             .text(formatDay);
 
-        // Pieces / Year
+        // Day-of-week totals (count of days played per weekday)
+        year.append("g")
+            .attr("text-anchor", "middle")
+            .selectAll()
+            .data(([year, values]) => this.calculateDayOfWeekTotals(values))
+            .join("text")
+            .attr("x", this.cellSize * 53 + this.cellSize / 2)
+            .attr("y", (d, i) => (countDay(i) + 0.5) * this.cellSize)
+            .attr("dy", "0.31em")
+            .attr("fill", "#999")
+            .attr("font-size", "9px")
+            .text(d => d > 0 ? d : "");
+
+        // Pieces / Year (shifted right to make room for day-of-week totals)
         const yearQ = new Map(years);
         year.append("g")
             .attr("text-anchor", "start")
             .selectAll()
             .data(([year, values]) => [year])
             .join("text")
-                .attr("x", d => this.cellSize*53 + 5)
+                .attr("x", d => this.cellSize*54 + 10)
                 .attr("y", d => this.cellSize*3)
                 .attr("dy", ".31em")
                 .text(year => d3.sum(yearQ.get(year), d => d.value));
@@ -102,7 +115,7 @@ export class CalendarComponent {
             .selectAll()
             .data(([year, values]) => [year])
             .join("text")
-                .attr("x", d => this.cellSize*53 + 5)
+                .attr("x", d => this.cellSize*54 + 10)
                 .attr("y", d => this.cellSize*4)
                 .attr("dy", ".31em")
                 .text(year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0));
@@ -112,6 +125,41 @@ export class CalendarComponent {
 
         // Add month paths and labels
         this.renderMonthLabels(year, timeWeek, formatMonth);
+
+        // Weekly totals at bottom of each column
+        year.append("g")
+            .selectAll()
+            .data(([, values]) => this.calculateWeekTotals(values, timeWeek))
+            .join("text")
+            .attr("x", (d, i) => i * this.cellSize + this.cellSize / 2)
+            .attr("y", 7 * this.cellSize + 12)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#999")
+            .attr("font-size", "8px")
+            .text(d => d > 0 ? d : "");
+    }
+
+    calculateWeekTotals(values, timeWeek) {
+        const weekTotals = new Array(53).fill(0);
+        values.forEach(d => {
+            const weekNum = timeWeek.count(d3.utcYear(d.date), d.date);
+            if (weekNum < 53) {
+                weekTotals[weekNum] += d.value;
+            }
+        });
+        return weekTotals;
+    }
+
+    calculateDayOfWeekTotals(values) {
+        // Count days with sessions for each day of week (0=Sunday, 6=Saturday)
+        const dayTotals = new Array(7).fill(0);
+        values.forEach(d => {
+            if (d.value > 0) {
+                const dayOfWeek = d.date.getUTCDay();
+                dayTotals[dayOfWeek]++;
+            }
+        });
+        return dayTotals;
     }
 
     renderCalendarCells(year, timeWeek, countDay, color, formatDate, sessions) {
@@ -131,21 +179,49 @@ export class CalendarComponent {
     }
 
     renderMonthLabels(year, timeWeek, formatMonth) {
+        const cellSize = this.cellSize;
+
         const month = year.append("g")
             .selectAll()
-            .data(([, values]) => d3.utcMonths(d3.utcMonth(values[0].date), values.at(-1).date))
+            .data(([, values]) => {
+                // Attach year values to each month for stats calculation
+                const months = d3.utcMonths(d3.utcMonth(values[0].date), values.at(-1).date);
+                return months.map(m => ({ month: m, yearValues: values }));
+            })
             .join("g");
 
         month.filter((d, i) => i).append("path")
             .attr("fill", "none")
             .attr("stroke", "#fff")
             .attr("stroke-width", 3)
-            .attr("d", this.pathMonth.bind(this));
+            .attr("d", d => this.pathMonth(d.month));
 
         month.append("text")
-            .attr("x", d => timeWeek.count(d3.utcYear(d), timeWeek.ceil(d)) * this.cellSize + 2)
+            .attr("x", d => timeWeek.count(d3.utcYear(d.month), timeWeek.ceil(d.month)) * cellSize + 2)
             .attr("y", -5)
-            .text(formatMonth);
+            .text(d => formatMonth(d.month));
+
+        // Monthly totals (days|pieces) - right aligned at month end
+        month.append("text")
+            .attr("x", d => {
+                // Get the last day of this month (one day before first of next month)
+                const lastDayOfMonth = d3.utcDay.offset(d3.utcMonth.offset(d.month, 1), -1);
+                const endWeek = d3.utcSunday.count(d3.utcYear(d.month), lastDayOfMonth);
+                // Position at right edge of that week's column
+                return (endWeek + 1) * cellSize - 2;
+            })
+            .attr("y", -5)
+            .attr("text-anchor", "end")
+            .attr("fill", "#999")
+            .attr("font-size", "9px")
+            .text(d => {
+                const monthStart = d.month;
+                const monthEnd = d3.utcMonth.offset(d.month, 1);
+                const monthData = d.yearValues.filter(v => v.date >= monthStart && v.date < monthEnd);
+                const days = monthData.filter(v => v.value > 0).length;
+                const pieces = d3.sum(monthData, v => v.value);
+                return `${days}.${pieces}`;
+            });
     }
 
     pathMonth(t) {
