@@ -5,6 +5,16 @@ export class NavigationComponent {
         this.onFilterChange = onFilterChange;
         this.onDownloadCSV = onDownloadCSV;
         this.stop2date = null;
+        this.selectedPlayers = new Set();
+        this.availablePlayers = [];
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const multiselect = document.getElementById('playerSelect');
+            if (multiselect && !multiselect.contains(e.target)) {
+                this.closeDropdown();
+            }
+        });
     }
 
     createMenu() {
@@ -129,38 +139,107 @@ export class NavigationComponent {
         return d3.select('input[name="part"]:checked').node().value;
     }
 
-    getSelectedPlayer() {
-        const selectElement = d3.select("#playerSelect").node();
-        return selectElement ? selectElement.value : "ANY";
+    getSelectedPlayers() {
+        return Array.from(this.selectedPlayers);
     }
 
     populatePlayerDropdown(players) {
-        const select = d3.select("#playerSelect");
-        const currentValue = select.node().value;
+        this.availablePlayers = players;
 
-        // Keep currently selected player in list even if not in players array
-        if (currentValue !== "ANY" && !players.includes(currentValue)) {
-            players = [...players, currentValue].sort();
+        // Remove selected players that are no longer in the available list
+        for (const selected of this.selectedPlayers) {
+            if (!players.includes(selected)) {
+                this.selectedPlayers.delete(selected);
+            }
         }
 
-        // Remove existing options except "ANY"
-        select.selectAll("option").filter((d, i) => i > 0).remove();
+        this.renderDropdown();
+        this.updateTriggerText();
+    }
 
-        // Add all player options
-        players.forEach(player => {
-            select.append("option")
-                .attr("value", player)
-                .text(player);
+    renderDropdown() {
+        const dropdown = d3.select("#playerSelect .player-dropdown");
+        dropdown.html("");
+
+        // Add "Clear All" option if there are selections
+        if (this.selectedPlayers.size > 0) {
+            dropdown.append("div")
+                .attr("class", "player-clear")
+                .text("Clear All")
+                .on("click", (e) => {
+                    e.stopPropagation();
+                    this.clearPlayerSelections();
+                });
+        }
+
+        // Add player options with checkboxes
+        this.availablePlayers.forEach(player => {
+            const option = dropdown.append("div")
+                .attr("class", "player-option");
+
+            const checkbox = option.append("input")
+                .attr("type", "checkbox")
+                .attr("id", `player-${player}`)
+                .attr("checked", this.selectedPlayers.has(player) ? "checked" : null)
+                .on("change", (e) => {
+                    e.stopPropagation();
+                    this.togglePlayerSelection(player);
+                });
+
+            option.append("label")
+                .attr("for", `player-${player}`)
+                .text(player)
+                .on("click", (e) => {
+                    e.stopPropagation();
+                    // Let the label's default behavior toggle the checkbox
+                });
         });
 
-        // Restore previous selection if it still exists, otherwise reset to "ANY"
-        if (players.includes(currentValue)) {
-            select.node().value = currentValue;
-        } else {
-            select.node().value = "ANY";
-        }
+        // Set up trigger click handler
+        d3.select("#playerSelect .player-select-trigger")
+            .on("click", (e) => {
+                e.stopPropagation();
+                this.toggleDropdown();
+            });
+    }
 
-        // Add change listener
-        select.on("change", () => this.onFilterChange("player"));
+    togglePlayerSelection(player) {
+        if (this.selectedPlayers.has(player)) {
+            this.selectedPlayers.delete(player);
+        } else {
+            this.selectedPlayers.add(player);
+        }
+        this.renderDropdown();
+        this.updateTriggerText();
+        this.onFilterChange("player");
+    }
+
+    clearPlayerSelections() {
+        this.selectedPlayers.clear();
+        this.renderDropdown();
+        this.updateTriggerText();
+        this.onFilterChange("player");
+    }
+
+    updateTriggerText() {
+        const trigger = d3.select("#playerSelect .player-select-trigger");
+        const count = this.selectedPlayers.size;
+        if (count === 0) {
+            trigger.text("ANY");
+        } else if (count === 1) {
+            trigger.text(Array.from(this.selectedPlayers)[0]);
+        } else {
+            trigger.text(`${count} selected`);
+        }
+    }
+
+    toggleDropdown() {
+        const dropdown = d3.select("#playerSelect .player-dropdown");
+        const isOpen = dropdown.classed("open");
+        dropdown.classed("open", !isOpen);
+    }
+
+    closeDropdown() {
+        d3.select("#playerSelect .player-dropdown").classed("open", false);
     }
 }

@@ -93,7 +93,7 @@ export class App {
         const start = dates[0];
         const end = dates[1];
         const part = this.navigationComponent.getSelectedPart();
-        const player = this.navigationComponent.getSelectedPlayer();
+        const selectedPlayers = this.navigationComponent.getSelectedPlayers();
 
         // First filter by date and part only
         const datePartFiltered = this.data.filter(d => {
@@ -110,7 +110,7 @@ export class App {
 
         // Now apply player filter
         const filteredData = datePartFiltered.filter(d => {
-            return this.checkPlayerMatch(d, player);
+            return this.checkPlayersMatch(d, selectedPlayers);
         });
 
         // Update all composer tabs with filtered data
@@ -119,15 +119,32 @@ export class App {
         });
     }
 
-    checkPlayerMatch(d, selectedPlayer) {
-        if (selectedPlayer === "ANY") return true;
+    checkPlayersMatch(d, selectedPlayers) {
+        // If no players selected, show all (equivalent to "ANY")
+        if (selectedPlayers.length === 0) return true;
 
-        // Extract player name and instrument from selection (e.g., "John.v1")
-        const parts = selectedPlayer.split(".");
-        if (parts.length !== 2) return false;
+        // Group selected players by base name
+        // e.g., ["Isaac.v1", "Isaac.v2", "Elaine.va"]
+        //    => { Isaac: ["v1", "v2"], Elaine: ["va"] }
+        const playerGroups = new Map();
+        for (const p of selectedPlayers) {
+            const [name, instrument] = p.split(".");
+            if (!playerGroups.has(name)) playerGroups.set(name, []);
+            playerGroups.get(name).push(instrument);
+        }
 
-        const [playerName, instrument] = parts;
+        // For each unique player name, check if ANY of their instruments match (OR)
+        // All player names must match (AND)
+        for (const [name, instruments] of playerGroups) {
+            const anyInstrumentMatches = instruments.some(inst =>
+                this.checkSinglePlayerMatch(d, name, inst)
+            );
+            if (!anyInstrumentMatches) return false; // AND logic fails
+        }
+        return true;
+    }
 
+    checkSinglePlayerMatch(d, playerName, instrument) {
         // Check if this player played this instrument in this record
         if (instrument === "v1") {
             return (d.part === "V2" && d.player1 === playerName) ||
