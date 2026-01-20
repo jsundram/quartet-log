@@ -1,5 +1,5 @@
 import { COMPOSERS, ALL_WORKS, generateQuartetRouletteUrl, isMiscTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog';
-import { BEGIN, PART_COLORS } from './config';
+import { getBegin, PART_COLORS } from './config';
 import { createEmptyRow } from './dataProcessor';
 
 export class TabComponent {
@@ -103,10 +103,10 @@ export class TabComponent {
     handleRandomSelection(composerDiv, composerData) {
         const { allPlays } = composerData;
         const now = new Date();
-        const maxDays = d3.timeDay.count(BEGIN, now);
+        const maxDays = d3.timeDay.count(getBegin(), now);
 
         const weighted = Array.from(allPlays)
-            .map(([t, ps]) => [t, ps.at(-1)?.timestamp || BEGIN])
+            .map(([t, ps]) => [t, ps.at(-1)?.timestamp || getBegin()])
             .map(([t, ts]) => [t, d3.timeDay.count(ts, now)])
 
         // Select work using weighted random selection

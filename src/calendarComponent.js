@@ -1,4 +1,4 @@
-import { BEGIN, CALENDAR_CONFIG } from './config';
+import { getBegin, CALENDAR_CONFIG } from './config';
 
 export class CalendarComponent {
     constructor() {
@@ -22,7 +22,7 @@ export class CalendarComponent {
         // Process data for calendar view
         const sessions = new Map(d3.group(data, d => d3.timeDay(d.timestamp).getTime()));
         const v = d => sessions.has(d.getTime()) ? sessions.get(d.getTime()).length : 0;
-        const days = d3.timeDay.range(BEGIN, new Date()).map(d => ({date: d, value: v(d)}));
+        const days = d3.timeDay.range(getBegin(), new Date()).map(d => ({date: d, value: v(d)}));
         const values = d3.sort(Array.from(sessions.values()).map(v => v.length));
 
         // Color scale for calendar

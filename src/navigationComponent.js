@@ -1,4 +1,4 @@
-import { BEGIN, PART_COLORS } from './config';
+import { getBegin, PART_COLORS } from './config';
 import { clearDataUrl } from './urlConfig';
 
 export class NavigationComponent {
@@ -104,7 +104,7 @@ export class NavigationComponent {
 
     createDateSlider(endpoint) {
         const now = new Date();
-        let stops = d3.timeMonth.range(BEGIN, now);
+        let stops = d3.timeMonth.range(getBegin(), now);
         stops.push(now);
 
         const container = d3.select("#dateSlider")

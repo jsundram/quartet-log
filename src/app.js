@@ -1,4 +1,5 @@
 import { COMPOSERS, DEFAULT_COMPOSER, loadWorkCatalog } from './catalog';
+import { setBegin } from './config';
 import { DataService } from './dataService';
 import { extractUniquePlayers } from './dataProcessor';
 import { NavigationComponent } from './navigationComponent';
@@ -89,6 +90,11 @@ export class App {
         const result = await this.dataService.fetchCSV();
         this.data = this.dataService.processData(result.parsed);
         window.data = this.data;
+
+        // Compute BEGIN from earliest data point
+        const earliestDate = this.data[0].timestamp;
+        setBegin(earliestDate);
+
         return result;
     }
 

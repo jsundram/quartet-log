@@ -1,5 +1,19 @@
 // Global configuration constants
-export const BEGIN = new Date("2016/07/01 00:00:00");
+
+// BEGIN is computed from data - first day of month containing earliest data point
+let _begin = null;
+
+export function getBegin() {
+    if (!_begin) {
+        throw new Error('BEGIN not initialized - call setBegin() with data first');
+    }
+    return _begin;
+}
+
+export function setBegin(earliestDate) {
+    // Set to first day of the month containing the earliest date
+    _begin = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
+}
 
 // Color configurations
 export const PART_COLORS = {
