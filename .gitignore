@@ -3,3 +3,5 @@ last_deploy/
 __pycache__/
 *.pyc
 *.zip
+wrapped/
+.playwright-mcp/

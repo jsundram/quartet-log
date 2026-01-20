@@ -16,11 +16,8 @@ Outputs to `./last_deploy/` with sourcemaps, serves content, and watches for cha
 ```
 Outputs minified bundle to `./last_deploy/`.
 
-**Deploy to S3:**
-```bash
-./deploy.sh
-```
-Syncs `./last_deploy/` to S3 (must run production build first!).
+**Deploy:**
+Deployment to GitHub Pages is automatic on push to main via GitHub Actions.
 
 **Dependencies:**
 - esbuild 0.24.2
@@ -28,7 +25,7 @@ Syncs `./last_deploy/` to S3 (must run production build first!).
 
 ## Architecture Overview
 
-This is a music session log visualization built with vanilla JavaScript and D3.js v7 (no React/Angular/Vue). Data is fetched directly from a Google Sheets CSV export.
+This is a string quartet session log visualization built with vanilla JavaScript and D3.js v7 (no React/Angular/Vue). Users configure their own Google Sheets CSV URL on first visit, which is stored in localStorage.
 
 ### Component Architecture
 
@@ -74,13 +71,17 @@ Players are suffixed with their instrument based on the part being played:
 - When part = "V2": player1 → ".v1", player2 → ".va", player3 → ".vc"
 - When part = "VA": player1 → ".v1", player2 → ".v2", player3 → ".vc"
 
-This ensures cellists named "Josh" are distinct from violists named "Josh" (e.g., "Josh.vc" vs "Josh.va").
+This ensures cellists are distinct from violists with the same name (e.g., "Alex.vc" vs "Alex.va").
 
 ### Configuration Files
 
+**`src/urlConfig.js`** - URL management:
+- `getDataUrl()` / `setDataUrl()` - Manage user's Google Sheets URL in localStorage
+- `hasDataUrl()` - Check if URL is configured (triggers setup view if not)
+- `isValidGoogleSheetsUrl()` - Validate URL format
+
 **`src/config.js`** - Global constants:
-- `DATA_URL` - Google Sheets CSV export URL
-- `BEGIN` - Start date for all data (2016-07-01)
+- `getBegin()` / `setBegin()` - Start date computed from earliest data point
 - `PART_COLORS` - Color coding for V1/V2/VA parts
 - `PLAYER_ABBREVIATIONS` - Short name → full name mappings
 

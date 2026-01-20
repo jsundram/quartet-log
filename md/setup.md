@@ -1,6 +1,6 @@
 # How to Publish Your Google Sheet as CSV
 
-This guide explains how to publish an existing Google Sheet so that Music Log can access the data.
+This guide explains how to publish an existing Google Sheet so that Quartet Log can access the data.
 
 ## Step-by-Step Instructions
 
@@ -32,9 +32,9 @@ https://docs.google.com/spreadsheets/d/e/2PACX-1vXXX.../pub?output=csv
 
 Copy this entire URL.
 
-### 5. Use the URL in Music Log
+### 5. Use the URL in Quartet Log
 
-Paste the URL into the Music Log setup page and click "Load Data".
+Paste the URL into the Quartet Log setup page and click "Load Data".
 
 ## Important Notes
 
@@ -74,4 +74,4 @@ Your Google Sheet should have columns matching the expected format:
 - **Player 1, Player 2, Player 3** - Names of other players
 - Additional optional columns: Others, Location, Comments
 
-[Back to Music Log](index.html)
+[Back to Quartet Log](index.html)

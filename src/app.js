@@ -195,8 +195,8 @@ export class App {
         if (selectedPlayers.length === 0) return true;
 
         // Group selected players by base name
-        // e.g., ["Isaac.v1", "Isaac.v2", "Elaine.va"]
-        //    => { Isaac: ["v1", "v2"], Elaine: ["va"] }
+        // e.g., ["Alice.v1", "Alice.v2", "Bob.va"]
+        //    => { Alice: ["v1", "v2"], Bob: ["va"] }
         const playerGroups = new Map();
         for (const p of selectedPlayers) {
             const [name, instrument] = p.split(".");

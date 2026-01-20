@@ -1,7 +1,7 @@
 // URL configuration management for localStorage-based data source
 
-const STORAGE_KEY = 'musiclog_data_url';
-const CACHE_KEY_PREFIX = 'musiclog_cache_';
+const STORAGE_KEY = 'quartetlog_data_url';
+const CACHE_KEY_PREFIX = 'quartetlog_cache_';
 
 /**
  * Check if a URL is configured

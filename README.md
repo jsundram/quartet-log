@@ -1,48 +1,52 @@
-# README
+# Quartet Log
 
-*Code for http://viz.runningwithdata.com/musiclog*
+A visualization tool for tracking string quartet sessions. Log what you play, see your progress through the repertoire, and get suggestions for what to play next.
 
-## TODO
-* See [TODO.md](./md/TODO.md)
+**Live site:** [log.quartetroulette.com](https://log.quartetroulette.com)
 
-## Building / Developing
-* run `./build.sh`; will serve & incrementally rebuild to `$DEPLOY`
+## Features
 
-## Testing
-* serve the `$DEPLOY` folder
+- Track quartet sessions with composer, work, players, and date
+- Visualize plays per work across Haydn, Mozart, Beethoven, and other composers
+- Calendar view showing session frequency over time
+- Filter by part (V1/V2/VA), date range, and player
+- "Quartet Roulette" random work picker weighted by recency
+- Works with any Google Sheets data source
 
-## Deploying
-* run `./build.sh --prod`; output will be in `$DEPLOY`
-* run `./deploy.sh`, which will sync $DEPLOY to s3.
+## Setup
 
-## About
-There are a few interesting things about this project:
+1. Create a Google Sheet with your quartet session data
+2. Publish it to the web as CSV (File → Share → Publish to web)
+3. Visit the site and paste your CSV URL
 
-### 1. Making data visualization from a Google Sheet 
-*see [Data Visualization on the Go](./md/about.md)*
+See [setup.html](https://log.quartetroulette.com/setup.html) for detailed instructions.
 
+## Development
 
-### 2. Simple content via markdown to html 
+**Prerequisites:**
+- esbuild 0.24.2
+- pandoc 3.6.2
 
-If this is a one-off, try [grip](https://github.com/joeyespo/grip). `grip --export README.md` produces beautiful output, however, since it uses the github api to perfectly replicate Github's rendering, you have to worry about rate-limiting.
-
-If not, [pandoc](https://pandoc.org/index.html) can be your friend. However, getting it to produce HTML that looked attractive, preserved my site's favicon, and was mobile-friendly was a bit of a journey, so I'm recording the steps I took for future me (and anyone else who may be reading this).
-
-
-Fortunately [Sindre Sorhus](https://github.com/sindresorhus) did most of the heavy lifting with the [github-markdown-css](https://github.com/sindresorhus/github-markdown-css) project. 
-
-What remained was to get pandoc to use that css. It's possible to export the template pandoc uses and modify using `pandoc -D html5 > template.html`. Once I did that, I modified the template file according to the [Usage](https://github.com/sindresorhus/github-markdown-css?tab=readme-ov-file#usage) instructions from the repo, adding the suggested css and adding the property `class="markdown-body"` to the element surrounding pandoc's `$body$`.
-
-I also wanted a standalone file, with no external dependencies (no links to external css or images). pandoc supports this via the `--standalone` flag, in combination with `--embed-resources`.
-
-The last problem I needed to fix was a warning from pandoc: `[WARNING] This document format requires a nonempty <title> element.`. Since my markdown file used `#` to supply a title, using the title element felt redundant. I silenced the warning in a hacky way by supplying the title explicitly as a space (`title=" "`), which silenced the warning, and didn't add a redundant title to my output.
-
-Putting it all together we have:
-
+**Run locally:**
 ```bash
-brew install pandoc
-pandoc -D html5 > template.html
-# edit the template as described above.
-wget https://raw.githubusercontent.com/sindresorhus/github-markdown-css/gh-pages/github-markdown.css
-pandoc -f gfm -t html5 -o README.html README.md --css github-markdown.css --embed-resources --standalone --metadata title=" " --template template.html
+./build.sh
 ```
+This starts a dev server with watch mode at `http://localhost:8000`.
+
+**Production build:**
+```bash
+./build.sh --prod
+```
+
+## Deployment
+
+Deployment to GitHub Pages is automatic on push to main via GitHub Actions.
+
+## Related
+
+- [QuartetRoulette.com](https://quartetroulette.com) - Choose what to play next
+- [How To Make a Chamber Music Log](https://quip.com/0Fy0AQTJIQmd/How-to-Make-a-Chamber-Music-Log) - Guide to setting up your own tracking sheet
+
+## License
+
+MIT
