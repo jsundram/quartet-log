@@ -5,6 +5,7 @@ import { NavigationComponent } from './navigationComponent';
 import { TabComponent } from './tabComponent';
 import { CalendarComponent } from './calendarComponent';
 import { TableComponent } from './tableComponent';
+import { hasDataUrl, setDataUrl, getDataUrl, isValidGoogleSheetsUrl } from './urlConfig';
 
 export class App {
     constructor() {
@@ -17,6 +18,70 @@ export class App {
         this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();
         this.data = null;
+    }
+
+    start() {
+        if (hasDataUrl()) {
+            this.initialize();
+        } else {
+            this.showSetupView();
+        }
+    }
+
+    showSetupView(prefillUrl = '') {
+        // Hide main content areas
+        d3.select('#mainContent').style('display', 'none');
+        d3.select('#calendar').style('display', 'none');
+        d3.select('#menu').style('display', 'none');
+        d3.select('#update').style('display', 'none');
+
+        // Show setup view
+        const setupView = d3.select('#setupView');
+        setupView.style('display', 'flex');
+
+        // Pre-fill URL if provided
+        const input = setupView.select('#dataUrlInput');
+        if (prefillUrl) {
+            input.property('value', prefillUrl);
+        }
+
+        // Clear any previous error
+        setupView.select('#setupError').text('').style('display', 'none');
+
+        // Set up form submission
+        setupView.select('#setupForm').on('submit', (event) => {
+            event.preventDefault();
+            this.handleUrlSubmit();
+        });
+    }
+
+    handleUrlSubmit() {
+        const input = d3.select('#dataUrlInput');
+        const url = input.property('value').trim();
+        const errorEl = d3.select('#setupError');
+
+        // Validate URL
+        if (!url) {
+            errorEl.text('Please enter a URL').style('display', 'block');
+            return;
+        }
+
+        if (!isValidGoogleSheetsUrl(url)) {
+            errorEl.text('Invalid URL. Please enter a Google Sheets CSV export URL (must contain "output=csv")').style('display', 'block');
+            return;
+        }
+
+        // Save URL and proceed
+        setDataUrl(url);
+        this.hideSetupView();
+        this.initialize();
+    }
+
+    hideSetupView() {
+        d3.select('#setupView').style('display', 'none');
+        d3.select('#mainContent').style('display', 'block');
+        d3.select('#menu').style('display', 'block');
+        d3.select('#update').style('display', 'block');
     }
 
     async initializeData() {
@@ -222,14 +287,31 @@ export class App {
     }
 
     handleError(error) {
-        // Add error handling UI
-        d3.select('#update')
-            .text(`Error loading data: ${error.message}`)
-            .style("margin-left", "10px")
-            .style("color", "#E63946");
+        // Check if this is a URL-related error
+        const isUrlError = error.message.includes('No data URL configured') ||
+            error.message.includes('No cached data available') ||
+            error.message.includes('Failed to fetch');
+
+        if (isUrlError) {
+            // Show setup view to let user reconfigure
+            d3.select('#update')
+                .html(`Error loading data: ${error.message}. <a href="#" id="reconfigureLink">Re-enter data URL</a>`)
+                .style("margin-left", "10px")
+                .style("color", "#E63946");
+
+            d3.select('#reconfigureLink').on('click', (event) => {
+                event.preventDefault();
+                this.showSetupView(getDataUrl() || '');
+            });
+        } else {
+            d3.select('#update')
+                .text(`Error loading data: ${error.message}`)
+                .style("margin-left", "10px")
+                .style("color", "#E63946");
+        }
     }
 }
 
 // Initialize the application
 const app = new App();
-document.addEventListener('DOMContentLoaded', () => app.initialize());
+document.addEventListener('DOMContentLoaded', () => app.start());

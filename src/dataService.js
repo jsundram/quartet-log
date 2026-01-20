@@ -1,4 +1,4 @@
-import { DATA_URL } from './config';
+import { getDataUrl } from './urlConfig';
 import { ALL_WORKS} from './catalog';
 import { processRow, fillForward } from './dataProcessor';
 
@@ -7,9 +7,14 @@ export class DataService {
         this.data = null;
     }
 
-    async fetchCSV(url) {
-        const cachedData = localStorage.getItem(DATA_URL);
-        const cachedTimestamp = localStorage.getItem(`${DATA_URL}_timestamp`);
+    async fetchCSV() {
+        const dataUrl = getDataUrl();
+        if (!dataUrl) {
+            throw new Error('No data URL configured');
+        }
+
+        const cachedData = localStorage.getItem(dataUrl);
+        const cachedTimestamp = localStorage.getItem(`${dataUrl}_timestamp`);
         const timeoutDuration = 5000;
 
         return new Promise((resolve, reject) => {
@@ -30,12 +35,12 @@ export class DataService {
 
             const timeoutId = setTimeout(useCached, timeoutDuration);
 
-            d3.csv(DATA_URL, processRow)
+            d3.csv(dataUrl, processRow)
                 .then(d => {
                     clearTimeout(timeoutId);
                     const timestamp = Date.now();
-                    localStorage.setItem(DATA_URL, JSON.stringify(d));
-                    localStorage.setItem(`${DATA_URL}_timestamp`, timestamp.toString());
+                    localStorage.setItem(dataUrl, JSON.stringify(d));
+                    localStorage.setItem(`${dataUrl}_timestamp`, timestamp.toString());
                     resolve({
                         parsed: d,
                         timestamp,

@@ -33,6 +33,7 @@
             <a href="todo.html" class="menu-item" data-view="todo">Progress</a>
             <a href="about.html" class="menu-item" data-view="about">About</a>
             <a href="#" class="menu-item" data-view="download-csv">Download Data</a>
+            <a href="#" class="menu-item" data-view="clear-data">Clear Data</a>
         </div>
     </div>
 
@@ -60,7 +61,20 @@
         <!-- Calendar will be rendered here -->
     </div>
 
-    <div id="update"/>
+    <div id="update"></div>
+
+    <div id="setupView" style="display: none">
+        <div class="setup-container">
+            <h1>Music Log Setup</h1>
+            <p>Enter the URL of your Google Sheets data (published as CSV).</p>
+            <form id="setupForm">
+                <input type="url" id="dataUrlInput" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" autocomplete="off">
+                <div id="setupError" class="setup-error"></div>
+                <button type="submit">Load Data</button>
+            </form>
+            <p class="setup-help">Need help? <a href="setup.html">Learn how to publish your Google Sheet</a></p>
+        </div>
+    </div>
 
 <script src="./bundle.js"></script>
 </body>

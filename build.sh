@@ -25,6 +25,7 @@ echo "Converted md files to html"
 # Generated HTML pages
 mv md/TODO.html $DEPLOY/
 mv md/about.html $DEPLOY/
+mv md/setup.html $DEPLOY/
 
 # Copy all required files to deploy directory, flattening
 cp index.html $DEPLOY/

@@ -1,4 +1,5 @@
 import { BEGIN, PART_COLORS } from './config';
+import { clearDataUrl } from './urlConfig';
 
 export class NavigationComponent {
     constructor(onFilterChange, onDownloadCSV) {
@@ -36,6 +37,15 @@ export class NavigationComponent {
                     this.onDownloadCSV();
                 }
                 menuItems.style("display", "none");
+                return;
+            }
+
+            if (view === "clear-data") {
+                menuItems.style("display", "none");
+                if (confirm("This will clear your saved data URL. You'll need to re-enter it to use the app. Continue?")) {
+                    clearDataUrl();
+                    window.location.reload();
+                }
                 return;
             }
 
