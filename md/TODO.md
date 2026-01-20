@@ -1,4 +1,5 @@
 # TODO:
+* finish converting Quip (how to make a chamber music log) to md (started, but haven't tested/deployed)
 * add an "Other" tab containing just a datatable of everything that wasn't in the other tabs.
 * Update work rows to link to quartet roulette (currently slug is in tooltip which is hard to use)
 * Remove K546 (adagio and fugue)?
@@ -79,3 +80,5 @@
     * Smetana
     * Tchaikovsky 1/2/3?
     * Verdi
+* Make data source configurable
+* deploy on github
