@@ -29,6 +29,7 @@ mv md/setup.html $DEPLOY/
 
 # Copy all required files to deploy directory, flattening
 cp index.html $DEPLOY/
+cp CNAME $DEPLOY/
 cp static/css/viz.css $DEPLOY/
 cp static/data/all_works.json $DEPLOY/
 
