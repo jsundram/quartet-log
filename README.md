@@ -15,9 +15,10 @@ A visualization tool for tracking string quartet sessions. Log what you play, se
 
 ## Setup
 
-1. Create a Google Sheet with your quartet session data
+1. Create a Google Sheet with your quartet session data (see How to Make a Chamber Music Log)
 2. Publish it to the web as CSV (File → Share → Publish to web)
 3. Visit the site and paste your CSV URL
+4. NB the mobile version of google shees won't allow you to publish a sheet to web. So do it on a real computer. Then send the CSV URL to your mobile device.
 
 See [setup.html](https://log.quartetroulette.com/setup.html) for detailed instructions.
 
@@ -37,6 +38,9 @@ This starts a dev server with watch mode at `http://localhost:8000`.
 ```bash
 ./build.sh --prod
 ```
+
+**Domain management:**
+The domain is registered at squarespace (thanks google domains!) and managed at netlify (thanks former self?).
 
 ## Deployment
 
