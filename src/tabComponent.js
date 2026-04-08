@@ -225,6 +225,9 @@ export class TabComponent {
         const tabName = composerDiv.attr("id");
 
         const count = Array.from(filteredPlays.values()).flat().length;
+        const totalWorks = filteredPlays.size;
+        const uniqueWorks = Array.from(filteredPlays.values()).filter(plays => plays.length > 0).length;
+        const percent = totalWorks > 0 ? Math.round((uniqueWorks / totalWorks) * 100) : 0;
         const rawData = Array.from(allPlays.values()).flat();
         const latest_ix = d3.maxIndex(rawData, d => d.timestamp);
         const latestEntry = rawData[latest_ix];
@@ -238,9 +241,9 @@ export class TabComponent {
             : latestEntry.work.title;
 
         composerDiv.selectAll("p")
-            .data([{ count, days, piece}])
+            .data([{ count, uniqueWorks, totalWorks, percent, days, piece}])
             .join("p")
-            .text(d => `Total: ${d.count}; Days since last ${composerName}: ${d.days} (${d.piece}).`)
+            .text(d => `Total: ${d.count}; Unique: ${d.uniqueWorks} of ${d.totalWorks} (${d.percent}%); Days since last ${composerName}: ${d.days} (${d.piece}).`)
             .style("color", "gray");
     }
 

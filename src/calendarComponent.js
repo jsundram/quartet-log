@@ -31,6 +31,20 @@ export class CalendarComponent {
         // Group by year
         const years = d3.groups(days, d => d.date.getUTCFullYear()).reverse();
 
+        // Per-year count of unique pieces (composer + work title), excluding partial
+        // movements (titles containing ":", e.g. "18#5:iv").
+        const yearUnique = new Map(years.map(([y]) => [y, new Set()]));
+        sessions.forEach((sessionList, dayTs) => {
+            const year = new Date(dayTs).getUTCFullYear();
+            const set = yearUnique.get(year);
+            if (!set) return;
+            sessionList.forEach(s => {
+                const title = s.work?.title || '';
+                if (!title || title.includes(':')) return;
+                set.add(`${s.composer}|${title}`);
+            });
+        });
+
         // Create legend
         this.createLegend({
             color,
@@ -53,12 +67,13 @@ export class CalendarComponent {
             formatDate,
             countDay,
             color,
-            sessions
+            sessions,
+            yearUnique
         });
     }
 
     renderYearGroups(svg, years, config) {
-        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions } = config;
+        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions, yearUnique } = config;
 
         const year = svg.selectAll("g")
             .data(years)
@@ -109,7 +124,7 @@ export class CalendarComponent {
                 .attr("dy", ".31em")
                 .text(year => d3.sum(yearQ.get(year), d => d.value));
 
-        // Playing Days / Year
+        // Unique Pieces / Year
         year.append("g")
             .attr("text-anchor", "start")
             .selectAll()
@@ -117,6 +132,17 @@ export class CalendarComponent {
             .join("text")
                 .attr("x", d => this.cellSize*54 + 10)
                 .attr("y", d => this.cellSize*4)
+                .attr("dy", ".31em")
+                .text(year => yearUnique.get(year)?.size ?? 0);
+
+        // Playing Days / Year
+        year.append("g")
+            .attr("text-anchor", "start")
+            .selectAll()
+            .data(([year, values]) => [year])
+            .join("text")
+                .attr("x", d => this.cellSize*54 + 10)
+                .attr("y", d => this.cellSize*5)
                 .attr("dy", ".31em")
                 .text(year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0));
 
