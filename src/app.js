@@ -102,8 +102,7 @@ export class App {
         // Initialize navigation components
         this.navigationComponent.createMenu();
         this.navigationComponent.createRadioButtons();
-        this.navigationComponent.createDateSlider(0);
-        this.navigationComponent.createDateSlider(1);
+        this.navigationComponent.createDateFilter();
 
         // Initialize tabs
         this.tabComponent.createTabs();

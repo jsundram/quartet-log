@@ -50,12 +50,96 @@ h1 {
     margin: 5px 0;
 }
 
-#dateSlider div {
-    width: 100%;  /* Adjust to fit the width of your container */
+/* Date range filter (segmented button group + custom date picker) */
+.date-filter-container {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    overflow-x: auto;
+    padding: 0 5px;
+    box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
 }
 
-#dateSlider input[type="range"] {
-    flex-grow: 1; /* Allows the slider to take up available space */
+.date-range-buttons {
+    display: inline-flex;
+    flex-shrink: 0;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.date-range-btn {
+    padding: 6px 14px;
+    background: #fff;
+    border: none;
+    border-right: 1px solid #ccc;
+    cursor: pointer;
+    font: inherit;
+    color: #333;
+    transition: background-color 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    white-space: nowrap;
+}
+
+.date-range-btn:last-child {
+    border-right: none;
+}
+
+.date-range-btn:hover {
+    background: #f1f1f1;
+}
+
+.date-range-btn.active {
+    background: #4CAF50;
+    color: #fff;
+}
+
+.custom-date-range {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.custom-date-sep {
+    color: #888;
+    font-size: 14px;
+}
+
+.custom-date-input {
+    padding: 4px 6px;
+    /* 16px prevents iOS from zooming on focus */
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    color: #333;
+    -webkit-appearance: none;
+    appearance: none;
+    min-height: 32px;
+    /* Just enough room for YYYY-MM-DD on all platforms */
+    min-width: 130px;
+}
+
+@media only screen and (max-width: 800px) {
+    .date-filter-container {
+        gap: 6px;
+    }
+
+    .date-range-btn {
+        padding: 7px 10px;
+    }
+
+    .custom-date-input {
+        padding: 3px 4px;
+        min-width: 120px;
+    }
 }
 
 #tabs {
