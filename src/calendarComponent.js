@@ -147,21 +147,6 @@ export class CalendarComponent {
             () => "Distinct works (composer + title) logged this year. Partial-movement entries don't count, so repeats of the same piece collapse to one."
         );
 
-        // Playing Days / Year
-        const daysText = year.append("g")
-            .attr("text-anchor", "start")
-            .selectAll()
-            .data(([year, values]) => [year])
-            .join("text")
-                .attr("x", d => this.cellSize*54 + 10)
-                .attr("y", d => this.cellSize*5)
-                .attr("dy", ".31em")
-                .text(year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0));
-        this.attachStatTooltip(daysText,
-            year => `Playing days in ${year}`,
-            () => "Number of distinct days this year with at least one whole piece logged. Partial movements alone don't count as a playing day."
-        );
-
         // People played with / Year
         const peopleText = year.append("g")
             .attr("text-anchor", "start")
@@ -169,12 +154,27 @@ export class CalendarComponent {
             .data(([year, values]) => [year])
             .join("text")
                 .attr("x", d => this.cellSize*54 + 10)
-                .attr("y", d => this.cellSize*6)
+                .attr("y", d => this.cellSize*5)
                 .attr("dy", ".31em")
                 .text(year => yearPeople.get(year)?.size ?? 0);
         this.attachStatTooltip(peopleText,
             year => `People played with in ${year}`,
             () => "Distinct people logged in Player 1/2/3 and the Others? column this year, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES, so 'Jen' on violin and 'Jen' on cello can map to different people."
+        );
+
+        // Playing Days / Year
+        const daysText = year.append("g")
+            .attr("text-anchor", "start")
+            .selectAll()
+            .data(([year, values]) => [year])
+            .join("text")
+                .attr("x", d => this.cellSize*54 + 10)
+                .attr("y", d => this.cellSize*6)
+                .attr("dy", ".31em")
+                .text(year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0));
+        this.attachStatTooltip(daysText,
+            year => `Playing days in ${year}`,
+            () => "Number of distinct days this year with at least one whole piece logged. Partial movements alone don't count as a playing day."
         );
 
         // Calendar cells
