@@ -1,4 +1,4 @@
-import { getBegin, PART_COLORS } from './config';
+import { getBegin } from './config';
 import { clearDataUrl } from './urlConfig';
 
 export class NavigationComponent {
@@ -76,34 +76,28 @@ export class NavigationComponent {
 
     createRadioButtons() {
         const parts = ["V1", "V2", "VA", "ANY"];
-        const container = d3.select("#radioButtons");
+        // Prepend so Part sits to the left of the existing Player widget.
+        const group = d3.select("#radioButtons")
+            .insert("div", ":first-child")
+            .attr("class", "part-buttons")
+            .attr("role", "radiogroup")
+            .attr("aria-label", "Part filter");
 
         parts.forEach(part => {
-            const radioButtonContainer = container.append("div")
-                .style("display", "flex")
-                .style("align-items", "center")
-                .style("margin-right", "10px");
-
-            radioButtonContainer.append("input")
-                .attr("type", "radio")
-                .attr("name", "part")
-                .attr("value", part)
-                .attr("id", part)
-                .attr("checked", part === "ANY" ? "true" : null)
-                .on("change", () => this.onFilterChange("part"));
-
-            radioButtonContainer.append("label")
-                .attr("for", part)
-                .text(part);
-
-            if (part !== "ANY") {
-                radioButtonContainer.append("div")
-                    .style("width", "10px")
-                    .style("height", "10px")
-                    .style("background-color", PART_COLORS[part])
-                    .style("margin-left", "5px");
-            }
+            group.append("button")
+                .attr("type", "button")
+                .attr("class", `part-btn${part === "ANY" ? " active" : ""}`)
+                .attr("data-part", part)
+                .text(part)
+                .on("click", () => this.handlePartClick(part));
         });
+    }
+
+    handlePartClick(part) {
+        d3.selectAll(".part-btn").classed("active", function () {
+            return d3.select(this).attr("data-part") === part;
+        });
+        this.onFilterChange("part");
     }
 
     createDateFilter() {
@@ -248,7 +242,8 @@ export class NavigationComponent {
     }
 
     getSelectedPart() {
-        return d3.select('input[name="part"]:checked').node().value;
+        const active = d3.select(".part-btn.active").node();
+        return active ? active.getAttribute("data-part") : "ANY";
     }
 
     getSelectedPlayers() {
@@ -267,6 +262,35 @@ export class NavigationComponent {
 
         this.renderDropdown();
         this.updateTriggerText();
+        this.sizePlayerWidget();
+    }
+
+    // Size the trigger + dropdown to the widest player name so that selecting
+    // a long name (or opening the dropdown) doesn't cause a layout shift in
+    // the surrounding row.
+    sizePlayerWidget() {
+        if (this.availablePlayers.length === 0) return;
+
+        const trigger = document.querySelector("#playerSelect .player-select-trigger");
+        const dropdown = document.querySelector("#playerSelect .player-dropdown");
+        if (!trigger || !dropdown) return;
+
+        const ctx = document.createElement("canvas").getContext("2d");
+        ctx.font = window.getComputedStyle(trigger).font;
+
+        // Every label the trigger might display
+        const candidates = [
+            "ANY",
+            `${this.availablePlayers.length} selected`,
+            ...this.availablePlayers,
+        ];
+        const maxText = Math.max(...candidates.map(s => ctx.measureText(s).width));
+
+        // Trigger padding is 4px 8px → 16px horizontal.
+        trigger.style.minWidth = Math.ceil(maxText + 16) + "px";
+        // Dropdown options add a checkbox (~16px) and 6px gap on top of the
+        // same 16px horizontal padding.
+        dropdown.style.minWidth = Math.ceil(maxText + 16 + 16 + 6) + "px";
     }
 
     renderDropdown() {

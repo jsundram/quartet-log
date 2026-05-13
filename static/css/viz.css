@@ -43,11 +43,39 @@ h1 {
     margin: 5px 0;
 }
 
-#radioButtons, #dateSlider, #tabs {
+#dateSlider, #tabs {
     display: flex;
     justify-content: space-around;
     align-items: center;
     margin: 5px 0;
+}
+
+/* Row 2 of the header: Part filter (left) + Player dropdown pushed right
+   for visual separation. */
+#radioButtons {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 5px 0;
+    padding: 0 5px;
+    box-sizing: border-box;
+}
+
+.player-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    /* Take remaining horizontal space on the row, pushing the dropdown to
+       the right edge. If the row wraps on a very narrow viewport, the
+       Player widget lands on its own line at the right. */
+    margin-left: auto;
+}
+
+.player-filter-label {
+    color: #555;
+    font-size: 13px;
 }
 
 /* Date range filter (segmented button group + custom date picker) */
@@ -55,7 +83,7 @@ h1 {
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 10px;
     width: 100%;
     overflow-x: auto;
@@ -122,9 +150,64 @@ h1 {
     color: #333;
     -webkit-appearance: none;
     appearance: none;
-    min-height: 32px;
+    box-sizing: border-box;
     /* Just enough room for YYYY-MM-DD on all platforms */
     min-width: 130px;
+}
+
+/* Part filter (V1 / V2 / VA / ANY) — same segmented-button look as the date
+   range. Active state uses each part's color so the filter doubles as a
+   colour legend for the part palette used throughout the app. */
+.part-buttons {
+    display: inline-flex;
+    flex-shrink: 0;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.part-btn {
+    padding: 6px 14px;
+    background: #fff;
+    border: none;
+    border-right: 1px solid #ccc;
+    cursor: pointer;
+    font: inherit;
+    color: #333;
+    transition: background-color 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    white-space: nowrap;
+}
+
+.part-btn:last-child {
+    border-right: none;
+}
+
+.part-btn:hover {
+    background: #f1f1f1;
+}
+
+.part-btn.active {
+    color: #fff;
+}
+
+/* Active backgrounds mirror PART_COLORS in src/config.js */
+.part-btn.active[data-part="V1"] {
+    background: #1ceaf9;
+    color: #000;  /* dark text on light cyan */
+}
+
+.part-btn.active[data-part="V2"] {
+    background: #01c472;
+}
+
+.part-btn.active[data-part="VA"] {
+    background: #007961;
+}
+
+.part-btn.active[data-part="ANY"] {
+    background: #4CAF50;
 }
 
 @media only screen and (max-width: 800px) {
@@ -132,7 +215,8 @@ h1 {
         gap: 6px;
     }
 
-    .date-range-btn {
+    .date-range-btn,
+    .part-btn {
         padding: 7px 10px;
     }
 
