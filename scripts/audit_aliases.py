@@ -13,40 +13,47 @@ Usage: python scripts/audit_aliases.py [path/to/data.csv]
 from __future__ import annotations
 
 import csv
+import json
 import re
+import subprocess
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-# Mirror src/config.js
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Mirror PLAYER_ABBREVIATIONS from src/config.js. (Tiny + stable; not worth
+# loading via Node like we do for PLAYER_ALIASES below.)
 ABBREVIATIONS = {"I": "Isaac", "E": "Elaine", "S": "Shay", "J": "Josh"}
-EXISTING_ALIASES = {
-    "Aaron": {"upper": "Aaron Johnson"},
-    "Al": {"upper": "Al Leisinger"},
-    "Brian": {"upper": "Brian Clague"},
-    "Clayton": {"upper": "Clayton Bullock"},
-    "Cyrus": {"cello": "Cyrus Behroozi"},
-    "David": {"upper": "David Sanders"},
-    "Hans": {"cello": "Hans Brightbill"},
-    "Helen": {"upper": "Helen Kim"},
-    "Henry": {"upper": "Henry Weinberger"},
-    "Isaac": {"upper": "Isaac Krauss"},
-    "Jen": {"upper": "Jen Hsiao", "cello": "Jen Minnich"},
-    "Jennifer Minnich": {"cello": "Jen Minnich"},
-    "Jess": {"upper": "Jess Lin"},
-    "Josie": {"upper": "Josie Stein"},
-    "Justin": {"upper": "Justin Ouellet"},
-    "Lauren": {"upper": "Lauren Alter"},
-    "Louisa": {"cello": "Louisa Krauss"},
-    "Marie": {"upper": "Marie Ihnen"},
-    "Matthew": {"upper": "Matthew Liebendorfer"},
-    "Paul": {"cello": "Paul Mattal"},
-    "Peter": {"upper": "Peter Ouyang"},
-    "Peter O": {"upper": "Peter Ouyang"},
-    "Sarah": {"upper": "Sarah Emmert"},
-    "Susie": {"upper": "Susie Ikeda"},
-    "Will": {"upper": "Will Davis"},
-}
+
+
+def load_player_aliases() -> dict[str, dict[str, str]]:
+    """Read PLAYER_ALIASES from src/config.js by asking Node to evaluate it.
+
+    Single source of truth: the JS module. Prevents drift between the
+    runtime aliases and what this audit considers "already covered".
+    """
+    js = (
+        "import('./src/config.js')"
+        ".then(m => process.stdout.write(JSON.stringify(m.PLAYER_ALIASES)))"
+        ".catch(e => { console.error(e.message); process.exit(1); })"
+    )
+    try:
+        result = subprocess.run(
+            ["node", "-e", js],
+            capture_output=True, text=True, check=True, cwd=REPO_ROOT,
+        )
+    except FileNotFoundError:
+        print("node is not on PATH — install Node.js to run the audit.", file=sys.stderr)
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to load PLAYER_ALIASES from src/config.js:\n{e.stderr}",
+              file=sys.stderr)
+        sys.exit(1)
+    return json.loads(result.stdout)
+
+
+EXISTING_ALIASES = load_player_aliases()
 
 # Slot semantics from src/dataProcessor.js
 SLOT_CLASS = ["upper", "upper", "cello"]
