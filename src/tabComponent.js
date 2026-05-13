@@ -1,4 +1,4 @@
-import { COMPOSERS, ALL_WORKS, generateQuartetRouletteUrl, isMiscTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog';
+import { COMPOSERS, ALL_WORKS, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog';
 import { getBegin, PART_COLORS } from './config';
 import { createEmptyRow } from './dataProcessor';
 
@@ -275,7 +275,9 @@ export class TabComponent {
         const url = generateQuartetRouletteUrl(d);
 
         let html = `<span class="tooltip-close">&times;</span>`;
-        html += `<h4><a href="${url}">${d.composer} - ${d.work.title}</a></h4>`;
+        const petersVol = d.composer === 'Haydn' ? getPetersVolume(d.work) : null;
+        const petersSuffix = petersVol ? `: Peters ${petersVol}` : '';
+        html += `<h4><a href="${url}">${d.composer} - ${d.work.title}</a>${petersSuffix}</h4>`;
         html += "<ul>";
         html += `<li>${ts}${d.location ? " - " + d.location : ""}</li>`;
         if (d.part) html += `<li>${d.part}</li>`;

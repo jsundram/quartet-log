@@ -40,6 +40,7 @@ copy_assets() {
     cp CNAME "$DEPLOY/"
     cp static/css/viz.css "$DEPLOY/"
     cp static/data/all_works.json "$DEPLOY/"
+    cp static/data/haydn_peters.json "$DEPLOY/"
 
     # wget -O d3.v7.min.js https://unpkg.com/d3@7.9.0/dist/d3.min.js
     cp static/js/d3.v7.min.js "$DEPLOY/"

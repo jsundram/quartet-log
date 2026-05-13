@@ -1,6 +1,10 @@
 // This will be populated when catalog loads
 export let COMPOSERS = null;
 export let ALL_WORKS = null;
+// Old Peters Edition volume lookup for Haydn quartets. Keys are like
+// "017_1" for Op.17#1, or "042"/"103" when there's no opus number.
+// Values are 1..4 (volume) or null (not in any Peters volume).
+export let HAYDN_PETERS = null;
 
 // Default composer for initial tab display
 export const DEFAULT_COMPOSER = 'Haydn';
@@ -36,7 +40,10 @@ export function generateQuartetRouletteUrl(d) {
 
 export async function loadWorkCatalog() {
     try {
-        ALL_WORKS = await d3.json('all_works.json');
+        [ALL_WORKS, HAYDN_PETERS] = await Promise.all([
+            d3.json('all_works.json'),
+            d3.json('haydn_peters.json'),
+        ]);
         COMPOSERS = new Set(Object.keys(ALL_WORKS));
 
         // Validate that we have URL patterns for all composers
@@ -49,6 +56,18 @@ export async function loadWorkCatalog() {
         console.error('Error loading work catalog:', error);
         throw error;
     }
+}
+
+const PETERS_ROMAN = ['', 'I', 'II', 'III', 'IV'];
+
+// Returns the Roman-numeral Peters volume for a Haydn work, or null.
+// Key format: 3-digit zero-padded opus, optional "_N" for the number within.
+export function getPetersVolume(work) {
+    if (!HAYDN_PETERS || !work || work.catalog == null) return null;
+    const opus = String(work.catalog).padStart(3, '0');
+    const key = work.number != null ? `${opus}_${work.number}` : opus;
+    const vol = HAYDN_PETERS[key];
+    return vol ? PETERS_ROMAN[vol] : null;
 }
 
 // Helper functions for handling MISC tab
