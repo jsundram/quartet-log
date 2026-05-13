@@ -4,8 +4,16 @@
 #
 DEPLOY="./last_deploy"
 
-# Check for production flag
-PROD=$([[ "$1" == "--prod" ]] && echo true || echo false)
+# Parse flags: --prod, --port <n>
+PROD=false
+PORT=8000
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --prod) PROD=true; shift ;;
+        --port) PORT="$2"; shift 2 ;;
+        *) echo "Unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
 
 # Convert markdown to HTML and copy all static assets to $DEPLOY.
 # Safe to call repeatedly — used both for the initial build and for
@@ -93,6 +101,7 @@ else
     eval "$BASE_ESBUILD_CMD \
         --sourcemap \
         --watch \
+        --serve=$PORT \
         --servedir=$DEPLOY"
 fi
 
