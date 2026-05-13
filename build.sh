@@ -19,23 +19,21 @@ done
 # Safe to call repeatedly — used both for the initial build and for
 # fswatch-driven live reload in dev mode.
 copy_assets() {
-    # Process markdown files
+    # Process markdown files. Write pandoc output DIRECTLY to $DEPLOY rather
+    # than into md/ and then moving — otherwise fswatch (watching md/) sees
+    # the writes, fires copy_assets again, and we spin in a tight loop.
+    local deploy_abs
+    deploy_abs="$(cd "$DEPLOY" && pwd)"
     pushd md/ > /dev/null
     for md in *.md; do
         f=$(basename "$md" .md)
-        pandoc -f gfm -t html5 -o "$f.html" "$md" \
+        pandoc -f gfm -t html5 -o "$deploy_abs/$f.html" "$md" \
             --css github-markdown.css \
             --embed-resources -s \
             --metadata title=" " \
             --template _pandoc_template.html
     done
     popd > /dev/null
-
-    # Generated HTML pages
-    mv md/TODO.html "$DEPLOY/"
-    mv md/about.html "$DEPLOY/"
-    mv md/setup.html "$DEPLOY/"
-    mv md/howto.html "$DEPLOY/"
 
     # Copy all required files to deploy directory, flattening
     cp index.html "$DEPLOY/"
