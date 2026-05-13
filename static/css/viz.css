@@ -256,6 +256,66 @@ h1 {
     color: #000;
 }
 
+.calendar-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 20px;
+    max-width: 1000px;
+    margin: 0 auto 6px;
+}
+
+/* Center the calendar grid SVG under the "Quartet Days" title.
+   `> svg` is intentional — the legend SVG lives inside .calendar-top and
+   shouldn't be re-centered here. */
+#calendar > svg {
+    display: block;
+    margin: 0 auto;
+}
+
+/* Legend SVG sized + positioned to track the calendar's first 10 day cells.
+   The calendar SVG has natural width 1000 (viewBox) and max-width: 100%, so
+   its 10 cells render at min(container * 17%, 170px) and start at
+   min(container * 4.05%, 40.5px). Mirror that here. */
+.calendar-top > svg {
+    width: min(170px, 17%);
+    margin-left: min(40.5px, 4.05%);
+    height: auto;
+    flex-shrink: 0;
+}
+
+.recent-stats {
+    font: 10px sans-serif;
+    flex: 1;
+    min-width: 0;
+}
+
+.recent-stats h4 {
+    /* +3px nudges the heading baseline to match the legend title's baseline. */
+    margin: 3px 0 4px 0;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.recent-stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.recent-stat {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.recent-stat-label {
+    color: #555;
+}
+
+.recent-stat-value {
+    font-weight: bold;
+}
+
 .work-row {
     display: grid;
     grid-template-columns: auto 1fr;

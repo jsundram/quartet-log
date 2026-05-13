@@ -48,13 +48,22 @@ export class CalendarComponent {
             });
         });
 
-        // Create legend
+        // Top row: legend + last-365-days summary side by side.
+        const top = d3.select("#calendar").append("div")
+            .attr("class", "calendar-top");
+
         this.createLegend({
+            parent: top,
             color,
             title: "# Quartets Played",
-            marginLeft: 40.5,
+            // SVG is exactly 10 calendar cells wide (no internal padding).
+            // CSS positions / sizes it to track the calendar's first 10 cells.
+            width: 10 * this.cellSize,
+            tickValues: [0, 2, 4, 6, 8, 10],
             tickFormat: i => (i == 10) ? "10+" : d3.format("d")(i)
         });
+
+        this.renderRecentStats(top, data, 365);
 
         // Create calendar SVG
         const svg = d3.select("#calendar").append("svg")
@@ -290,6 +299,7 @@ export class CalendarComponent {
 
     // https://stackoverflow.com/questions/64803258/¬
     createLegend({
+        parent = d3.select("#calendar"),
         color,
         title,
         tickSize = 6,
@@ -303,12 +313,14 @@ export class CalendarComponent {
         tickFormat,
         tickValues
     } = {}) {
-        const svg = d3.select("#calendar").append("svg")
+        const svg = parent.append("svg")
             .attr("width", width)
             .attr("height", height)
             .attr("viewBox", [0, 0, width, height])
+            .attr("preserveAspectRatio", "xMinYMid meet")
             .style("overflow", "visible")
-            .style("display", "block");
+            .style("display", "block")
+            .style("font", "10px sans-serif");
 
         let x;
 
@@ -351,6 +363,7 @@ export class CalendarComponent {
                 .attr("fill", "currentColor")
                 .attr("text-anchor", "start")
                 .attr("font-weight", "bold")
+                .attr("font-size", "11px")
                 .text(title));
     }
 
@@ -431,6 +444,58 @@ export class CalendarComponent {
 
     hideTooltip() {
         this.tooltipDiv.style("display", "none");
+    }
+
+    renderRecentStats(parent, data, days) {
+        const now = new Date();
+        const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+        const recent = data.filter(d => d.timestamp >= cutoff && d.timestamp <= now);
+
+        const uniqueWorks = new Set();
+        const people = new Set();
+        const dayBucket = new Set();
+        recent.forEach(d => {
+            if (d.work?.title) uniqueWorks.add(`${d.composer}|${d.work.title}`);
+            peopleKeysFor(d).forEach(k => people.add(k));
+            dayBucket.add(d3.timeDay(d.timestamp).getTime());
+        });
+
+        const stats = [
+            {
+                label: 'Pieces',
+                value: recent.length,
+                title: `Pieces in the last ${days} days`,
+                desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
+            },
+            {
+                label: 'Unique pieces',
+                value: uniqueWorks.size,
+                title: `Unique pieces in the last ${days} days`,
+                desc: "Distinct works (composer + title). Repeats of the same piece collapse to one.",
+            },
+            {
+                label: 'Unique people',
+                value: people.size,
+                title: `People played with in the last ${days} days`,
+                desc: "Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.",
+            },
+            {
+                label: 'Days played',
+                value: dayBucket.size,
+                title: `Playing days in the last ${days} days`,
+                desc: 'Distinct days with at least one whole piece logged.',
+            },
+        ];
+
+        const container = parent.append('div').attr('class', 'recent-stats');
+        container.append('h4').text(`Last ${days} days`);
+        const row = container.append('div').attr('class', 'recent-stats-row');
+        stats.forEach(s => {
+            const cell = row.append('div').attr('class', 'recent-stat');
+            cell.append('span').attr('class', 'recent-stat-label').text(`${s.label}:`);
+            cell.append('span').attr('class', 'recent-stat-value').text(s.value);
+            this.attachStatTooltip(cell, () => s.title, () => s.desc);
+        });
     }
 
     attachStatTooltip(selection, getTitle, getDescription) {
