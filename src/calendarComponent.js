@@ -133,7 +133,7 @@ export class CalendarComponent {
             .data(([year, values]) => [year])
             .join("text")
                 .attr("x", d => this.cellSize*54 + 10)
-                .attr("y", d => this.cellSize*3)
+                .attr("y", d => this.cellSize*2)
                 .attr("dy", ".31em")
                 .text(year => d3.sum(yearQ.get(year), d => d.value));
         this.attachStatTooltip(piecesText,
@@ -148,7 +148,7 @@ export class CalendarComponent {
             .data(([year, values]) => [year])
             .join("text")
                 .attr("x", d => this.cellSize*54 + 10)
-                .attr("y", d => this.cellSize*4)
+                .attr("y", d => this.cellSize*3)
                 .attr("dy", ".31em")
                 .text(year => yearUnique.get(year)?.size ?? 0);
         this.attachStatTooltip(uniqueText,
@@ -163,7 +163,7 @@ export class CalendarComponent {
             .data(([year, values]) => [year])
             .join("text")
                 .attr("x", d => this.cellSize*54 + 10)
-                .attr("y", d => this.cellSize*5)
+                .attr("y", d => this.cellSize*4)
                 .attr("dy", ".31em")
                 .text(year => yearPeople.get(year)?.size ?? 0);
         this.attachStatTooltip(peopleText,
@@ -178,7 +178,7 @@ export class CalendarComponent {
             .data(([year, values]) => [year])
             .join("text")
                 .attr("x", d => this.cellSize*54 + 10)
-                .attr("y", d => this.cellSize*6)
+                .attr("y", d => this.cellSize*5)
                 .attr("dy", ".31em")
                 .text(year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0));
         this.attachStatTooltip(daysText,
