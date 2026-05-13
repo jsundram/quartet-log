@@ -16,11 +16,12 @@ export class TableComponent {
     }
 
     getColumnsForComposer(composer) {
-        // For non-MISC tabs, exclude the composer column
-        if (composer !== 'MISC') {
-            return this.allColumns.filter(col => col.key !== 'composer');
+        // MISC and ALL span multiple composers, so they keep the composer
+        // column. Single-composer tabs drop it (it would always be the same).
+        if (composer === 'MISC' || composer === 'ALL') {
+            return this.allColumns;
         }
-        return this.allColumns;
+        return this.allColumns.filter(col => col.key !== 'composer');
     }
 
     createTable(container, composer) {

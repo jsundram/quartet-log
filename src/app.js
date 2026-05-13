@@ -1,4 +1,4 @@
-import { COMPOSERS, DEFAULT_COMPOSER, loadWorkCatalog } from './catalog';
+import { COMPOSERS, ALL_TAB, DEFAULT_COMPOSER, loadWorkCatalog } from './catalog';
 import { setBegin } from './config';
 import { DataService } from './dataService';
 import { extractUniquePlayers } from './dataProcessor';
@@ -183,8 +183,8 @@ export class App {
             return this.checkPlayersMatch(d, selectedPlayers);
         });
 
-        // Update all composer tabs with filtered data
-        COMPOSERS.forEach(composer => {
+        // Update all composer tabs (plus the special ALL tab) with filtered data
+        [...COMPOSERS, ALL_TAB].forEach(composer => {
             this.tabComponent.updateTabContent(composer, part, filteredData, this.data);
         });
     }

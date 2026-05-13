@@ -400,6 +400,31 @@ h1 {
     font-weight: bold;
 }
 
+/* ALL tab: aggregate stats over the current Date/Part/Player filter. */
+.all-stats {
+    font: 12px sans-serif;
+    margin: 8px 0;
+}
+
+.all-stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+}
+
+.all-stat {
+    display: inline-flex;
+    gap: 4px;
+}
+
+.all-stat-label {
+    color: #555;
+}
+
+.all-stat-value {
+    font-weight: bold;
+}
+
 .work-row {
     display: grid;
     grid-template-columns: auto 1fr;

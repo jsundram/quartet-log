@@ -8,6 +8,7 @@ import {
     stripParens,
     normalizePlayerNames,
     peopleKeysFor,
+    computeAggregateStats,
 } from '../src/dataProcessor.js';
 
 // canonicalize tests depend on real entries in PLAYER_ALIASES (Jen, Isaac).
@@ -250,7 +251,7 @@ describe('peopleKeysFor', () => {
         assert.equal(new Set(keys).size, 3);
     });
 
-    it('Henry Weinberger on multiple instruments collapses to one key', () => {
+    it('Henry Weinberger on multiple instruments collapses to one key (within Set)', () => {
         // Same person, different instruments — should NOT split.
         // Henry[upper] aliases to Henry Weinberger; "Henry Weinberger" in Others?
         // stays canonical regardless of class.
@@ -265,5 +266,69 @@ describe('peopleKeysFor', () => {
         const henryCount = keys.filter(k => k === 'Henry Weinberger').length;
         assert.equal(henryCount, 2); // appears twice in the list...
         assert.equal(new Set(keys).size, 3); // ...but de-dupes in a Set to one person
+    });
+});
+
+describe('computeAggregateStats', () => {
+    const mkRow = (overrides = {}) => normalizePlayerNames([{
+        timestamp: new Date('2026-01-01T12:00:00'),
+        composer: 'Haydn',
+        work: { title: '17#1' },
+        player1: '', player2: '', player3: '',
+        others: '',
+        ...overrides,
+    }])[0];
+
+    it('returns zeroed stats for an empty array', () => {
+        assert.deepEqual(computeAggregateStats([]), {
+            pieces: 0, uniquePieces: 0, uniquePeople: 0, daysPlayed: 0,
+        });
+    });
+
+    it('counts pieces as raw row count', () => {
+        const rows = [mkRow(), mkRow(), mkRow()];
+        assert.equal(computeAggregateStats(rows).pieces, 3);
+    });
+
+    it('collapses repeats of the same (composer, work.title) into one unique piece', () => {
+        const rows = [
+            mkRow({ composer: 'Haydn', work: { title: '17#1' } }),
+            mkRow({ composer: 'Haydn', work: { title: '17#1' } }),
+            mkRow({ composer: 'Haydn', work: { title: '17#2' } }),
+            mkRow({ composer: 'Mozart', work: { title: '17#1' } }),
+        ];
+        // (Haydn,17#1), (Haydn,17#2), (Mozart,17#1) → 3
+        assert.equal(computeAggregateStats(rows).uniquePieces, 3);
+    });
+
+    it('counts canonical people across player slots and othersList', () => {
+        const rows = [
+            mkRow({ player1: 'Jen', player2: 'Isaac', player3: 'Jen',
+                    others: 'Marshall (va2)' }),
+        ];
+        // Jen[upper]→Jen Hsiao, Isaac[upper]→Isaac Krauss, Jen[cello]→Jen Minnich, Marshall(va2)→Marshall
+        // = 4 distinct people
+        assert.equal(computeAggregateStats(rows).uniquePeople, 4);
+    });
+
+    it('buckets days by local-time calendar date', () => {
+        const rows = [
+            mkRow({ timestamp: new Date(2026, 0, 1, 8, 0) }),   // Jan 1 morning
+            mkRow({ timestamp: new Date(2026, 0, 1, 22, 0) }),  // Jan 1 evening
+            mkRow({ timestamp: new Date(2026, 0, 2, 10, 0) }),  // Jan 2
+        ];
+        assert.equal(computeAggregateStats(rows).daysPlayed, 2);
+    });
+
+    it('skips rows with no timestamp / no work title without crashing', () => {
+        const rows = [
+            { ...mkRow(), timestamp: null },
+            { ...mkRow(), work: null },
+            mkRow(),
+        ];
+        const s = computeAggregateStats(rows);
+        assert.equal(s.pieces, 3);
+        assert.equal(s.uniquePieces, 1);  // only the third row contributes
+        assert.equal(s.daysPlayed, 1);    // only rows with timestamps
     });
 });

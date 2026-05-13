@@ -68,6 +68,31 @@ export function peopleKeysFor(d) {
     return keys;
 }
 
+// Floor a timestamp to its local-time day. Avoids pulling d3 in here so
+// computeAggregateStats stays unit-testable under node:test.
+function dayKey(ts) {
+    return new Date(ts.getFullYear(), ts.getMonth(), ts.getDate()).getTime();
+}
+
+// Aggregate stats over an arbitrary slice of session rows. Used by both
+// the calendar header ("Last 365 days") and the ALL tab.
+export function computeAggregateStats(rows) {
+    const works = new Set();
+    const people = new Set();
+    const days = new Set();
+    rows.forEach(d => {
+        if (d.work?.title) works.add(`${d.composer}|${d.work.title}`);
+        peopleKeysFor(d).forEach(k => people.add(k));
+        if (d.timestamp) days.add(dayKey(d.timestamp));
+    });
+    return {
+        pieces: rows.length,
+        uniquePieces: works.size,
+        uniquePeople: people.size,
+        daysPlayed: days.size,
+    };
+}
+
 export function parseWork(title) {
     // Incompletely played works are usually noted like e.g. 17#2:I.
     let incomplete = title.indexOf(":") != -1;

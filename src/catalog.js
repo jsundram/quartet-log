@@ -76,6 +76,14 @@ export function isMiscTab(tabName) {
     return tabName === 'MISC';
 }
 
+// The ALL tab is built outside the work catalog and shows aggregate stats +
+// a flat data table across whatever passes the Date / Part / Player filters.
+export const ALL_TAB = 'ALL';
+
+export function isAllTab(tabName) {
+    return tabName === ALL_TAB;
+}
+
 export function getComposersForTab(tabName) {
     if (!isMiscTab(tabName)) {
         return [tabName];

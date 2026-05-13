@@ -1,6 +1,6 @@
-import { COMPOSERS, ALL_WORKS, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog';
+import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog';
 import { getBegin, PART_COLORS } from './config';
-import { createEmptyRow } from './dataProcessor';
+import { createEmptyRow, computeAggregateStats } from './dataProcessor';
 
 export class TabComponent {
     constructor(tableComponent) {
@@ -9,18 +9,18 @@ export class TabComponent {
     }
 
     createTabs() {
-        COMPOSERS.forEach(composer => {
-            // Create tab button
+        const makeTab = (name) => {
             d3.select("#tabs").append("button")
-                .attr("data-composer", composer)
-                .text(composer)
-                .on("click", () => this.showTab(composer));
-
-            // Create tab content div
+                .attr("data-composer", name)
+                .text(name)
+                .on("click", () => this.showTab(name));
             d3.select("#tabContent").append("div")
                 .attr("class", "tab")
-                .attr("id", composer);
-        });
+                .attr("id", name);
+        };
+        COMPOSERS.forEach(makeTab);
+        // ALL goes last — special aggregate-stats + flat-table view.
+        makeTab(ALL_TAB);
     }
 
     showTab(composer) {
@@ -40,16 +40,63 @@ export class TabComponent {
     }
 
     updateTabContent(composer, part, filteredData, fullData) {
+        const composerDiv = d3.select("#" + composer);
+
+        // ALL tab has no works / random button / catalog completeness line —
+        // just aggregate stats + a flat data table over the filtered slice.
+        if (isAllTab(composer)) {
+            this.updateAllTabContent(composerDiv, filteredData);
+            return;
+        }
+
         // Process data for this composer
         const composerData = this.processComposerData(composer, filteredData, fullData);
 
         // Update the UI
-        const composerDiv = d3.select("#" + composer);
         this.updateRandomButton(composerDiv, composerData);
         this.updateWorkRows(composerDiv, composerData, part);
         this.updateTotalCount(composerDiv, composerData);
         this.updateDataTable(composerDiv, composerData);
 
+    }
+
+    updateAllTabContent(composerDiv, filteredData) {
+        const agg = computeAggregateStats(filteredData);
+        const stats = [
+            { label: 'Pieces', value: agg.pieces },
+            { label: 'Unique pieces', value: agg.uniquePieces },
+            { label: 'Unique people', value: agg.uniquePeople },
+            { label: 'Days played', value: agg.daysPlayed },
+        ];
+
+        const wrap = composerDiv.selectAll('.all-stats')
+            .data([1])
+            .join('div')
+            .attr('class', 'all-stats');
+
+        const row = wrap.selectAll('.all-stats-row')
+            .data([1])
+            .join('div')
+            .attr('class', 'all-stats-row');
+
+        const cells = row.selectAll('.all-stat')
+            .data(stats, d => d.label)
+            .join(enter => {
+                const cell = enter.append('div').attr('class', 'all-stat');
+                cell.append('span').attr('class', 'all-stat-label');
+                cell.append('span').attr('class', 'all-stat-value');
+                return cell;
+            });
+        cells.select('.all-stat-label').text(d => `${d.label}:`);
+        cells.select('.all-stat-value').text(d => d.value);
+
+        // Reuse the existing data table by wrapping the flat array in the
+        // shape updateDataTable expects.
+        const composerData = {
+            filteredPlays: new Map([['__all__', filteredData]]),
+            allPlays: new Map([['__all__', filteredData]]),
+        };
+        this.updateDataTable(composerDiv, composerData);
     }
 
     processComposerData(composer, filteredData, fullData) {

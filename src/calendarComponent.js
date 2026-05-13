@@ -1,5 +1,5 @@
 import { getBegin, CALENDAR_CONFIG } from './config';
-import { peopleKeysFor } from './dataProcessor';
+import { peopleKeysFor, computeAggregateStats } from './dataProcessor';
 
 export class CalendarComponent {
     constructor() {
@@ -450,38 +450,30 @@ export class CalendarComponent {
         const now = new Date();
         const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
         const recent = data.filter(d => d.timestamp >= cutoff && d.timestamp <= now);
-
-        const uniqueWorks = new Set();
-        const people = new Set();
-        const dayBucket = new Set();
-        recent.forEach(d => {
-            if (d.work?.title) uniqueWorks.add(`${d.composer}|${d.work.title}`);
-            peopleKeysFor(d).forEach(k => people.add(k));
-            dayBucket.add(d3.timeDay(d.timestamp).getTime());
-        });
+        const agg = computeAggregateStats(recent);
 
         const stats = [
             {
                 label: 'Pieces',
-                value: recent.length,
+                value: agg.pieces,
                 title: `Pieces in the last ${days} days`,
                 desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
             },
             {
                 label: 'Unique pieces',
-                value: uniqueWorks.size,
+                value: agg.uniquePieces,
                 title: `Unique pieces in the last ${days} days`,
                 desc: "Distinct works (composer + title). Repeats of the same piece collapse to one.",
             },
             {
                 label: 'Unique people',
-                value: people.size,
+                value: agg.uniquePeople,
                 title: `People played with in the last ${days} days`,
                 desc: "Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.",
             },
             {
                 label: 'Days played',
-                value: dayBucket.size,
+                value: agg.daysPlayed,
                 title: `Playing days in the last ${days} days`,
                 desc: 'Distinct days with at least one whole piece logged.',
             },
