@@ -1,4 +1,72 @@
-import { PLAYER_ABBREVIATIONS } from './config';
+import { PLAYER_ABBREVIATIONS, PLAYER_ALIASES } from './config.js';
+
+// Slot semantics from extractUniquePlayers below:
+//   player1, player2 → upper (V1/V2/VA, depending on user's part)
+//   player3          → cello (always)
+const SLOT_CLASS = ['upper', 'upper', 'cello'];
+
+export function classOf(instrumentStr) {
+    if (!instrumentStr) return null;
+    return instrumentStr.toLowerCase().trim().startsWith('vc') ? 'cello' : 'upper';
+}
+
+export function canonicalize(name, cls) {
+    if (!name) return name;
+    return (cls && PLAYER_ALIASES[name]?.[cls]) ?? name;
+}
+
+// Strip a trailing "(instrument)" annotation from a name. Used for player
+// slots where the user occasionally annotates non-string players inline
+// (e.g. "Lois Shapiro (piano)" in Player 1). The instrument info is dropped.
+export function stripParens(name) {
+    if (!name) return name;
+    const m = name.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+    return m ? m[1].trim() : name;
+}
+
+// Format is "Name (instrument); Name (instrument)" — usually well-adhered.
+// Also handles "," as a fallback separator and fragments without parens.
+export function parseOthers(others) {
+    if (!others) return [];
+    return others
+        .split(/[;,]/)
+        .map(s => s.trim())
+        .filter(s => s && s !== '-')
+        .map(s => {
+            const m = s.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+            return m
+                ? { name: m[1].trim(), instrument: m[2].trim() }
+                : { name: s, instrument: null };
+        });
+}
+
+export function normalizePlayerNames(data) {
+    data.forEach(d => {
+        d.player1 = canonicalize(stripParens(d.player1), SLOT_CLASS[0]);
+        d.player2 = canonicalize(stripParens(d.player2), SLOT_CLASS[1]);
+        d.player3 = canonicalize(stripParens(d.player3), SLOT_CLASS[2]);
+        d.othersList = parseOthers(d.others).map(o => {
+            const cls = classOf(o.instrument);
+            return { name: canonicalize(o.name, cls), instrument: o.instrument, class: cls };
+        });
+    });
+    return data;
+}
+
+// Canonical-name keys for "unique people" counting. Disambiguation between
+// same-bare-name-different-instrument people (e.g. Jen Hsiao vs Jen Minnich)
+// is handled by PLAYER_ALIASES at canonicalization time — bare "Jen" becomes
+// "Jen Hsiao" in upper slots and "Jen Minnich" in cello slots, which are
+// already distinct names. One person playing multiple instruments (e.g.
+// Henry Weinberger on piano + cello) collapses correctly to a single name.
+export function peopleKeysFor(d) {
+    const keys = [];
+    [d.player1, d.player2, d.player3].forEach(p => {
+        if (p && p !== '-') keys.push(p);
+    });
+    d.othersList?.forEach(o => { if (o.name) keys.push(o.name); });
+    return keys;
+}
 
 export function parseWork(title) {
     // Incompletely played works are usually noted like e.g. 17#2:I.

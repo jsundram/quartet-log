@@ -73,12 +73,17 @@ BASE_ESBUILD_CMD="esbuild src/app.js \
     --outfile=$DEPLOY/bundle.js"
 
 if [[ "$PROD" == true ]]; then
+    echo "Running tests..."
+    npm test || { echo "Tests failed — aborting production build."; exit 1; }
     echo "Building for production..."
     eval "$BASE_ESBUILD_CMD \
         --minify \
         --tree-shaking=true"
 else
     echo "Building for development..."
+
+    echo "Running tests (initial)..."
+    npm test || echo "[WARNING] Tests are failing — fix before deploying."
 
     # Watch static assets in the background so that CSS / HTML / markdown /
     # data / favicon edits get re-copied into $DEPLOY without restarting the
@@ -89,13 +94,23 @@ else
         fswatch -o --latency 0.3 $WATCH_PATHS | while read _; do
             copy_assets
         done &
-        FSWATCH_PID=$!
-        # Make sure the watcher dies when this script exits (Ctrl-C, etc).
-        trap 'kill $FSWATCH_PID 2>/dev/null' EXIT INT TERM
-        echo "Watching static assets with fswatch (PID $FSWATCH_PID)..."
+        FSWATCH_STATIC_PID=$!
+        echo "Watching static assets with fswatch (PID $FSWATCH_STATIC_PID)..."
+
+        # Re-run tests on any change under src/ or test/. Dot reporter so each
+        # rerun is one compact line instead of 31 ✔'s.
+        fswatch -o --latency 0.5 src test | while read _; do
+            echo "[$(date +%H:%M:%S)] JS change — re-running tests..."
+            node --test --test-reporter=dot test/*.mjs || true
+        done &
+        FSWATCH_TEST_PID=$!
+        echo "Watching src/ + test/ for tests (PID $FSWATCH_TEST_PID)..."
+
+        # Make sure background watchers die when this script exits (Ctrl-C, etc).
+        trap 'kill $FSWATCH_STATIC_PID $FSWATCH_TEST_PID 2>/dev/null' EXIT INT TERM
     else
-        echo "Note: install fswatch (\`brew install fswatch\`) to auto-copy"
-        echo "      CSS / HTML / data / favicon changes during watch mode."
+        echo "Note: install fswatch (\`brew install fswatch\`) to auto-copy static"
+        echo "      assets and re-run tests on save during watch mode."
     fi
 
     eval "$BASE_ESBUILD_CMD \

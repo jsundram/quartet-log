@@ -1,4 +1,5 @@
 import { getBegin, CALENDAR_CONFIG } from './config';
+import { peopleKeysFor } from './dataProcessor';
 
 export class CalendarComponent {
     constructor() {
@@ -34,12 +35,16 @@ export class CalendarComponent {
 
         // Per-year count of unique pieces (composer + work title).
         const yearUnique = new Map(years.map(([y]) => [y, new Set()]));
+        // Per-year count of unique people played with (post-alias-normalization).
+        const yearPeople = new Map(years.map(([y]) => [y, new Set()]));
         sessions.forEach((sessionList, dayTs) => {
             const year = new Date(dayTs).getUTCFullYear();
-            const set = yearUnique.get(year);
-            if (!set) return;
+            const uniq = yearUnique.get(year);
+            const people = yearPeople.get(year);
+            if (!uniq || !people) return;
             sessionList.forEach(s => {
-                if (s.work?.title) set.add(`${s.composer}|${s.work.title}`);
+                if (s.work?.title) uniq.add(`${s.composer}|${s.work.title}`);
+                peopleKeysFor(s).forEach(k => people.add(k));
             });
         });
 
@@ -66,12 +71,13 @@ export class CalendarComponent {
             countDay,
             color,
             sessions,
-            yearUnique
+            yearUnique,
+            yearPeople
         });
     }
 
     renderYearGroups(svg, years, config) {
-        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions, yearUnique } = config;
+        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions, yearUnique, yearPeople } = config;
 
         const year = svg.selectAll("g")
             .data(years)
@@ -154,6 +160,21 @@ export class CalendarComponent {
         this.attachStatTooltip(daysText,
             year => `Playing days in ${year}`,
             () => "Number of distinct days this year with at least one whole piece logged. Partial movements alone don't count as a playing day."
+        );
+
+        // People played with / Year
+        const peopleText = year.append("g")
+            .attr("text-anchor", "start")
+            .selectAll()
+            .data(([year, values]) => [year])
+            .join("text")
+                .attr("x", d => this.cellSize*54 + 10)
+                .attr("y", d => this.cellSize*6)
+                .attr("dy", ".31em")
+                .text(year => yearPeople.get(year)?.size ?? 0);
+        this.attachStatTooltip(peopleText,
+            year => `People played with in ${year}`,
+            () => "Distinct people logged in Player 1/2/3 and the Others? column this year, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES, so 'Jen' on violin and 'Jen' on cello can map to different people."
         );
 
         // Calendar cells

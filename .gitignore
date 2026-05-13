@@ -7,3 +7,5 @@ wrapped/
 .playwright-mcp/
 md/*.html
 !md/_pandoc_template.html
+archive/*.csv
+alias-output.txt

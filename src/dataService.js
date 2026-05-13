@@ -1,6 +1,6 @@
 import { getDataUrl } from './urlConfig';
 import { ALL_WORKS} from './catalog';
-import { processRow, fillForward } from './dataProcessor';
+import { processRow, fillForward, normalizePlayerNames } from './dataProcessor';
 
 export class DataService {
     constructor() {
@@ -60,6 +60,7 @@ export class DataService {
         }
 
         let processedData = fillForward(rawData);
+        processedData = normalizePlayerNames(processedData);
 
         // Filter out incomplete works
         return processedData.filter(d => !d.work.incomplete);

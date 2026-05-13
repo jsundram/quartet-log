@@ -26,6 +26,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Run tests
+        run: npm test
+
       - name: Install esbuild
         run: npm install -g esbuild@0.24.2
 
