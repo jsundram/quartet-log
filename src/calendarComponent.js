@@ -19,11 +19,12 @@ export class CalendarComponent {
         const timeWeek = d3.utcSunday;
         const countDay = i => i;
 
-        // Process data for calendar view
+        // Process data for calendar view. `data` has already had partial-movement
+        // entries filtered out (DataService.processData), so every count here —
+        // value, weekly/monthly/yearly totals, unique pieces — is whole-pieces-only.
         const sessions = new Map(d3.group(data, d => d3.timeDay(d.timestamp).getTime()));
-        const v = d => sessions.has(d.getTime()) ? sessions.get(d.getTime()).length : 0;
+        const v = d => sessions.get(d.getTime())?.length ?? 0;
         const days = d3.timeDay.range(getBegin(), new Date()).map(d => ({date: d, value: v(d)}));
-        const values = d3.sort(Array.from(sessions.values()).map(v => v.length));
 
         // Color scale for calendar
         const color = d3.scaleSequential(d3.interpolateGreens).domain([0, 10]);
@@ -31,17 +32,14 @@ export class CalendarComponent {
         // Group by year
         const years = d3.groups(days, d => d.date.getUTCFullYear()).reverse();
 
-        // Per-year count of unique pieces (composer + work title), excluding partial
-        // movements (titles containing ":", e.g. "18#5:iv").
+        // Per-year count of unique pieces (composer + work title).
         const yearUnique = new Map(years.map(([y]) => [y, new Set()]));
         sessions.forEach((sessionList, dayTs) => {
             const year = new Date(dayTs).getUTCFullYear();
             const set = yearUnique.get(year);
             if (!set) return;
             sessionList.forEach(s => {
-                const title = s.work?.title || '';
-                if (!title || title.includes(':')) return;
-                set.add(`${s.composer}|${title}`);
+                if (s.work?.title) set.add(`${s.composer}|${s.work.title}`);
             });
         });
 
@@ -114,7 +112,7 @@ export class CalendarComponent {
 
         // Pieces / Year (shifted right to make room for day-of-week totals)
         const yearQ = new Map(years);
-        year.append("g")
+        const piecesText = year.append("g")
             .attr("text-anchor", "start")
             .selectAll()
             .data(([year, values]) => [year])
@@ -123,9 +121,13 @@ export class CalendarComponent {
                 .attr("y", d => this.cellSize*3)
                 .attr("dy", ".31em")
                 .text(year => d3.sum(yearQ.get(year), d => d.value));
+        this.attachStatTooltip(piecesText,
+            year => `Pieces played in ${year}`,
+            () => "Total quartets logged this year. Partial-movement entries (titles containing ':', e.g. '44#1:I') don't count — only whole pieces."
+        );
 
         // Unique Pieces / Year
-        year.append("g")
+        const uniqueText = year.append("g")
             .attr("text-anchor", "start")
             .selectAll()
             .data(([year, values]) => [year])
@@ -134,9 +136,13 @@ export class CalendarComponent {
                 .attr("y", d => this.cellSize*4)
                 .attr("dy", ".31em")
                 .text(year => yearUnique.get(year)?.size ?? 0);
+        this.attachStatTooltip(uniqueText,
+            year => `Unique pieces played in ${year}`,
+            () => "Distinct works (composer + title) logged this year. Partial-movement entries don't count, so repeats of the same piece collapse to one."
+        );
 
         // Playing Days / Year
-        year.append("g")
+        const daysText = year.append("g")
             .attr("text-anchor", "start")
             .selectAll()
             .data(([year, values]) => [year])
@@ -145,6 +151,10 @@ export class CalendarComponent {
                 .attr("y", d => this.cellSize*5)
                 .attr("dy", ".31em")
                 .text(year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0));
+        this.attachStatTooltip(daysText,
+            year => `Playing days in ${year}`,
+            () => "Number of distinct days this year with at least one whole piece logged. Partial movements alone don't count as a playing day."
+        );
 
         // Calendar cells
         this.renderCalendarCells(year, timeWeek, countDay, color, formatDate, sessions);
@@ -400,5 +410,30 @@ export class CalendarComponent {
 
     hideTooltip() {
         this.tooltipDiv.style("display", "none");
+    }
+
+    attachStatTooltip(selection, getTitle, getDescription) {
+        const show = (event, year) => this.showStatTooltip(event, getTitle(year), getDescription(year));
+        selection
+            .style("cursor", "pointer")
+            .on("mouseenter", show)
+            .on("mouseleave", () => this.hideTooltip())
+            .on("click", show);
+    }
+
+    showStatTooltip(event, title, description) {
+        let html = `<span class="tooltip-close">&times;</span>`;
+        html += `<h4>${title}</h4>`;
+        html += `<p>${description}</p>`;
+
+        this.tooltipDiv
+            .html(html)
+            .style("display", "block")
+            .style("max-width", "320px");
+
+        this.tooltipDiv.select(".tooltip-close")
+            .on("click", () => this.hideTooltip());
+
+        this.positionTooltip(event);
     }
 }
