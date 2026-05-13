@@ -148,11 +148,15 @@ export class TabComponent {
     }
 
     handleRandomSelection(composerDiv, composerData) {
-        const { allPlays } = composerData;
+        // Use filteredPlays so the suggestion respects the current Date/Part/Player
+        // filters: works never played under those filters fall back to getBegin()
+        // (maxDays weight), nudging the pick toward what's least-recently played
+        // in the current context.
+        const { filteredPlays } = composerData;
         const now = new Date();
         const maxDays = d3.timeDay.count(getBegin(), now);
 
-        const weighted = Array.from(allPlays)
+        const weighted = Array.from(filteredPlays)
             .map(([t, ps]) => [t, ps.at(-1)?.timestamp || getBegin()])
             .map(([t, ts]) => [t, d3.timeDay.count(ts, now)])
 
@@ -171,7 +175,7 @@ export class TabComponent {
             const [title, daysAgo] = selected;
             const display = daysAgo < maxDays ?
                 `${title} - (last played ${daysAgo} days ago)` :
-                `${title} - not played in recorded history!`;
+                `${title} - not played in this view!`;
 
             composerDiv.select(".random-work-display").text(display);
         }
