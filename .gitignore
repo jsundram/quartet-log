@@ -5,3 +5,5 @@ __pycache__/
 *.zip
 wrapped/
 .playwright-mcp/
+md/*.html
+!md/_pandoc_template.html
