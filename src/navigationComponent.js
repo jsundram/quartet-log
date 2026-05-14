@@ -56,9 +56,9 @@ export class NavigationComponent {
                 return;
             }
 
-            if (view === "clear-data") {
+            if (view === "logout") {
                 menuItems.style("display", "none");
-                if (confirm("This will clear your saved data URL. You'll need to re-enter it to use the app. Continue?")) {
+                if (confirm("This will log you out and clear your saved data URL. You'll need to re-enter it to use the app again. Continue?")) {
                     clearDataUrl();
                     window.location.reload();
                 }

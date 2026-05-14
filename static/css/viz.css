@@ -45,7 +45,9 @@ h1 {
 }
 
 .menu-item {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     color: #222;
     text-decoration: none;
     padding: 12px 16px;
@@ -61,6 +63,25 @@ h1 {
 
 .menu-item:active {
     background-color: #f1f1f1;
+}
+
+/* Inline SVG icons inherit the menu-item's text color. Disable pointer
+   events so clicks always register on the <a>, never on the <svg>. */
+.menu-icon {
+    flex-shrink: 0;
+    pointer-events: none;
+}
+
+/* Stronger divider above the first action item, separating it visually from
+   the navigation items above. Only matches the first action-classed item
+   because subsequent action items follow another action item. */
+.menu-item:not(.menu-item--action) + .menu-item.menu-item--action {
+    border-top: 1px solid #ccc;
+    margin-top: 4px;
+}
+
+.menu-item--destructive {
+    color: #c0392b;
 }
 
 @media (hover: hover) {
