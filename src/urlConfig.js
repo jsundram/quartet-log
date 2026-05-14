@@ -52,6 +52,48 @@ function clearCachedData() {
 }
 
 /**
+ * Build a mobile-setup link from a data URL: <origin><pathname>?data=<encoded>.
+ * encodeURIComponent ensures the embedded Google Sheets URL (which has its
+ * own ?gid=…&single=true&output=csv) survives parsing on the receiving end.
+ */
+export function buildMobileSetupLink(dataUrl) {
+    const base = window.location.origin + window.location.pathname;
+    return base + '?data=' + encodeURIComponent(dataUrl);
+}
+
+/**
+ * Mobile-setup-from-desktop-link flow: if the current page URL has ?data=<url>,
+ * validate, persist to localStorage, and strip the param from history so it
+ * doesn't re-process on reload or linger in browser history. Returns true if
+ * a valid URL was consumed.
+ *
+ * Persistent (not session-only) on purpose — this is for one-time setup of a
+ * second device, not for sharing with others. The companion "Copy mobile
+ * setup link" button on the setup view generates the URLs this consumes.
+ */
+export function consumeDataParam() {
+    const params = new URLSearchParams(window.location.search);
+    const url = params.get('data');
+    if (!url || !isValidGoogleSheetsUrl(url)) return false;
+
+    // Avoid clearing the cache via setDataUrl when the link points at the
+    // URL that's already configured (e.g. re-opening the same setup link).
+    if (getDataUrl() !== url) {
+        setDataUrl(url);
+    }
+
+    // Strip ?data=… from the URL.
+    params.delete('data');
+    const newSearch = params.toString();
+    const newUrl = window.location.pathname
+        + (newSearch ? '?' + newSearch : '')
+        + window.location.hash;
+    window.history.replaceState(null, '', newUrl);
+
+    return true;
+}
+
+/**
  * Validate that a URL is a valid Google Sheets CSV export URL
  */
 export function isValidGoogleSheetsUrl(url) {

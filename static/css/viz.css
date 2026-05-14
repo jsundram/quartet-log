@@ -903,6 +903,19 @@ h1 {
     background-color: var(--color-accent-hover);
 }
 
+/* Secondary action inside the setup form — outlined, lower visual weight
+   than the primary "Load Data" CTA. Used by the Copy-mobile-setup-link
+   button. */
+#setupForm button.setup-secondary {
+    background-color: transparent;
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
+}
+
+#setupForm button.setup-secondary:hover {
+    background-color: var(--color-bg-hover);
+}
+
 .setup-error {
     color: var(--color-text-error);
     font-size: 14px;

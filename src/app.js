@@ -7,7 +7,7 @@ import { TabComponent } from './tabComponent';
 import { CalendarComponent } from './calendarComponent';
 import { DashboardComponent } from './dashboardComponent';
 import { TableComponent } from './tableComponent';
-import { hasDataUrl, setDataUrl, getDataUrl, isValidGoogleSheetsUrl } from './urlConfig';
+import { hasDataUrl, setDataUrl, getDataUrl, isValidGoogleSheetsUrl, consumeDataParam, buildMobileSetupLink } from './urlConfig';
 import { initTheme, subscribe as subscribeTheme } from './themeManager';
 
 export class App {
@@ -33,6 +33,12 @@ export class App {
         // the OS prefers-color-scheme for auto-mode users.
         initTheme();
         subscribeTheme(() => this.onThemeChange());
+
+        // If the page URL has ?data=<encoded Google Sheets URL>, persist it
+        // and skip the setup view. Used for one-time setup of a second
+        // device (e.g. desktop generates the link → AirDrop/iMessage to
+        // phone → opening it on the phone lands here).
+        consumeDataParam();
 
         if (hasDataUrl()) {
             this.initialize();
@@ -80,6 +86,48 @@ export class App {
             event.preventDefault();
             this.handleUrlSubmit();
         });
+
+        // "Copy mobile setup link" — generates a pre-configured URL from
+        // whatever's in the data URL input and copies it to the clipboard.
+        // The user then sends that link to their other device (AirDrop,
+        // iMessage, email, etc.) so they don't have to retype the URL.
+        setupView.select('#copyMobileLink').on('click', (event) => {
+            event.preventDefault();
+            this.handleCopyMobileLink();
+        });
+    }
+
+    handleCopyMobileLink() {
+        const input = d3.select('#dataUrlInput');
+        const url = input.property('value').trim();
+        const errorEl = d3.select('#setupError');
+
+        if (!url) {
+            errorEl.html('Enter your CSV URL first, then click Copy. <a href="setup.html">How do I get this URL?</a>')
+                .style('display', 'block');
+            return;
+        }
+        if (!isValidGoogleSheetsUrl(url)) {
+            errorEl.text('Invalid URL. Please enter a valid Google Sheets CSV export URL (must contain "output=csv") before copying.')
+                .style('display', 'block');
+            return;
+        }
+
+        const mobileLink = buildMobileSetupLink(url);
+        navigator.clipboard.writeText(mobileLink).then(
+            () => {
+                // Flash "Copied!" on the button for ~1.5s.
+                const btn = d3.select('#copyMobileLink');
+                const original = btn.text().trim();
+                btn.text('Copied!');
+                setTimeout(() => btn.text(original), 1500);
+                errorEl.text('').style('display', 'none');
+            },
+            (err) => {
+                errorEl.text('Could not copy to clipboard: ' + (err.message || err))
+                    .style('display', 'block');
+            },
+        );
     }
 
     handleUrlSubmit() {
