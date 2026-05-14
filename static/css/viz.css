@@ -129,12 +129,28 @@ h1 {
     z-index: 1000;
 }
 
-/* Big tap target around the icon (~44×44) without enlarging the icon. */
+/* Big tap target around the icon (~44×44) without enlarging the icon.
+   Filled rounded backdrop scopes the icon as an obvious button — important on
+   mobile where the icon sits in the same left column as the "All" date-range
+   button and could otherwise be mistaken for inline UI. */
 .hamburger-menu {
     cursor: pointer;
     padding: 8px;
     margin: -8px -8px 2px -8px;
     -webkit-tap-highlight-color: transparent;
+    background-color: var(--color-bg-hover);
+    border-radius: 8px;
+    transition: background-color 0.15s;
+}
+
+.hamburger-menu:active {
+    background-color: var(--gray-5);
+}
+
+@media (hover: hover) {
+    .hamburger-menu:hover {
+        background-color: var(--gray-5);
+    }
 }
 
 .bar {
@@ -214,6 +230,17 @@ h1 {
     .menu-item {
         padding: 14px 18px;
         font-size: 16px;
+    }
+
+    /* The hamburger is position: absolute, so layout treats it as
+       zero-height. On mobile its visible backdrop extends to ~y=54 and
+       overlaps the filter row directly below the page h1. Push the bottom
+       margin of the h1 out so whatever follows it (date filter, calendar
+       grid, dashboard filter) clears the hamburger zone via margin
+       collapse — while letting the centered h1 itself stay in the header
+       band, sharing the page-top zone with the corner hamburger. */
+    h1 {
+        margin-bottom: 30px;
     }
 }
 

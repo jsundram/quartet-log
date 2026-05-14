@@ -135,6 +135,17 @@
             padding: 8px;
             margin: -8px -8px 2px -8px;
             -webkit-tap-highlight-color: transparent;
+            background-color: var(--color-bg-hover);
+            border-radius: 8px;
+            transition: background-color 0.15s;
+        }
+        .hamburger-menu:active {
+            background-color: var(--gray-5);
+        }
+        @media (hover: hover) {
+            .hamburger-menu:hover {
+                background-color: var(--gray-5);
+            }
         }
         .bar {
             display: block;
