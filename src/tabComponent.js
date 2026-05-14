@@ -6,6 +6,20 @@ export class TabComponent {
     constructor(tableComponent) {
         this.tooltipDiv = d3.select("#tooltip");
         this.tableComponent = tableComponent;
+
+        // Tap/click outside the tooltip dismisses it. Pairs with the touch-
+        // friendly mouseout gating on .work-label and .play-square — without
+        // a tap-outside path, touch users could only dismiss via the × button.
+        // Taps on the triggering elements don't dismiss because their own
+        // mouseover/click handlers re-show (or replace) the tooltip content.
+        document.addEventListener('click', (e) => {
+            const tooltipNode = this.tooltipDiv.node();
+            if (!tooltipNode || tooltipNode.style.display === 'none') return;
+            if (tooltipNode.contains(e.target)) return;
+            const cls = e.target.classList;
+            if (cls?.contains('work-label') || cls?.contains('play-square')) return;
+            this.hideTooltip();
+        });
     }
 
     createTabs() {
@@ -205,6 +219,11 @@ export class TabComponent {
             .join("div")
             .attr("class", "work-label-container");
 
+        // No mouseout/mouseleave handler: auto-dismissing on cursor-leaves-
+        // label kills the path to clicking the link inside the tooltip
+        // (mouseout fires when the cursor moves from .work-label into the
+        // tooltip). Dismissal is handled uniformly by the document click-
+        // outside listener (set up in the constructor) and the × button.
         labelContainer.selectAll(".work-label")
             .data([label])
             .join("div")
@@ -228,8 +247,7 @@ export class TabComponent {
                 const originalTitle = getOriginalWorkTitle(composer, label);
 
                 this.showTooltip(event, all?.at(index) || createEmptyRow(realComposer, originalTitle));
-            })
-            .on("mouseout", () => this.hideTooltip());
+            });
     }
 
     updatePlaySquares(row, entries) {
@@ -253,9 +271,10 @@ export class TabComponent {
                 this.showTooltip(event, d);
             })
             .on("mouseout", (event, d) => {
+                // Reset hover-highlight bg; tooltip dismissal is the document
+                // click-outside handler's job (see constructor).
                 d3.select(event.currentTarget)
                     .style("background-color", this.getColorForPart(d.part));
-                this.hideTooltip();
             });
 
         squares.exit().remove();
@@ -328,7 +347,10 @@ export class TabComponent {
         let html = `<span class="tooltip-close">&times;</span>`;
         const petersVol = d.composer === 'Haydn' ? getPetersVolume(d.work) : null;
         const petersSuffix = petersVol ? `: Peters ${petersVol}` : '';
-        html += `<h4><a href="${url}">${d.composer} - ${d.work.title}</a>${petersSuffix}</h4>`;
+        // target="_blank" is load-bearing on iOS homescreen webclips: without
+        // it, taps on the link from inside the standalone webapp can fail to
+        // navigate to quartetroulette.com. rel pairs with it for security.
+        html += `<h4><a href="${url}" target="_blank" rel="noopener noreferrer">${d.composer} - ${d.work.title}</a>${petersSuffix}</h4>`;
         html += "<ul>";
         html += `<li>${ts}${d.location ? " - " + d.location : ""}</li>`;
         if (d.part) html += `<li>${d.part}</li>`;
