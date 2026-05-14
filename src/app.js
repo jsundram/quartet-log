@@ -126,6 +126,9 @@ export class App {
 
         // Initial data filter
         this.filterData("date");  // need players to update
+
+        // Honor any hash in the landing URL (e.g. /index.html#dashboard).
+        this.navigationComponent.applyInitialView();
     }
 
     async initialize() {

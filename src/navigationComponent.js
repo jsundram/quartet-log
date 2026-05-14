@@ -1,6 +1,20 @@
 import { clearDataUrl } from './urlConfig';
 import { DateFilterWidget } from './dateFilterWidget';
 
+// In-page views participate in hash routing. Each one corresponds to a
+// `#<view>` URL fragment so the browser back button works as expected.
+const IN_PAGE_VIEWS = new Set(['main', 'calendar', 'dashboard']);
+const VIEW_TO_SELECTOR = {
+    main: '#mainContent',
+    calendar: '#calendar',
+    dashboard: '#dashboard',
+};
+
+function viewFromHash() {
+    const v = (window.location.hash || '').slice(1);
+    return IN_PAGE_VIEWS.has(v) ? v : 'main';
+}
+
 export class NavigationComponent {
     constructor(onFilterChange, onDownloadCSV, onViewChange = null) {
         this.onFilterChange = onFilterChange;
@@ -47,17 +61,14 @@ export class NavigationComponent {
         d3.selectAll(".menu-item").on("click", (event) => {
             event.preventDefault();
             const view = d3.select(event.currentTarget).attr("data-view");
+            menuItems.style("display", "none");
 
             if (view === "download-csv") {
-                if (this.onDownloadCSV) {
-                    this.onDownloadCSV();
-                }
-                menuItems.style("display", "none");
+                if (this.onDownloadCSV) this.onDownloadCSV();
                 return;
             }
 
             if (view === "logout") {
-                menuItems.style("display", "none");
                 if (confirm("This will log you out and clear your saved data URL. You'll need to re-enter it to use the app again. Continue?")) {
                     clearDataUrl();
                     window.location.reload();
@@ -65,29 +76,38 @@ export class NavigationComponent {
                 return;
             }
 
-            this.switchView(view);
+            if (view === "about") {
+                window.location.href = "./about.html";
+                return;
+            }
+
+            if (IN_PAGE_VIEWS.has(view)) {
+                const targetHash = `#${view}`;
+                if (window.location.hash === targetHash) return; // already there
+                // Mutate the hash; the hashchange listener below applies the view.
+                window.location.hash = targetHash;
+            }
         });
+
+        // Hash-routing: react to back/forward and direct URL edits.
+        window.addEventListener("hashchange", () => this.applyView(viewFromHash()));
     }
 
-    switchView(view) {
-        if (view === "about") return (window.location.href = "./about.html");
-
-        const VIEW_TO_SELECTOR = {
-            main: "#mainContent",
-            calendar: "#calendar",
-            dashboard: "#dashboard",
-        };
-
-        // Hide every known view container, then show the target (default main).
+    // Toggle which view container is visible. Pure DOM + notification — does
+    // NOT mutate the URL (that's the menu click handler's job, via the hash).
+    applyView(view) {
+        if (!IN_PAGE_VIEWS.has(view)) view = "main";
         Object.values(VIEW_TO_SELECTOR).forEach(sel => {
             d3.select(sel).style("display", "none");
         });
-        const target = VIEW_TO_SELECTOR[view] || VIEW_TO_SELECTOR.main;
-        d3.select(target).style("display", "block");
-
-        d3.select(".menu-items").style("display", "none");
-
+        d3.select(VIEW_TO_SELECTOR[view]).style("display", "block");
         if (this.onViewChange) this.onViewChange(view);
+    }
+
+    // Called once at startup so the initial URL hash (e.g. /index.html#dashboard)
+    // is honored. Safe to call after components are initialized.
+    applyInitialView() {
+        this.applyView(viewFromHash());
     }
 
     createRadioButtons() {
