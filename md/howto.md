@@ -45,3 +45,13 @@
 2. Play some Haydn.
 
 3. Repeat.
+
+## 5. View your log
+
+1. In your response sheet, go to **File → Share → Publish to web**. Set the format to **Comma-separated values (.csv)** and click **Publish**. Copy the URL it gives you.
+
+   ![Publish to web dialog with CSV format selected](./img/howto/publish-to-web.png){width=600px}
+
+2. Open <https://log.quartetroulette.com/> and paste the published-CSV URL into the setup screen.
+
+3. From then on, the site reads your sheet on each visit, so new sessions you log will show up the next time you reload.
