@@ -38,10 +38,16 @@ export function generateQuartetRouletteUrl(d) {
         return base + (COMPOSER_URL_PATTERNS[d.composer]?.(d) || '');
 }
 
+// Asset version for all_works.json, baked in at build time via esbuild
+// --define (see build.sh). Appended as a query string so iOS homescreen
+// webclips and other aggressive caches refetch after deploys that change
+// the catalog. haydn_peters.json is treated as static and doesn't need it.
+const WORKS_VERSION = __WORKS_VERSION__;
+
 export async function loadWorkCatalog() {
     try {
         [ALL_WORKS, HAYDN_PETERS] = await Promise.all([
-            d3.json('all_works.json'),
+            d3.json(`all_works.json?v=${WORKS_VERSION}`),
             d3.json('haydn_peters.json'),
         ]);
         COMPOSERS = new Set(Object.keys(ALL_WORKS));

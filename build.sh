@@ -64,11 +64,22 @@ copy_assets
 #   * Firefox 90 (Jul 2021)
 #   * Safari 15.4 (Mar 2022)
 #   * Edge 92 (Jul 2021)
+# Version constant baked into the bundle so all_works.json fetches carry a
+# cache-busting query string (?v=<hash>). Dev mode uses a literal "dev"
+# placeholder — esbuild's --watch + dev server serve the latest file on
+# disk regardless of query string. In prod we hash the actual JSON content
+# so each deploy that changes the catalog gets a fresh URL on iOS et al.
+WORKS_VERSION="dev"
+if [[ "$PROD" == true ]]; then
+    WORKS_VERSION=$(shasum -a 256 "$DEPLOY/all_works.json" | cut -c1-8)
+fi
+
 BASE_ESBUILD_CMD="esbuild src/app.js \
     --bundle \
     --target=chrome92,firefox90,safari15.4,edge92 \
     --format=iife \
     --global-name=App \
+    --define:__WORKS_VERSION__='\"$WORKS_VERSION\"' \
     --outfile=$DEPLOY/bundle.js"
 
 if [[ "$PROD" == true ]]; then
@@ -78,6 +89,35 @@ if [[ "$PROD" == true ]]; then
     eval "$BASE_ESBUILD_CMD \
         --minify \
         --tree-shaking=true"
+
+    # Content-hash bundle.js and viz.css so iOS homescreen webclips (and any
+    # other aggressively-caching layer) don't keep serving stale copies after
+    # a deploy. Every change to either file produces a new URL; the next time
+    # the cached index.html expires (GH Pages serves `Cache-Control:
+    # max-age=600`) the homescreen app fetches the new asset names fresh.
+    # Production-only: dev mode keeps the stable names so esbuild --serve +
+    # the unhashed <script>/<link> in the source index.html work as-is.
+    hash_and_rename() {
+        local file="$1"
+        local hash base ext
+        hash=$(shasum -a 256 "$DEPLOY/$file" | cut -c1-8)
+        base="${file%.*}"
+        ext="${file##*.}"
+        echo "${base}-${hash}.${ext}"
+        mv "$DEPLOY/$file" "$DEPLOY/${base}-${hash}.${ext}"
+    }
+    NEW_BUNDLE=$(hash_and_rename "bundle.js")
+    NEW_CSS=$(hash_and_rename "viz.css")
+
+    # Rewrite references in the deployed index.html only — the source file
+    # in the working tree stays on stable names. -i.bak is portable across
+    # BSD (macOS) and GNU (CI) sed.
+    sed -i.bak \
+        -e "s|bundle\.js|$NEW_BUNDLE|g" \
+        -e "s|viz\.css|$NEW_CSS|g" \
+        "$DEPLOY/index.html"
+    rm "$DEPLOY/index.html.bak"
+    echo "Content-hashed: $NEW_BUNDLE, $NEW_CSS"
 else
     echo "Building for development..."
 
@@ -122,4 +162,4 @@ fi
 echo -e "\nBuild complete. Files in deploy directory:"
 ls -la $DEPLOY
 echo -e "\nBundle size:"
-ls -lh $DEPLOY/bundle.js
+ls -lh "$DEPLOY"/bundle*.js
