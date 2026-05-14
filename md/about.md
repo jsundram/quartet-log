@@ -1,64 +1,40 @@
-# Data Visualization on the Go
+# About
 
-| ![calendar.png](./calendar.png) | 
-|:--:| 
-| *A screenshot of a github-style [activity view](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-github-profile/managing-contribution-settings-on-your-profile/showing-an-overview-of-your-activity-on-your-profile) made with this approach* |
+This is a tool for visualizing a personal log of chamber music — mostly string quartets — that you've played. You point it at a Google Sheet (your own log), and it gives you sortable lists by composer, a calendar grid of which days you played, and a small cross-filtered dashboard. The data on display is whatever sheet the current viewer has configured, so this is effectively a different site for every person who uses it.
 
-I've been pretty interested in analyzing and visualizating data (professionally and as a hobby) for a while. When it comes to hobby projects, data sources are often hard to come by and are often one of:
-1. Data scraped from the web using a purpose built scraper & parser. ([Daily Composers](https://daily-composers.netlify.app/) is an example of this.)
-1. A very nice prepared data set someone else has painstakingly made. (like [The Pizza Dataset](https://github.com/amazon-science/pizza-semantic-parsing-dataset))
-1. Data I enter myself.
+If you'd like to start logging your own chamber music, follow the **[How to make a chamber music log](./howto.html)** instructions — they walk through creating the Google Form and Sheet that this tool reads.
 
-For the third category, I discovered years ago that [Google Forms](https://docs.Google.com/forms/u/0/) is a great way of getting structured data into a spreadsheet (Google Sheets). In 2016, I started using this approach to log all the chamber music that I play (See [How To Make a Chamber Music Log](https://quip.com/0Fy0AQTJIQmd/How-to-Make-a-Chamber-Music-Log) for a detailed walkthrough).
+For the longer story behind the project, see this blog post: **[Data visualization on the go](https://runningwithdata.com/2024/10/10/data-visualization-on-the-go.html)**.
 
-I recently discovered that there is a magical setting hiding in Google Sheets. In the File Menu, under Share, there is a "Publish to Web" option, which allows you to access your spreadsheet data as CSV, JSON, and some other formats, at a given URL. This link is great because *it allows you to access an always up-to-date version of your data* without setting up the Google sheets api, and mucking around with OAuth, which is kind of painful. 
+## What's here
 
-I've also enjoyed making static web pages for these data visualizations and experiments. They're great because they are easy to run locally on my laptop while developing (`python3 -m http.server` is my usual goto), easy to deploy by syncing to [Amazon's S3](https://medium.com/@kyle.galbraith/how-to-host-a-website-on-s3-without-getting-lost-in-the-sea-e2b82aa6cd38), and super cheap to host (most of my pages don't get that much traffic), with no headaches around maintaining backend infrastructure like databases, web servers, etc. The most annoying part of this, I have typically found, is getting a friendly name for your site (e.g. http://viz.runningwithdata.com/), but Google is your friend for this part. I haven't yet taken the step of making this work with https, which would be an additional headache, but probably very good for the future-proof-ness of the site. 
+- **Home** — sortable lists of every quartet logged, grouped by composer (Haydn, Mozart, Beethoven, …), with quick filters for date range, part (V1 / V2 / VA), and the people played with. The **ALL** tab at the end shows aggregate stats and a flat data table across whatever passes the current filters.
+- **Calendar** — a GitHub-contributions-style year grid showing which days you played, with summary stats per year, a "last 365 days" header, and per-day tooltips listing what was played and with whom.
+- **Dashboard** — a small set of cross-filtered charts: a stacked bar of which part you play (V1 / V2 / VA) and a horizontal bar chart of top composers. Clicking either chart filters the other.
 
-A great way to go one step further would be to use [dc.js ](https://dc-js.github.io/dc.js/) to build a simple interactive dashboard without the need for a backend. 
+## How to use it
 
-Combining all of the above, I have:
-1. A Google form for logging data
-2. A Google sheet where it is all stored, which is published to web.
-3. A simple index.html file where I can pull the published data in a script tag, and use D3.js (or another javascript data visualization library) to visualize the data and make a small interactive tool.
+The first time you visit, the site asks for the URL of your published Google Sheet — your data, your view. The setup screen links to **[How to make a chamber music log](./howto.html)** if you haven't built one yet. Once you've entered the URL, it's saved to your browser's local storage and the data loads automatically on subsequent visits (with a 5-second cache fallback so it stays usable when the network is flaky).
 
-Here's a very minimal old-school template (html/css/js all in one file!):
-```javascript
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>📈</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Use CDN link to use less S3 bandwidth, or host on S3 for robustness.  -->
-    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-    <style>
-        /* ChatGPT can be helpful for CSS... */
-    </style>
-</head>
+Filters at the top of Home (date range, part, players) work in combination — they apply across every composer tab and the data table at the bottom of each tab. The Calendar and Dashboard views have their own independent date filters.
 
-<body>
-    <script>
-        const URL = "<YOUR URL HERE>"; // get this from File | Share | Publish to Web in Google Sheets
+The hamburger menu in the top-left has **Download Data** (a CSV export of everything in the current view) and **Log Out** (clears the saved URL so you can re-enter one). Use Log Out before sharing your screen if you want to keep your data private.
 
-        function row(d){
-            // do whatever cleanup / parsing / type coercion you want here.
-            return {
-                "timestamp": new Date(d.Timestamp),
-                "location": d.Location.trim(),
-                "comments": d.Comments.trim()
-                "spacey": d["column title with spaces"].trim(),
-            };
-        }
+## Privacy
 
-        // https://devdocs.io/d3~7/d3-request#csv
-        d3.csv(url, row).then(function(data) {
-            // do additional data munging / filtering here, then 
+The site is a static page hosted on GitHub Pages — there's no backend. Your data lives in two places: the Google Sheet you point at (whose access you control via Google), and your browser's local storage, which caches the parsed CSV between visits and stores the Sheet URL. The browser fetches the CSV directly from Google; nothing is sent to me or any third-party server. **Log Out** clears the saved URL and the cached data from your browser.
 
-            // call whatever functions you want to use to visualize your data.
-            visualize(data);
-        });
-    </script>
-</body>
-</html>
-```
+## How it's built
+
+- **Frontend**: vanilla JavaScript with [D3.js v7](https://d3js.org/) for everything visual. No framework.
+- **Bundler**: [esbuild](https://esbuild.github.io/) produces a single `bundle.js`.
+- **Markdown pages** (this one and the how-to): rendered with [pandoc](https://pandoc.org/) into self-contained HTML.
+- **Data source**: your Google Sheet, published as CSV, fetched at page load with browser local-storage caching.
+- **Tests**: a small `node:test` suite covering the data-processing helpers (alias normalization, partial-movement filtering, etc.).
+- **Hosting**: GitHub Pages, with automatic deployment on push to `main`.
+
+The code is open source: **[github.com/jsundram/musiclog](https://github.com/jsundram/musiclog)**.
+
+## A bit of history
+
+I started keeping a Google-Form-to-spreadsheet log of my own quartet sessions in 2016, and the visualizations grew from there — first a simple list of pieces I'd played ordered by composer, then over time the calendar grid, the cross-filtered dashboard, and many small refinements like name normalization, partial-movement handling, and mobile-friendly layouts.

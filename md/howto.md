@@ -1,26 +1,47 @@
 # How to Make a Chamber Music Log
 
-1. Go to Google Forms https://docs.google.com/forms/u/0/
-2. Create new Form
-3. ![](./img/howto/Screenshot%202017-05-31%2011.55.03.png)
-    1. fill it out with the questions that you might like to have. Mine looks like this:
-    2. ![](./img/howto/Screenshot%202017-05-31%2012.17.39.png)
-4. Click **Responses**
-5. ![](./img/howto/Screenshot%202017-05-31%2012.05.45.png)
-6. Click the green “Sheets” Button
-7. ![](./img/howto/Screenshot%202017-05-31%2012.06.20.png)
-8. Name your sheet and click **Create**
-9. ![](./img/howto/Screenshot%202017-05-31%2012.06.30.png)
-10. When you're done, click the eyeball to preview and make sure it looks good, then click **Send**
-11. ![](./img/howto/Screenshot%202017-05-31%2012.20.59.png)
-12. Click the **Link** button and check **Shorten**
-13. ![](./img/howto/Screenshot%202017-05-31%2012.23.34.png)
-14. Open the link on your mobile browser
-15. Click **Add to Home Screen**
-16. ![](./img/howto/IMG_9796.PNG)
-17. Now you can open the form up on your phone after every piece you play, and fill out the details, which will be saved to the spreadsheet you created in **Step 5.**
-18. Play some Haydn!
-19. Repeat **Step 11.**
+## 1. Create the form
 
-*
+1. Go to [Google Forms](https://docs.google.com/forms/u/0/).
 
+2. Create a new Form.
+
+   ![Google Forms home page with the "+" button to create a new form](./img/howto/Screenshot%202017-05-31%2011.55.03.png){width=600px}
+
+3. Fill it out with the questions you'd like to track. Mine looks like this:
+
+   ![Sample form with fields for date, composer, work, players, and so on](./img/howto/Screenshot%202017-05-31%2012.17.39.png){width=600px}
+
+## 2. Set up the response sheet
+
+1. Click **Responses**, then the green **Sheets** button.
+
+   ![The Responses tab in the form editor](./img/howto/Screenshot%202017-05-31%2012.05.45.png){width=600px}
+
+   ![The Sheets button at the top of the Responses tab](./img/howto/Screenshot%202017-05-31%2012.06.20.png){width=600px}
+
+2. Name your sheet and click **Create**.
+
+   ![Dialog to name the response spreadsheet](./img/howto/Screenshot%202017-05-31%2012.06.30.png){width=600px}
+
+## 3. Put the form on your phone
+
+1. Back in the form editor, click the eyeball to preview, then click **Send**.
+
+   ![The Send button in the form editor](./img/howto/Screenshot%202017-05-31%2012.20.59.png){width=600px}
+
+2. In the Send dialog, click the **Link** icon and check **Shorten URL**.
+
+   ![Send dialog showing the Link tab with the Shorten URL checkbox](./img/howto/Screenshot%202017-05-31%2012.23.34.png){width=600px}
+
+3. Open the shortened link on your phone's browser, then choose **Add to Home Screen** from the share menu.
+
+   ![Add to Home Screen on an iPhone](./img/howto/IMG_9796.PNG){width=280px}
+
+## 4. Use it
+
+1. After every piece you play, open the form from your home screen and fill it out — entries are saved straight to the response spreadsheet.
+
+2. Play some Haydn.
+
+3. Repeat.

@@ -70,7 +70,6 @@ export class NavigationComponent {
     }
 
     switchView(view) {
-        if (view === "howto") return (window.location.href = "./howto.html");
         if (view === "about") return (window.location.href = "./about.html");
 
         const VIEW_TO_SELECTOR = {

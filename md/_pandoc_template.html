@@ -49,6 +49,32 @@
         }
 
         $styles.html()$
+
+        /* Image / figure polish on top of github-markdown. */
+        .markdown-body img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+        }
+
+        .markdown-body figure {
+            margin: 16px 0;
+        }
+
+        .markdown-body figcaption {
+            font-size: 13px;
+            color: #555;
+            text-align: center;
+            margin-top: 6px;
+        }
+
+        /* Tighten the gap between a list item and its illustrating image */
+        .markdown-body li > p:has(+ figure),
+        .markdown-body li > figure {
+            margin-top: 6px;
+            margin-bottom: 6px;
+        }
     </style>
 
     $for(css)$

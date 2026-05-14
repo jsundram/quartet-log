@@ -27,7 +27,7 @@ copy_assets() {
     pushd md/ > /dev/null
     for md in *.md; do
         f=$(basename "$md" .md)
-        pandoc -f gfm -t html5 -o "$deploy_abs/$f.html" "$md" \
+        pandoc -f gfm+attributes+implicit_figures -t html5 -o "$deploy_abs/$f.html" "$md" \
             --css github-markdown.css \
             --embed-resources -s \
             --metadata title=" " \
