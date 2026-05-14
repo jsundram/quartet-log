@@ -30,6 +30,7 @@
         <div class="menu-items">
             <a href="#" class="menu-item" data-view="main">Home</a>
             <a href="#" class="menu-item" data-view="calendar">Calendar</a>
+            <a href="#" class="menu-item" data-view="dashboard">Dashboard</a>
             <a href="todo.html" class="menu-item" data-view="todo">Progress</a>
             <a href="howto.html" class="menu-item" data-view="howto">How to make a music log</a>
             <a href="about.html" class="menu-item" data-view="about">About</a>
@@ -60,6 +61,21 @@
         <div class="tooltip" id="daytooltip"></div>
 
         <!-- Calendar will be rendered here -->
+    </div>
+
+    <div id="dashboard" style="display: none">
+        <h1 style="text-align: center">Dashboard</h1>
+        <div id="dashboardDateFilter"></div>
+        <div class="dashboard-charts">
+            <section class="dashboard-section">
+                <h2 class="dashboard-chart-title">Parts played</h2>
+                <div id="dashboardPartBar"></div>
+            </section>
+            <section class="dashboard-section">
+                <h2 class="dashboard-chart-title">Top composers</h2>
+                <div id="dashboardComposerChart"></div>
+            </section>
+        </div>
     </div>
 
     <div id="update"></div>

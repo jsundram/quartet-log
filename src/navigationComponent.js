@@ -1,15 +1,14 @@
-import { getBegin } from './config';
 import { clearDataUrl } from './urlConfig';
+import { DateFilterWidget } from './dateFilterWidget';
 
 export class NavigationComponent {
-    constructor(onFilterChange, onDownloadCSV) {
+    constructor(onFilterChange, onDownloadCSV, onViewChange = null) {
         this.onFilterChange = onFilterChange;
         this.onDownloadCSV = onDownloadCSV;
+        this.onViewChange = onViewChange;
         this.selectedPlayers = new Set();
         this.availablePlayers = [];
-        this.currentRange = "1Y";
-        this.startDate = null;
-        this.endDate = null;
+        this.dateFilter = new DateFilterWidget('#dateSlider', () => this.onFilterChange('date'));
 
         // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
@@ -56,22 +55,26 @@ export class NavigationComponent {
     }
 
     switchView(view) {
-        if (view === "calendar") {
-            d3.select("#mainContent").style("display", "none");
-            d3.select("#calendar").style("display", "block");
-        } else if (view === "todo") {
-            window.location.href = "./TODO.html";
-        } else if (view === "howto") {
-            window.location.href = "./howto.html";
-        } else if (view === "about") {
-            window.location.href = "./about.html";
-        } else {
-            d3.select("#mainContent").style("display", "block");
-            d3.select("#calendar").style("display", "none");
-        }
+        if (view === "todo") return (window.location.href = "./TODO.html");
+        if (view === "howto") return (window.location.href = "./howto.html");
+        if (view === "about") return (window.location.href = "./about.html");
 
-        const menuItems = d3.select(".menu-items");
-        menuItems.style("display", "none");
+        const VIEW_TO_SELECTOR = {
+            main: "#mainContent",
+            calendar: "#calendar",
+            dashboard: "#dashboard",
+        };
+
+        // Hide every known view container, then show the target (default main).
+        Object.values(VIEW_TO_SELECTOR).forEach(sel => {
+            d3.select(sel).style("display", "none");
+        });
+        const target = VIEW_TO_SELECTOR[view] || VIEW_TO_SELECTOR.main;
+        d3.select(target).style("display", "block");
+
+        d3.select(".menu-items").style("display", "none");
+
+        if (this.onViewChange) this.onViewChange(view);
     }
 
     createRadioButtons() {
@@ -101,144 +104,11 @@ export class NavigationComponent {
     }
 
     createDateFilter() {
-        // Initialize default date range (1Y)
-        this.updateDatesFromRange(this.currentRange);
-
-        const container = d3.select("#dateSlider")
-            .append("div")
-            .attr("class", "date-filter-container");
-
-        // Segmented button group
-        const buttonGroup = container.append("div")
-            .attr("class", "date-range-buttons");
-
-        const ranges = [
-            { id: "ALL", label: "All" },
-            { id: "YTD", label: "YTD" },
-            { id: "1Y", label: "1Y" },
-            { id: "6M", label: "6M" },
-            { id: "CUSTOM", label: "Custom" }
-        ];
-
-        ranges.forEach(r => {
-            buttonGroup.append("button")
-                .attr("type", "button")
-                .attr("class", `date-range-btn${r.id === this.currentRange ? " active" : ""}`)
-                .attr("data-range", r.id)
-                .text(r.label)
-                .on("click", () => this.handleRangeClick(r.id));
-        });
-
-        // Custom date range inputs (hidden until Custom is selected)
-        const customContainer = container.append("div")
-            .attr("class", "custom-date-range")
-            .style("display", "none");
-
-        customContainer.append("input")
-            .attr("type", "date")
-            .attr("class", "custom-date-input")
-            .attr("aria-label", "Start date")
-            .attr("id", "customStart")
-            .on("change", () => this.handleCustomDateChange());
-
-        customContainer.append("span")
-            .attr("class", "custom-date-sep")
-            .text("→");
-
-        customContainer.append("input")
-            .attr("type", "date")
-            .attr("class", "custom-date-input")
-            .attr("aria-label", "End date")
-            .attr("id", "customEnd")
-            .on("change", () => this.handleCustomDateChange());
-    }
-
-    handleRangeClick(rangeId) {
-        this.currentRange = rangeId;
-
-        d3.selectAll(".date-range-btn").classed("active", function() {
-            return d3.select(this).attr("data-range") === rangeId;
-        });
-
-        const customContainer = d3.select(".custom-date-range");
-
-        if (rangeId === "CUSTOM") {
-            // Pre-fill the date inputs with the currently active range
-            const minStr = this.toDateInputValue(getBegin());
-            const maxStr = this.toDateInputValue(new Date());
-            d3.select("#customStart")
-                .attr("min", minStr)
-                .attr("max", maxStr)
-                .property("value", this.toDateInputValue(this.startDate));
-            d3.select("#customEnd")
-                .attr("min", minStr)
-                .attr("max", maxStr)
-                .property("value", this.toDateInputValue(this.endDate));
-            customContainer.style("display", "flex");
-        } else {
-            customContainer.style("display", "none");
-            this.updateDatesFromRange(rangeId);
-            this.onFilterChange("date");
-        }
-    }
-
-    handleCustomDateChange() {
-        const startStr = d3.select("#customStart").property("value");
-        const endStr = d3.select("#customEnd").property("value");
-        if (!startStr || !endStr) return;
-
-        const start = this.fromDateInputValue(startStr);
-        const end = this.fromDateInputValue(endStr, true);
-        if (start > end) return;
-
-        this.startDate = start;
-        this.endDate = end;
-        this.onFilterChange("date");
-    }
-
-    updateDatesFromRange(rangeId) {
-        const now = new Date();
-        let start;
-
-        switch (rangeId) {
-            case "ALL":
-                start = getBegin();
-                break;
-            case "YTD":
-                start = new Date(now.getFullYear(), 0, 1);
-                break;
-            case "1Y":
-                start = new Date(now);
-                start.setFullYear(start.getFullYear() - 1);
-                break;
-            case "6M":
-                start = new Date(now);
-                start.setMonth(start.getMonth() - 6);
-                break;
-            default:
-                start = getBegin();
-        }
-
-        this.startDate = start;
-        this.endDate = now;
-    }
-
-    toDateInputValue(date) {
-        const yyyy = date.getFullYear();
-        const mm = String(date.getMonth() + 1).padStart(2, '0');
-        const dd = String(date.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
-    }
-
-    fromDateInputValue(str, endOfDay = false) {
-        const [y, m, d] = str.split('-').map(Number);
-        return endOfDay
-            ? new Date(y, m - 1, d, 23, 59, 59, 999)
-            : new Date(y, m - 1, d);
+        this.dateFilter.render();
     }
 
     getSelectedDates() {
-        return [this.startDate, this.endDate];
+        return this.dateFilter.getRange();
     }
 
     getSelectedPart() {

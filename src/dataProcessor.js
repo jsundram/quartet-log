@@ -68,6 +68,18 @@ export function peopleKeysFor(d) {
     return keys;
 }
 
+// Maps a raw "Which Part" value to one of the three dashboard part buckets.
+// V1 / V2 stay as-is; anything starting with "VA" (VA, VA1, VA2, ...) folds
+// to "VA"; anything else is excluded (returns null). Kept local to the
+// dashboard so it doesn't perturb the global part filter / processRow
+// semantics elsewhere.
+export function normalizeDashboardPart(part) {
+    if (!part) return null;
+    if (part === 'V1' || part === 'V2') return part;
+    if (part.startsWith('VA')) return 'VA';
+    return null;
+}
+
 // Floor a timestamp to its local-time day. Avoids pulling d3 in here so
 // computeAggregateStats stays unit-testable under node:test.
 function dayKey(ts) {

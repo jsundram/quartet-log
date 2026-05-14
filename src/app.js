@@ -5,6 +5,7 @@ import { extractUniquePlayers } from './dataProcessor';
 import { NavigationComponent } from './navigationComponent';
 import { TabComponent } from './tabComponent';
 import { CalendarComponent } from './calendarComponent';
+import { DashboardComponent } from './dashboardComponent';
 import { TableComponent } from './tableComponent';
 import { hasDataUrl, setDataUrl, getDataUrl, isValidGoogleSheetsUrl } from './urlConfig';
 
@@ -13,11 +14,13 @@ export class App {
         this.dataService = new DataService();
         this.navigationComponent = new NavigationComponent(
             (filterType) => this.filterData(filterType),
-            () => this.downloadCSV()
+            () => this.downloadCSV(),
+            (view) => this.handleViewChange(view),
         );
         this.tableComponent = new TableComponent();
         this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();
+        this.dashboardComponent = new DashboardComponent();
         this.data = null;
     }
 
@@ -33,6 +36,7 @@ export class App {
         // Hide main content areas
         d3.select('#mainContent').style('display', 'none');
         d3.select('#calendar').style('display', 'none');
+        d3.select('#dashboard').style('display', 'none');
         d3.select('#menu').style('display', 'none');
         d3.select('#update').style('display', 'none');
 
@@ -98,6 +102,12 @@ export class App {
         return result;
     }
 
+    handleViewChange(view) {
+        // The dashboard SVGs size themselves from the live container width,
+        // so they need a re-render once the view is actually visible.
+        if (view === 'dashboard') this.dashboardComponent.notifyShown();
+    }
+
     async initializeUI() {
         // Initialize navigation components
         this.navigationComponent.createMenu();
@@ -110,6 +120,9 @@ export class App {
 
         // Initialize calendar view
         this.calendarComponent.createCalendar(this.data);
+
+        // Initialize dashboard view (owns its own date-range state)
+        this.dashboardComponent.init(this.data);
 
         // Initial data filter
         this.filterData("date");  // need players to update

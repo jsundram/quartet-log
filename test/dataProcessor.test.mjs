@@ -9,6 +9,7 @@ import {
     normalizePlayerNames,
     peopleKeysFor,
     computeAggregateStats,
+    normalizeDashboardPart,
 } from '../src/dataProcessor.js';
 
 // canonicalize tests depend on real entries in PLAYER_ALIASES (Jen, Isaac).
@@ -330,5 +331,28 @@ describe('computeAggregateStats', () => {
         assert.equal(s.pieces, 3);
         assert.equal(s.uniquePieces, 1);  // only the third row contributes
         assert.equal(s.daysPlayed, 1);    // only rows with timestamps
+    });
+});
+
+describe('normalizeDashboardPart', () => {
+    it('passes V1 / V2 through unchanged', () => {
+        assert.equal(normalizeDashboardPart('V1'), 'V1');
+        assert.equal(normalizeDashboardPart('V2'), 'V2');
+    });
+
+    it('folds VA, VA1, VA2 into VA', () => {
+        assert.equal(normalizeDashboardPart('VA'), 'VA');
+        assert.equal(normalizeDashboardPart('VA1'), 'VA');
+        assert.equal(normalizeDashboardPart('VA2'), 'VA');
+        // Any future "VA*" would also fold; only VA-prefixed strings collapse.
+        assert.equal(normalizeDashboardPart('VA3'), 'VA');
+    });
+
+    it('returns null for empty / unknown parts', () => {
+        assert.equal(normalizeDashboardPart(''), null);
+        assert.equal(normalizeDashboardPart(null), null);
+        assert.equal(normalizeDashboardPart(undefined), null);
+        assert.equal(normalizeDashboardPart('VC'), null);
+        assert.equal(normalizeDashboardPart('piano'), null);
     });
 });

@@ -425,6 +425,48 @@ h1 {
     font-weight: bold;
 }
 
+/* ---------- Dashboard view ---------- */
+
+#dashboard {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 10px;
+    box-sizing: border-box;
+}
+
+#dashboardDateFilter {
+    margin: 10px 0;
+}
+
+.dashboard-charts {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    margin-top: 10px;
+}
+
+.dashboard-section {
+    width: 100%;
+}
+
+.dashboard-chart-title {
+    font: bold 13px sans-serif;
+    color: #333;
+    margin: 0 0 6px 0;
+}
+
+.dashboard-empty {
+    font: 12px sans-serif;
+    color: #777;
+    margin: 6px 0;
+}
+
+/* SVGs inside the dashboard share the same font as the rest of the app */
+#dashboardPartBar svg,
+#dashboardComposerChart svg {
+    font-family: sans-serif;
+}
+
 .work-row {
     display: grid;
     grid-template-columns: auto 1fr;
