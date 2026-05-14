@@ -27,8 +27,15 @@ export class CalendarComponent {
         const v = d => sessions.get(d.getTime())?.length ?? 0;
         const days = d3.timeDay.range(getBegin(), new Date()).map(d => ({date: d, value: v(d)}));
 
-        // Color scale for calendar
-        const color = d3.scaleSequential(d3.interpolateGreens).domain([0, 10]);
+        // Color scale for calendar. In dark mode we invert interpolateGreens
+        // (high counts now map to the *light* end of the scale, low counts to
+        // dark) so busy days read as bright cells glowing against the dark bg.
+        // Theme is decided at page load; reload to switch.
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const interpolator = isDark
+            ? (t => d3.interpolateGreens(1 - t))
+            : d3.interpolateGreens;
+        const color = d3.scaleSequential(interpolator).domain([0, 10]);
 
         // Group by year
         const years = d3.groups(days, d => d.date.getUTCFullYear()).reverse();

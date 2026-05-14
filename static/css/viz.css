@@ -1,6 +1,10 @@
 /* Color tokens. Two-tier: Radix gray primitives + semantic aliases.
    Dark mode (future) swaps the --gray-* values; semantic tokens follow. */
 :root {
+    /* Tell the UA this site supports both modes; affects scrollbars and
+       default form-control styling so they don't look out of place. */
+    color-scheme: light dark;
+
     /* Radix gray (light) */
     --gray-1:  #fcfcfc;
     --gray-2:  #f9f9f9;
@@ -27,8 +31,9 @@
     --color-text-secondary: var(--gray-11); /* labels, captions, bar chart labels */
     --color-text-tertiary:  var(--gray-10); /* empty-state, separator */
     --color-text-chart:     var(--gray-9);  /* D3 chart annotations */
-    --color-text-light:     #fff;            /* text on dark/colored bg */
-    --color-text-dark:      #000;            /* high-contrast text on bright bg */
+    --color-text-light:     #fff;            /* text on dark/colored bg (absolute) */
+    --color-text-dark:      #000;            /* text on bright/colored bg (absolute) */
+    --color-text-emphasis:  #000;            /* one shade past primary; flips with mode */
     --color-text-error:     #E63946;
 
     /* Borders */
@@ -57,6 +62,50 @@
     /* Shadows */
     --color-shadow-subtle: rgba(0, 0, 0, 0.12);
     --color-shadow-light:  rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode. Swap the Radix gray scale to grayDark; semantic tokens flow
+   through automatically (e.g. --color-text-primary still resolves to
+   var(--gray-12), which now points at near-white #eee instead of #202020).
+   Only tokens whose mapping doesn't naturally invert get an explicit override.
+   Theme is decided at page load; reload to switch (see calendarComponent.js
+   for matchMedia read of prefers-color-scheme). */
+@media (prefers-color-scheme: dark) {
+    :root {
+        /* Radix grayDark */
+        --gray-1:  #111111;
+        --gray-2:  #191919;
+        --gray-3:  #222222;
+        --gray-4:  #2a2a2a;
+        --gray-5:  #313131;
+        --gray-6:  #3a3a3a;
+        --gray-7:  #484848;
+        --gray-8:  #606060;
+        --gray-9:  #6e6e6e;
+        --gray-10: #7b7b7b;
+        --gray-11: #b4b4b4;
+        --gray-12: #eeeeee;
+
+        color-scheme: dark;
+
+        /* Surface: the literal white default needs to flip; route through
+           gray-1 so dark mode page bg matches the gray scale. */
+        --color-bg-primary: var(--gray-1);
+
+        /* Emphasis text flips: in dark mode "darker than primary" makes no
+           sense; we go lighter than primary for the same emphasis role. */
+        --color-text-emphasis: #fff;
+
+        /* Shadows: dark-on-dark needs more alpha to register. */
+        --color-shadow-subtle: rgba(0, 0, 0, 0.5);
+        --color-shadow-light:  rgba(0, 0, 0, 0.4);
+    }
+
+    /* Inactive tab bg looks too prominent on the dark page; let tabs blend
+       into the bg and rely on the borders + green active stripe for shape. */
+    #tabs button {
+        background-color: transparent;
+    }
 }
 
 body, html {
@@ -365,6 +414,7 @@ h1 {
 #tabs button {
     display: inline-block; /* Inline-block for horizontal layout */
     background-color: var(--color-bg-hover);
+    color: var(--color-text-primary); /* explicit — browser default doesn't inherit body color */
     border: 1px solid var(--color-border-strong);
     border-bottom: none;
     padding: 5px 10px;
@@ -433,7 +483,7 @@ h1 {
 .tooltip {
     position: absolute;
     background: var(--color-bg-primary);
-    border: 1px solid var(--color-text-dark);
+    border: 1px solid var(--color-text-emphasis);
     padding: 5px;
     border-radius: 5px;
 }
@@ -483,7 +533,7 @@ h1 {
 }
 
 .tooltip-close:hover {
-    color: var(--color-text-dark);
+    color: var(--color-text-emphasis);
 }
 
 .calendar-top {
@@ -501,6 +551,20 @@ h1 {
 #calendar > svg {
     display: block;
     margin: 0 auto;
+}
+
+/* Calendar SVG text defaults. The d3-created text elements (year labels,
+   day-of-week, per-year stats, month labels, legend ticks) don't set an
+   explicit fill, so they'd render black-on-bg. Default them to primary text,
+   and set `color` so any `currentColor` references (legend title) resolve
+   the same way. Text elements with explicit fill (chart annotations using
+   --color-text-chart) keep their attribute. */
+#calendar svg {
+    color: var(--color-text-primary);
+}
+
+#calendar svg text:not([fill]) {
+    fill: var(--color-text-primary);
 }
 
 /* Legend SVG sized + positioned to track the calendar's first 10 day cells.

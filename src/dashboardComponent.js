@@ -271,7 +271,7 @@ export class DashboardComponent {
         const barFill = getCssColor('--color-accent');
         const barFillSelected = getCssColor('--color-accent-selected');
         const textPrimary = getCssColor('--color-text-primary');
-        const textPrimarySelected = getCssColor('--color-text-dark');
+        const textPrimarySelected = getCssColor('--color-text-emphasis');
         const textSecondary = getCssColor('--color-text-secondary');
 
         rows2.select('rect.composer-bar')
