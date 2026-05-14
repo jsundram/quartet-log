@@ -22,11 +22,26 @@ export class NavigationComponent {
     createMenu() {
         const hamburgerMenu = d3.select(".hamburger-menu");
         const menuItems = d3.select(".menu-items");
+        const menuRoot = document.getElementById("menu");
 
-        hamburgerMenu.on("click", () => {
-            menuItems.style("display", 
+        hamburgerMenu.on("click", (event) => {
+            // Stop the click bubbling to the document-level outside-click
+            // handler below, which would otherwise immediately re-close the
+            // menu we just opened.
+            event.stopPropagation();
+            menuItems.style("display",
                 menuItems.style("display") === "block" ? "none" : "block"
             );
+        });
+
+        // Native dismiss patterns: tap outside, or press Escape.
+        document.addEventListener("click", (e) => {
+            if (menuRoot && !menuRoot.contains(e.target)) {
+                menuItems.style("display", "none");
+            }
+        });
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") menuItems.style("display", "none");
         });
 
         d3.selectAll(".menu-item").on("click", (event) => {

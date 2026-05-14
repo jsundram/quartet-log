@@ -17,30 +17,71 @@ h1 {
     z-index: 1000;
 }
 
+/* Big tap target around the icon (~44×44) without enlarging the icon. */
 .hamburger-menu {
     cursor: pointer;
-    margin-bottom: 10px;
+    padding: 8px;
+    margin: -8px -8px 2px -8px;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .bar {
     display: block;
-    width: 25px;
+    width: 28px;
     height: 3px;
     margin: 5px 0;
     background-color: #333;
+    border-radius: 1px;
 }
 
 .menu-items {
     display: none;
-    background-color: #f1f1f1;
-    padding: 10px;
+    background-color: #fff;
+    padding: 4px 0;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    min-width: 220px;
 }
 
 .menu-item {
     display: block;
-    color: #333;
+    color: #222;
     text-decoration: none;
-    margin: 5px 0;
+    padding: 12px 16px;
+    margin: 0;
+    font-size: 15px;
+    border-top: 1px solid #eee;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.menu-item:first-child {
+    border-top: none;
+}
+
+.menu-item:active {
+    background-color: #f1f1f1;
+}
+
+@media (hover: hover) {
+    .menu-item:hover {
+        background-color: #f7f7f7;
+    }
+}
+
+@media only screen and (max-width: 600px) {
+    .bar {
+        width: 32px;
+        height: 4px;
+        margin: 6px 0;
+    }
+    .menu-items {
+        min-width: 240px;
+    }
+    .menu-item {
+        padding: 14px 18px;
+        font-size: 16px;
+    }
 }
 
 #dateSlider, #tabs {
