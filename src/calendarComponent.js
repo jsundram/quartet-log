@@ -1,4 +1,4 @@
-import { getBegin, CALENDAR_CONFIG } from './config';
+import { getBegin, CALENDAR_CONFIG, getCssColor } from './config';
 import { peopleKeysFor, computeAggregateStats } from './dataProcessor';
 
 export class CalendarComponent {
@@ -121,7 +121,7 @@ export class CalendarComponent {
             .attr("x", this.cellSize * 53 + this.cellSize / 2)
             .attr("y", (d, i) => (countDay(i) + 0.5) * this.cellSize)
             .attr("dy", "0.31em")
-            .attr("fill", "#999")
+            .attr("fill", getCssColor('--color-text-chart'))
             .attr("font-size", "9px")
             .text(d => d > 0 ? d : "");
 
@@ -200,7 +200,7 @@ export class CalendarComponent {
             .attr("x", (d, i) => i * this.cellSize + this.cellSize / 2)
             .attr("y", 7 * this.cellSize + 12)
             .attr("text-anchor", "middle")
-            .attr("fill", "#999")
+            .attr("fill", getCssColor('--color-text-chart'))
             .attr("font-size", "8px")
             .text(d => d > 0 ? d : "");
     }
@@ -237,7 +237,7 @@ export class CalendarComponent {
             .attr("height", this.cellSize - 1)
             .attr("x", d => timeWeek.count(d3.utcYear(d.date), d.date) * this.cellSize + 0.5)
             .attr("y", d => countDay(d.date.getUTCDay()) * this.cellSize + 0.5)
-            .attr("fill", d => d.value == 0 ? "#eee" : color(d.value))
+            .attr("fill", d => d.value == 0 ? getCssColor('--color-bg-empty-cell') : color(d.value))
             .style("cursor", "pointer")
             .on("mouseenter", (event, d) => this.showTooltip(event, d, formatDate, sessions))
             .on("mouseleave", () => this.hideTooltip())
@@ -258,7 +258,7 @@ export class CalendarComponent {
 
         month.filter((d, i) => i).append("path")
             .attr("fill", "none")
-            .attr("stroke", "#fff")
+            .attr("stroke", getCssColor('--color-border-month-divider'))
             .attr("stroke-width", 3)
             .attr("d", d => this.pathMonth(d.month));
 
@@ -278,7 +278,7 @@ export class CalendarComponent {
             })
             .attr("y", -5)
             .attr("text-anchor", "end")
-            .attr("fill", "#999")
+            .attr("fill", getCssColor('--color-text-chart'))
             .attr("font-size", "9px")
             .text(d => {
                 const monthStart = d.month;

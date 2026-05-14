@@ -1,9 +1,72 @@
+/* Color tokens. Two-tier: Radix gray primitives + semantic aliases.
+   Dark mode (future) swaps the --gray-* values; semantic tokens follow. */
+:root {
+    /* Radix gray (light) */
+    --gray-1:  #fcfcfc;
+    --gray-2:  #f9f9f9;
+    --gray-3:  #f0f0f0;
+    --gray-4:  #e8e8e8;
+    --gray-5:  #e0e0e0;
+    --gray-6:  #d9d9d9;
+    --gray-7:  #cecece;
+    --gray-8:  #bbbbbb;
+    --gray-9:  #8d8d8d;
+    --gray-10: #838383;
+    --gray-11: #646464;
+    --gray-12: #202020;
+
+    /* Surfaces */
+    --color-bg-primary:    #fff;
+    --color-bg-secondary:  var(--gray-2);  /* table header, calendar tooltip th */
+    --color-bg-hover:      var(--gray-3);  /* button / menu hover */
+    --color-bg-stripe:     var(--gray-2);  /* table row alternation */
+    --color-bg-empty-cell: var(--gray-3);  /* empty calendar cell */
+
+    /* Text */
+    --color-text-primary:   var(--gray-12);
+    --color-text-secondary: var(--gray-11); /* labels, captions, bar chart labels */
+    --color-text-tertiary:  var(--gray-10); /* empty-state, separator */
+    --color-text-chart:     var(--gray-9);  /* D3 chart annotations */
+    --color-text-light:     #fff;            /* text on dark/colored bg */
+    --color-text-dark:      #000;            /* high-contrast text on bright bg */
+    --color-text-error:     #E63946;
+
+    /* Borders */
+    --color-border-subtle:         var(--gray-3); /* faint dividers */
+    --color-border-standard:       var(--gray-5); /* most borders */
+    --color-border-strong:         var(--gray-7); /* section dividers, button group outlines */
+    --color-border-month-divider:  var(--color-bg-primary); /* calendar month separator */
+
+    /* Accent / actions */
+    --color-accent:            #4CAF50;
+    --color-accent-hover:      #45a049;
+    --color-accent-selected:   #2e7d32;
+    --color-accent-focus-ring: rgba(76, 175, 80, 0.2);
+    --color-destructive:       #c0392b;
+    --color-highlight:         #ffcc00; /* play-square hover */
+
+    /* Part colors (instruments) */
+    --color-part-v1:        #1ceaf9;
+    --color-part-v2:        #01c472;
+    --color-part-va:        #007961;
+    --color-part-fallback:  var(--gray-9);
+    --color-part-v1-text:   var(--color-text-dark);  /* dark text on bright cyan */
+    --color-part-v2-text:   var(--color-text-light);
+    --color-part-va-text:   var(--color-text-light);
+
+    /* Shadows */
+    --color-shadow-subtle: rgba(0, 0, 0, 0.12);
+    --color-shadow-light:  rgba(0, 0, 0, 0.1);
+}
+
 body, html {
     margin: 0;
     padding: 0;
     height: 100%;
     width: 100%;
     font-size: 16px; /* Adjust base font-size if needed */
+    color: var(--color-text-primary);
+    background-color: var(--color-bg-primary);
 }
 h1 {
     margin-top: 5px;
@@ -30,17 +93,17 @@ h1 {
     width: 28px;
     height: 3px;
     margin: 5px 0;
-    background-color: #333;
+    background-color: var(--color-text-primary);
     border-radius: 1px;
 }
 
 .menu-items {
     display: none;
-    background-color: #fff;
+    background-color: var(--color-bg-primary);
     padding: 4px 0;
-    border: 1px solid #ddd;
+    border: 1px solid var(--color-border-standard);
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 12px var(--color-shadow-subtle);
     min-width: 220px;
 }
 
@@ -48,12 +111,12 @@ h1 {
     display: flex;
     align-items: center;
     gap: 10px;
-    color: #222;
+    color: var(--color-text-primary);
     text-decoration: none;
     padding: 12px 16px;
     margin: 0;
     font-size: 15px;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--color-border-subtle);
     -webkit-tap-highlight-color: transparent;
 }
 
@@ -62,7 +125,7 @@ h1 {
 }
 
 .menu-item:active {
-    background-color: #f1f1f1;
+    background-color: var(--color-bg-hover);
 }
 
 /* Inline SVG icons inherit the menu-item's text color. Disable pointer
@@ -76,17 +139,17 @@ h1 {
    the navigation items above. Only matches the first action-classed item
    because subsequent action items follow another action item. */
 .menu-item:not(.menu-item--action) + .menu-item.menu-item--action {
-    border-top: 1px solid #ccc;
+    border-top: 1px solid var(--color-border-strong);
     margin-top: 4px;
 }
 
 .menu-item--destructive {
-    color: #c0392b;
+    color: var(--color-destructive);
 }
 
 @media (hover: hover) {
     .menu-item:hover {
-        background-color: #f7f7f7;
+        background-color: var(--color-bg-hover);
     }
 }
 
@@ -136,7 +199,7 @@ h1 {
 }
 
 .player-filter-label {
-    color: #555;
+    color: var(--color-text-secondary);
     font-size: 13px;
 }
 
@@ -157,20 +220,20 @@ h1 {
 .date-range-buttons {
     display: inline-flex;
     flex-shrink: 0;
-    border: 1px solid #ccc;
+    border: 1px solid var(--color-border-strong);
     border-radius: 6px;
     overflow: hidden;
-    background: #fff;
+    background: var(--color-bg-primary);
 }
 
 .date-range-btn {
     padding: 6px 14px;
-    background: #fff;
+    background: var(--color-bg-primary);
     border: none;
-    border-right: 1px solid #ccc;
+    border-right: 1px solid var(--color-border-strong);
     cursor: pointer;
     font: inherit;
-    color: #333;
+    color: var(--color-text-primary);
     transition: background-color 0.15s, color 0.15s;
     -webkit-tap-highlight-color: transparent;
     white-space: nowrap;
@@ -181,12 +244,12 @@ h1 {
 }
 
 .date-range-btn:hover {
-    background: #f1f1f1;
+    background: var(--color-bg-hover);
 }
 
 .date-range-btn.active {
-    background: #4CAF50;
-    color: #fff;
+    background: var(--color-accent);
+    color: var(--color-text-light);
 }
 
 .custom-date-range {
@@ -198,7 +261,7 @@ h1 {
 }
 
 .custom-date-sep {
-    color: #888;
+    color: var(--color-text-tertiary);
     font-size: 14px;
 }
 
@@ -206,10 +269,10 @@ h1 {
     padding: 4px 6px;
     /* 16px prevents iOS from zooming on focus */
     font-size: 16px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--color-border-strong);
     border-radius: 4px;
-    background: #fff;
-    color: #333;
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
     -webkit-appearance: none;
     appearance: none;
     box-sizing: border-box;
@@ -223,20 +286,20 @@ h1 {
 .part-buttons {
     display: inline-flex;
     flex-shrink: 0;
-    border: 1px solid #ccc;
+    border: 1px solid var(--color-border-strong);
     border-radius: 6px;
     overflow: hidden;
-    background: #fff;
+    background: var(--color-bg-primary);
 }
 
 .part-btn {
     padding: 6px 14px;
-    background: #fff;
+    background: var(--color-bg-primary);
     border: none;
-    border-right: 1px solid #ccc;
+    border-right: 1px solid var(--color-border-strong);
     cursor: pointer;
     font: inherit;
-    color: #333;
+    color: var(--color-text-primary);
     transition: background-color 0.15s, color 0.15s;
     -webkit-tap-highlight-color: transparent;
     white-space: nowrap;
@@ -247,29 +310,32 @@ h1 {
 }
 
 .part-btn:hover {
-    background: #f1f1f1;
+    background: var(--color-bg-hover);
 }
 
 .part-btn.active {
-    color: #fff;
+    color: var(--color-text-light);
 }
 
-/* Active backgrounds mirror PART_COLORS in src/config.js */
+/* Active backgrounds — part colors. JS reads these same tokens via
+   getComputedStyle so the SPA + CSS stay in sync. */
 .part-btn.active[data-part="V1"] {
-    background: #1ceaf9;
-    color: #000;  /* dark text on light cyan */
+    background: var(--color-part-v1);
+    color: var(--color-part-v1-text);
 }
 
 .part-btn.active[data-part="V2"] {
-    background: #01c472;
+    background: var(--color-part-v2);
+    color: var(--color-part-v2-text);
 }
 
 .part-btn.active[data-part="VA"] {
-    background: #007961;
+    background: var(--color-part-va);
+    color: var(--color-part-va-text);
 }
 
 .part-btn.active[data-part="ANY"] {
-    background: #4CAF50;
+    background: var(--color-accent);
 }
 
 @media only screen and (max-width: 800px) {
@@ -298,8 +364,8 @@ h1 {
 
 #tabs button {
     display: inline-block; /* Inline-block for horizontal layout */
-    background-color: #f1f1f1;
-    border: 1px solid #ccc;
+    background-color: var(--color-bg-hover);
+    border: 1px solid var(--color-border-strong);
     border-bottom: none;
     padding: 5px 10px;
     margin-right: 2px;
@@ -309,17 +375,35 @@ h1 {
 }
 
 #tabs button:hover {
-    background-color: #ddd;
+    background-color: var(--gray-5);
 }
 
 #tabs button.active-tab-button {
-    background-color: #fff;
-    border-top: 2px solid #4CAF50; /* Highlight color for active tab */
+    background-color: var(--color-bg-primary);
+    border-top: 2px solid var(--color-accent); /* Highlight color for active tab */
 }
 
 .tab {
-    border: 1px solid #ccc;
+    border: 1px solid var(--color-border-strong);
     padding: 10px;
+}
+
+/* Per-composer data table (rendered by tableComponent.js). */
+.data-table th {
+    border: 1px solid var(--color-border-standard);
+    background-color: var(--color-bg-secondary);
+}
+
+.data-table tr {
+    border: 1px solid var(--color-border-standard);
+}
+
+.data-table tbody tr:nth-child(even) {
+    background-color: var(--color-bg-stripe);
+}
+
+.data-table td {
+    border: 1px solid var(--color-border-standard);
 }
 
 .tab, .tooltip {
@@ -343,13 +427,13 @@ h1 {
 
 .random-work-display {
     margin-left: 10px;
-    color: gray;
+    color: var(--color-text-tertiary);
 }
 
 .tooltip {
     position: absolute;
-    background: white;
-    border: 1px solid black;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-text-dark);
     padding: 5px;
     border-radius: 5px;
 }
@@ -370,16 +454,16 @@ h1 {
 }
 
 .calendar-tooltip-table th {
-    background: #f0f0f0;
+    background: var(--color-bg-secondary);
     padding: 4px 6px;
     text-align: left;
-    border-bottom: 1px solid #ccc;
+    border-bottom: 1px solid var(--color-border-strong);
     font-weight: bold;
 }
 
 .calendar-tooltip-table td {
     padding: 4px 6px;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .calendar-tooltip-table tbody tr:last-child td {
@@ -392,14 +476,14 @@ h1 {
     right: 5px;
     font-size: 20px;
     font-weight: bold;
-    color: #999;
+    color: var(--color-text-chart);
     cursor: pointer;
     line-height: 1;
     user-select: none;
 }
 
 .tooltip-close:hover {
-    color: #000;
+    color: var(--color-text-dark);
 }
 
 .calendar-top {
@@ -455,7 +539,7 @@ h1 {
 }
 
 .recent-stat-label {
-    color: #555;
+    color: var(--color-text-secondary);
 }
 
 .recent-stat-value {
@@ -480,7 +564,7 @@ h1 {
 }
 
 .all-stat-label {
-    color: #555;
+    color: var(--color-text-secondary);
 }
 
 .all-stat-value {
@@ -513,13 +597,13 @@ h1 {
 
 .dashboard-chart-title {
     font: bold 13px sans-serif;
-    color: #333;
+    color: var(--color-text-primary);
     margin: 0 0 6px 0;
 }
 
 .dashboard-empty {
     font: 12px sans-serif;
-    color: #777;
+    color: var(--color-text-tertiary);
     margin: 6px 0;
 }
 
@@ -580,15 +664,15 @@ h1 {
 
 .player-select-trigger {
     padding: 4px 8px;
-    border: 1px solid #ccc;
-    background: white;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-bg-primary);
     cursor: pointer;
     min-width: 100px;
     user-select: none;
 }
 
 .player-select-trigger:hover {
-    background: #f9f9f9;
+    background: var(--color-bg-stripe);
 }
 
 .player-dropdown {
@@ -596,13 +680,13 @@ h1 {
     position: absolute;
     top: 100%;
     left: 0;
-    background: white;
-    border: 1px solid #ccc;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border-strong);
     max-height: 300px;
     overflow-y: auto;
     z-index: 100;
     min-width: 150px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px var(--color-shadow-light);
 }
 
 .player-dropdown.open {
@@ -619,7 +703,7 @@ h1 {
 }
 
 .player-option:hover {
-    background: #f1f1f1;
+    background: var(--color-bg-hover);
 }
 
 .player-option label {
@@ -629,14 +713,14 @@ h1 {
 
 .player-clear {
     padding: 4px 8px;
-    border-bottom: 1px solid #ccc;
-    color: #666;
+    border-bottom: 1px solid var(--color-border-strong);
+    color: var(--color-text-secondary);
     cursor: pointer;
     font-size: 0.9em;
 }
 
 .player-clear:hover {
-    background: #f1f1f1;
+    background: var(--color-bg-hover);
 }
 
 /* Setup view styles */
@@ -660,7 +744,7 @@ h1 {
 }
 
 .setup-container p {
-    color: #666;
+    color: var(--color-text-secondary);
     margin-bottom: 20px;
 }
 
@@ -674,22 +758,22 @@ h1 {
     width: 100%;
     padding: 12px;
     font-size: 14px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--color-border-strong);
     border-radius: 4px;
     box-sizing: border-box;
 }
 
 #dataUrlInput:focus {
     outline: none;
-    border-color: #4CAF50;
-    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px var(--color-accent-focus-ring);
 }
 
 #setupForm button {
     padding: 12px 24px;
     font-size: 16px;
-    background-color: #4CAF50;
-    color: white;
+    background-color: var(--color-accent);
+    color: var(--color-text-light);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -697,11 +781,11 @@ h1 {
 }
 
 #setupForm button:hover {
-    background-color: #45a049;
+    background-color: var(--color-accent-hover);
 }
 
 .setup-error {
-    color: #E63946;
+    color: var(--color-text-error);
     font-size: 14px;
     text-align: left;
     display: none;
@@ -713,7 +797,7 @@ h1 {
 }
 
 .setup-help a {
-    color: #4CAF50;
+    color: var(--color-accent);
     text-decoration: none;
 }
 

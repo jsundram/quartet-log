@@ -15,12 +15,29 @@ export function setBegin(earliestDate) {
     _begin = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
 }
 
-// Color configurations
-export const PART_COLORS = {
-    "V1": "#1ceaf9",
-    "V2": "#01c472",
-    "VA": "#007961"
-};
+// Color reads. Colors live in CSS custom properties on :root (see
+// static/css/viz.css). `getCssColor` reads a token by name; `getPartColor`
+// is the part-specific convenience that callers used to import as
+// PART_COLORS. Memoized after first read.
+const _colorCache = new Map();
+
+export function getCssColor(token) {
+    if (_colorCache.has(token)) return _colorCache.get(token);
+    const value = getComputedStyle(document.documentElement)
+        .getPropertyValue(token)
+        .trim();
+    _colorCache.set(token, value);
+    return value;
+}
+
+export function getPartColor(part) {
+    const token = {
+        V1: '--color-part-v1',
+        V2: '--color-part-v2',
+        VA: '--color-part-va',
+    }[part];
+    return token ? getCssColor(token) : getCssColor('--color-part-fallback');
+}
 
 // Regular player mappings
 export const PLAYER_ABBREVIATIONS = {

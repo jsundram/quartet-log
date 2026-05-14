@@ -1,5 +1,5 @@
 import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog';
-import { getBegin, PART_COLORS } from './config';
+import { getBegin, getPartColor, getCssColor } from './config';
 import { createEmptyRow, computeAggregateStats } from './dataProcessor';
 
 export class TabComponent {
@@ -267,7 +267,7 @@ export class TabComponent {
                 .attr("class", "count-display")
                 .text(` (${entries.length})`)
                 .style("margin-left", "5px")
-                .style("color", "gray");
+                .style("color", "var(--color-text-tertiary)");
         }
     }
 
@@ -295,7 +295,7 @@ export class TabComponent {
             .data([{ count, uniqueWorks, totalWorks, percent, days, piece}])
             .join("p")
             .text(d => `Total: ${d.count}; Unique: ${d.uniqueWorks} of ${d.totalWorks} (${d.percent}%); Days since last ${composerName}: ${d.days} (${d.piece}).`)
-            .style("color", "gray");
+            .style("color", "var(--color-text-tertiary)");
     }
 
     updateDataTable(composerDiv, composerData){
@@ -315,8 +315,8 @@ export class TabComponent {
     }
 
     getColorForPart(part, highlight = false) {
-        if (highlight) return "#ffcc00";
-        return PART_COLORS[part] || "gray";
+        if (highlight) return getCssColor('--color-highlight');
+        return getPartColor(part);
     }
 
     showTooltip(event, d) {

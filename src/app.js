@@ -156,7 +156,7 @@ export class App {
         d3.select('#update')
             .text('Loading data...')
             .style("margin-left", "10px")
-            .style("color", "gray");
+            .style("color", "var(--color-text-tertiary)");
     }
 
     updateDataStatus(timestamp, source) {
@@ -171,7 +171,7 @@ export class App {
         d3.select('#update')
             .text(`${updateText}; last session ${lastSession}`)
             .style("margin-left", "10px")
-            .style("color", source === 'cache' ? "#E63946" : "gray");
+            .style("color", source === 'cache' ? "var(--color-text-error)" : "var(--color-text-tertiary)");
     }
 
     filterData(filterType) {
@@ -318,7 +318,7 @@ export class App {
             d3.select('#update')
                 .html(`Error loading data: ${error.message}. <a href="#" id="reconfigureLink">Re-enter data URL</a>`)
                 .style("margin-left", "10px")
-                .style("color", "#E63946");
+                .style("color", "var(--color-text-error)");
 
             d3.select('#reconfigureLink').on('click', (event) => {
                 event.preventDefault();
@@ -328,7 +328,7 @@ export class App {
             d3.select('#update')
                 .text(`Error loading data: ${error.message}`)
                 .style("margin-left", "10px")
-                .style("color", "#E63946");
+                .style("color", "var(--color-text-error)");
         }
     }
 }

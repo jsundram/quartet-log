@@ -48,8 +48,6 @@ export class TableComponent {
             .join('th')
             .style('cursor', 'pointer')
             .style('padding', '8px')
-            .style('border', '1px solid #ddd')
-            .style('background-color', '#f5f5f5')
             .text(d => d.label)
             .on('click', (event, d) => {
                 const composer = d3.select(event.target.closest('.table-wrapper')).attr('data-composer');
@@ -119,9 +117,7 @@ export class TableComponent {
         const tbody = tableContainer.select('tbody');
         const rows = tbody.selectAll('tr')
             .data(sortedData)
-            .join('tr')
-            .style('border', '1px solid #ddd')
-            .style('background-color', (d, i) => i % 2 === 0 ? '#fff' : '#f9f9f9');
+            .join('tr');
 
         // Update cells
         rows.selectAll('td')
@@ -131,7 +127,6 @@ export class TableComponent {
             })))
             .join('td')
             .style('padding', '4px')
-            .style('border', '1px solid #ddd')
             .text(d => d.format(d.value));
 
         // Update header arrows

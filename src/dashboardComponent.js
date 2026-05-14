@@ -1,4 +1,4 @@
-import { PART_COLORS } from './config';
+import { getPartColor, getCssColor } from './config';
 import { normalizeDashboardPart } from './dataProcessor';
 import { DateFilterWidget } from './dateFilterWidget';
 
@@ -19,9 +19,6 @@ const PARTS = ['V1', 'V2', 'VA'];
 
 const MAX_DESIGN_WIDTH = 720;
 const MOBILE_BREAKPOINT = 600;
-
-const COMPOSER_BAR_FILL = '#4CAF50';
-const COMPOSER_BAR_FILL_SELECTED = '#2e7d32';
 
 // Sizing knobs chosen per viewport so the SVG is rendered at 1:1 scale
 // (viewBox dims = pixel dims), keeping fonts + bar heights readable on
@@ -175,13 +172,16 @@ export class DashboardComponent {
         segsEnter.append('text');
         const merged = segsEnter.merge(segs);
 
+        const textDark = getCssColor('--color-text-dark');
+        const textLight = getCssColor('--color-text-light');
+
         merged.select('rect')
             .attr('x', d => margin.left + d.x0 * innerWidth)
             .attr('y', 0)
             .attr('width', d => (d.x1 - d.x0) * innerWidth)
             .attr('height', height)
-            .attr('fill', d => PART_COLORS[d.part])
-            .attr('stroke', d => d.part === sel ? '#000' : 'none')
+            .attr('fill', d => getPartColor(d.part))
+            .attr('stroke', d => d.part === sel ? textDark : 'none')
             .attr('stroke-width', d => d.part === sel ? 2 : 0)
             .attr('opacity', d => sel && d.part !== sel ? 0.45 : 1)
             .style('cursor', 'pointer')
@@ -189,7 +189,7 @@ export class DashboardComponent {
 
         merged.select('text')
             // Light cyan V1 needs dark text; V2/VA are dark enough for white.
-            .attr('fill', d => d.part === 'V1' ? '#000' : '#fff')
+            .attr('fill', d => d.part === 'V1' ? textDark : textLight)
             .attr('font-size', s.partFont)
             .attr('font-weight', 'bold')
             .attr('text-anchor', 'middle')
@@ -268,12 +268,18 @@ export class DashboardComponent {
 
         rows2.attr('transform', d => `translate(0, ${y(d.name)})`);
 
+        const barFill = getCssColor('--color-accent');
+        const barFillSelected = getCssColor('--color-accent-selected');
+        const textPrimary = getCssColor('--color-text-primary');
+        const textPrimarySelected = getCssColor('--color-text-dark');
+        const textSecondary = getCssColor('--color-text-secondary');
+
         rows2.select('rect.composer-bar')
             .attr('x', 0)
             .attr('y', 0)
             .attr('height', y.bandwidth())
             .attr('width', d => x(d.count))
-            .attr('fill', d => d.name === sel ? COMPOSER_BAR_FILL_SELECTED : COMPOSER_BAR_FILL)
+            .attr('fill', d => d.name === sel ? barFillSelected : barFill)
             .attr('opacity', d => sel && d.name !== sel ? 0.5 : 1)
             .style('cursor', 'pointer')
             .on('click', (event, d) => this.toggleComposer(d.name));
@@ -285,7 +291,7 @@ export class DashboardComponent {
             .attr('text-anchor', 'end')
             .attr('font-size', s.composerNameFont)
             .attr('font-weight', d => d.name === sel ? 'bold' : 'normal')
-            .attr('fill', d => d.name === sel ? '#000' : '#333')
+            .attr('fill', d => d.name === sel ? textPrimarySelected : textPrimary)
             .style('cursor', 'pointer')
             .on('click', (event, d) => this.toggleComposer(d.name))
             .text(d => d.name);
@@ -295,7 +301,7 @@ export class DashboardComponent {
             .attr('y', y.bandwidth() / 2)
             .attr('dy', '0.32em')
             .attr('font-size', s.composerLabelFont)
-            .attr('fill', '#444')
+            .attr('fill', textSecondary)
             .attr('pointer-events', 'none')
             .text(d => `${((d.count / total) * 100).toFixed(1)}% (${d.count})`);
     }
