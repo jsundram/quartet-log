@@ -1,5 +1,5 @@
 import { COMPOSERS, ALL_TAB, DEFAULT_COMPOSER, loadWorkCatalog } from './catalog';
-import { setBegin } from './config';
+import { setBegin, invalidateColorCache } from './config';
 import { DataService } from './dataService';
 import { extractUniquePlayers } from './dataProcessor';
 import { NavigationComponent } from './navigationComponent';
@@ -8,6 +8,7 @@ import { CalendarComponent } from './calendarComponent';
 import { DashboardComponent } from './dashboardComponent';
 import { TableComponent } from './tableComponent';
 import { hasDataUrl, setDataUrl, getDataUrl, isValidGoogleSheetsUrl } from './urlConfig';
+import { initTheme, subscribe as subscribeTheme } from './themeManager';
 
 export class App {
     constructor() {
@@ -25,10 +26,31 @@ export class App {
     }
 
     start() {
+        // Initialize theme before any rendering so subscribers + initial
+        // CSS reads see the resolved theme. The head-script in index.html
+        // already applied the data-theme attribute pre-paint to avoid FOUC;
+        // initTheme re-applies it (defense in depth) and starts watching
+        // the OS prefers-color-scheme for auto-mode users.
+        initTheme();
+        subscribeTheme(() => this.onThemeChange());
+
         if (hasDataUrl()) {
             this.initialize();
         } else {
             this.showSetupView();
+        }
+    }
+
+    // Triggered when the user cycles the theme via the hamburger menu, or
+    // when the OS theme flips while we're in 'auto' mode. Rebuild every
+    // component that bakes colors at render time. Components driven purely
+    // by CSS variables (most of the page) update for free via the cascade.
+    onThemeChange() {
+        invalidateColorCache();
+        if (this.data) {
+            this.calendarComponent.rerender();
+            this.dashboardComponent.render();
+            this.filterData("date"); // refreshes tab content (play-square colors etc.)
         }
     }
 

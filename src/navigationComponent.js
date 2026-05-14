@@ -1,5 +1,13 @@
 import { clearDataUrl } from './urlConfig';
 import { DateFilterWidget } from './dateFilterWidget';
+import { getTheme, cycleTheme } from './themeManager';
+
+const THEME_LABEL = { auto: 'Theme: Auto', light: 'Theme: Light', dark: 'Theme: Dark' };
+
+function updateThemeLabel() {
+    const el = document.querySelector('[data-theme-label]');
+    if (el) el.textContent = THEME_LABEL[getTheme()];
+}
 
 // In-page views participate in hash routing. Each one corresponds to a
 // `#<view>` URL fragment so the browser back button works as expected.
@@ -58,9 +66,24 @@ export class NavigationComponent {
             if (e.key === "Escape") menuItems.style("display", "none");
         });
 
+        // Render the theme label once so it reflects whatever the head-
+        // script applied from localStorage on this page load.
+        updateThemeLabel();
+
         d3.selectAll(".menu-item").on("click", (event) => {
             event.preventDefault();
             const view = d3.select(event.currentTarget).attr("data-view");
+
+            // Theme: cycle through auto → light → dark → auto, keep the
+            // menu open so the user can see the label update. The actual
+            // re-render of color-baking components happens via the
+            // themeManager subscription wired up in app.js.
+            if (view === "theme") {
+                cycleTheme();
+                updateThemeLabel();
+                return;
+            }
+
             menuItems.style("display", "none");
 
             if (view === "download-csv") {

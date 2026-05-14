@@ -1,5 +1,6 @@
 import { getBegin, CALENDAR_CONFIG, getCssColor } from './config';
 import { peopleKeysFor, computeAggregateStats } from './dataProcessor';
+import { isCurrentlyDark } from './themeManager';
 
 export class CalendarComponent {
     constructor() {
@@ -13,7 +14,18 @@ export class CalendarComponent {
             .style("display", "none");
     }
 
+    // Called on theme change. Clears the existing calendar DOM and rebuilds
+    // with whatever color values the CSS now resolves to (the d3 SVG fills
+    // and the canvas-rendered legend gradient are both baked at build time
+    // so they need a fresh pass).
+    rerender() {
+        if (!this.data) return;
+        d3.select("#calendar").selectAll(":scope > *").remove();
+        this.createCalendar(this.data);
+    }
+
     createCalendar(data) {
+        this.data = data;
         const formatDate = d3.utcFormat("%x");
         const formatDay = i => "SMTWTFS"[i];
         const formatMonth = d3.utcFormat("%b");
@@ -28,11 +40,11 @@ export class CalendarComponent {
         const days = d3.timeDay.range(getBegin(), new Date()).map(d => ({date: d, value: v(d)}));
 
         // Color scale for calendar. In dark mode we invert interpolateGreens
-        // (high counts now map to the *light* end of the scale, low counts to
-        // dark) so busy days read as bright cells glowing against the dark bg.
-        // Theme is decided at page load; reload to switch.
-        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const interpolator = isDark
+        // (high counts map to the *light* end, low counts to dark) so busy
+        // days read as bright cells glowing against the dark bg. Theme can
+        // change at runtime via themeManager; rerender() rebuilds the whole
+        // calendar (including this scale) when that happens.
+        const interpolator = isCurrentlyDark()
             ? (t => d3.interpolateGreens(1 - t))
             : d3.interpolateGreens;
         const color = d3.scaleSequential(interpolator).domain([0, 10]);

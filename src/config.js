@@ -18,7 +18,9 @@ export function setBegin(earliestDate) {
 // Color reads. Colors live in CSS custom properties on :root (see
 // static/css/viz.css). `getCssColor` reads a token by name; `getPartColor`
 // is the part-specific convenience that callers used to import as
-// PART_COLORS. Memoized after first read.
+// PART_COLORS. Memoized after first read — themeManager.subscribe should
+// call invalidateColorCache() before re-rendering on a theme change so the
+// next read picks up the new resolved value.
 const _colorCache = new Map();
 
 export function getCssColor(token) {
@@ -28,6 +30,10 @@ export function getCssColor(token) {
         .trim();
     _colorCache.set(token, value);
     return value;
+}
+
+export function invalidateColorCache() {
+    _colorCache.clear();
 }
 
 export function getPartColor(part) {

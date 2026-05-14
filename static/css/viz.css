@@ -68,10 +68,21 @@
    through automatically (e.g. --color-text-primary still resolves to
    var(--gray-12), which now points at near-white #eee instead of #202020).
    Only tokens whose mapping doesn't naturally invert get an explicit override.
-   Theme is decided at page load; reload to switch (see calendarComponent.js
-   for matchMedia read of prefers-color-scheme). */
+
+   Applied via two parallel paths:
+   - `@media (prefers-color-scheme: dark) :root:not([data-theme])` — system
+     dark mode, when the user hasn't manually overridden.
+   - `:root[data-theme="dark"]` — explicit user choice (light is the base
+     :root, so it needs no override block).
+
+   The blocks duplicate; CSS has no syntactic way to share a block between an
+   @media-scoped selector and an attribute-scoped selector. Keep them in sync.
+
+   The theme manager (src/themeManager.js) sets/removes data-theme on <html>;
+   components that bake colors at render (calendarComponent) re-render via
+   subscribe(); see CLAUDE.md for the contract. */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme]) {
         /* Radix grayDark */
         --gray-1:  #111111;
         --gray-2:  #191919;
@@ -88,24 +99,41 @@
 
         color-scheme: dark;
 
-        /* Surface: the literal white default needs to flip; route through
-           gray-1 so dark mode page bg matches the gray scale. */
-        --color-bg-primary: var(--gray-1);
-
-        /* Emphasis text flips: in dark mode "darker than primary" makes no
-           sense; we go lighter than primary for the same emphasis role. */
+        --color-bg-primary:    var(--gray-1);
         --color-text-emphasis: #fff;
-
-        /* Shadows: dark-on-dark needs more alpha to register. */
         --color-shadow-subtle: rgba(0, 0, 0, 0.5);
         --color-shadow-light:  rgba(0, 0, 0, 0.4);
     }
 
-    /* Inactive tab bg looks too prominent on the dark page; let tabs blend
-       into the bg and rely on the borders + green active stripe for shape. */
-    #tabs button {
+    :root:not([data-theme]) #tabs button {
         background-color: transparent;
     }
+}
+
+:root[data-theme="dark"] {
+    --gray-1:  #111111;
+    --gray-2:  #191919;
+    --gray-3:  #222222;
+    --gray-4:  #2a2a2a;
+    --gray-5:  #313131;
+    --gray-6:  #3a3a3a;
+    --gray-7:  #484848;
+    --gray-8:  #606060;
+    --gray-9:  #6e6e6e;
+    --gray-10: #7b7b7b;
+    --gray-11: #b4b4b4;
+    --gray-12: #eeeeee;
+
+    color-scheme: dark;
+
+    --color-bg-primary:    var(--gray-1);
+    --color-text-emphasis: #fff;
+    --color-shadow-subtle: rgba(0, 0, 0, 0.5);
+    --color-shadow-light:  rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="dark"] #tabs button {
+    background-color: transparent;
 }
 
 body, html {

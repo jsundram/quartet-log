@@ -114,8 +114,19 @@ Per-year stats column shows four numbers (Pieces, Unique Pieces, People played w
 ### Configuration files
 
 - **`src/urlConfig.js`** — `getDataUrl` / `setDataUrl` / `hasDataUrl` / `isValidGoogleSheetsUrl` / `clearDataUrl`. URL persists in localStorage.
-- **`src/config.js`** — `getBegin` / `setBegin`, `getCssColor(token)` / `getPartColor(part)` (read colors from CSS custom properties on `:root`; the canonical source for V1/V2/VA part colors lives in `static/css/viz.css` as `--color-part-{v1|v2|va}`), `PLAYER_ABBREVIATIONS` (single-letter expansion: I→Isaac, E→Elaine, S→Shay, J→Josh), `PLAYER_ALIASES` (instrument-class-keyed), `CALENDAR_CONFIG`.
+- **`src/config.js`** — `getBegin` / `setBegin`, `getCssColor(token)` / `getPartColor(part)` (read colors from CSS custom properties on `:root`; the canonical source for V1/V2/VA part colors lives in `static/css/viz.css` as `--color-part-{v1|v2|va}`), `invalidateColorCache()` (clear the memo, called by the theme manager on toggle), `PLAYER_ABBREVIATIONS` (single-letter expansion: I→Isaac, E→Elaine, S→Shay, J→Josh), `PLAYER_ALIASES` (instrument-class-keyed), `CALENDAR_CONFIG`.
 - **`src/catalog.js`** — `ALL_WORKS` and `HAYDN_PETERS` (loaded in parallel from `all_works.json` and `haydn_peters.json`), `COMPOSERS` set, `ALL_TAB` / `isAllTab` / `isMiscTab` helpers, `getPetersVolume(work)` for Haydn tooltip suffix, `generateQuartetRouletteUrl(d)` per-composer URL builder.
+- **`src/themeManager.js`** — three-state theme: `auto` (default, follows `prefers-color-scheme`) / `light` / `dark`. Persists to `localStorage.theme`, applies via `<html data-theme="…">` (no attribute for auto). API: `getTheme()`, `setTheme(t)`, `cycleTheme()`, `isCurrentlyDark()` (resolved boolean), `subscribe(fn)` (listener for changes; fires on user toggle AND on system theme flip when in auto). Initial application is split: a synchronous inline `<script>` in `index.html` / `_pandoc_template.html` sets `data-theme` before first paint to avoid FOUC; `initTheme()` re-applies and attaches the matchMedia watcher after the bundle loads.
+
+### Theme system contract
+
+When adding a new component that bakes color values at render time (e.g. d3 `.attr('fill', getCssColor('--…'))`), it MUST re-render on theme change. The pattern is:
+
+1. Expose a method that rebuilds the component's DOM with fresh color reads — `rerender()` on `CalendarComponent` is the reference.
+2. App's `onThemeChange()` calls `invalidateColorCache()` FIRST (so the next `getCssColor` reads the new resolved value), then invokes each component's rerender.
+3. Components driven purely by CSS variables — i.e. no JS reads of color values, all `var(--…)` in stylesheets — update for free via the cascade and need no JS plumbing.
+
+The dashboard and the per-tab work-square renders already pick up new colors because they re-render on every filter change; `onThemeChange()` calls them directly (dashboard) or via `filterData("date")` (tabs). The calendar is the special case because it bakes the d3 interpolator + canvas legend ramp at construction.
 
 ### Browser compatibility
 

@@ -33,6 +33,19 @@
     $endif$
 
     <title>$if(title-prefix)$$title-prefix$ – $endif$$pagetitle$</title>
+
+    <!-- Pre-paint theme application — kept in sync with index.html. -->
+    <script>
+    (function () {
+        try {
+            var t = localStorage.getItem('theme');
+            if (t === 'light' || t === 'dark') {
+                document.documentElement.setAttribute('data-theme', t);
+            }
+        } catch (e) { /* localStorage blocked: fall through to auto */ }
+    })();
+    </script>
+
     <style>
         /* Color tokens — kept in sync with static/css/viz.css. */
         :root {
@@ -58,9 +71,11 @@
             --color-shadow-subtle:   rgba(0, 0, 0, 0.12);
         }
 
-        /* Dark mode — kept in sync with static/css/viz.css. */
+        /* Dark mode — kept in sync with static/css/viz.css. Two parallel
+           paths (media-query for system dark when no override, attribute
+           selector for explicit user choice). */
         @media (prefers-color-scheme: dark) {
-            :root {
+            :root:not([data-theme]) {
                 --gray-1:  #111111;
                 --gray-2:  #191919;
                 --gray-3:  #222222;
@@ -76,6 +91,22 @@
                 --color-bg-primary: var(--gray-1);
                 --color-shadow-subtle: rgba(0, 0, 0, 0.5);
             }
+        }
+        :root[data-theme="dark"] {
+            --gray-1:  #111111;
+            --gray-2:  #191919;
+            --gray-3:  #222222;
+            --gray-4:  #2a2a2a;
+            --gray-5:  #313131;
+            --gray-6:  #3a3a3a;
+            --gray-7:  #484848;
+            --gray-8:  #606060;
+            --gray-9:  #6e6e6e;
+            --gray-10: #7b7b7b;
+            --gray-11: #b4b4b4;
+            --gray-12: #eeeeee;
+            --color-bg-primary: var(--gray-1);
+            --color-shadow-subtle: rgba(0, 0, 0, 0.5);
         }
 
         /* from https://github.com/sindresorhus/github-markdown-css */
@@ -227,6 +258,13 @@
         <a href="index.html#calendar" class="menu-item">Calendar</a>
         <a href="index.html#dashboard" class="menu-item">Dashboard</a>
         <a href="about.html" class="menu-item">About</a>
+        <a href="#" class="menu-item menu-item--action" data-action="theme">
+            <svg class="menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="4"/>
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+            </svg>
+            <span data-theme-label>Theme: Auto</span>
+        </a>
     </div>
 </div>
 
@@ -298,6 +336,40 @@ $endfor$
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') menuItems.style.display = 'none';
     });
+
+    // Theme toggle — mirrors src/themeManager.js cycle (auto → light → dark
+    // → auto) and writes to the same localStorage key + same data-theme
+    // attribute, so a choice made here persists into the SPA and vice versa.
+    // KEEP THIS IN SYNC with themeManager.js if the cycle ever changes.
+    var THEME_LABEL = { auto: 'Theme: Auto', light: 'Theme: Light', dark: 'Theme: Dark' };
+    var ORDER = ['auto', 'light', 'dark'];
+    function readTheme() {
+        try {
+            var t = localStorage.getItem('theme');
+            return (t === 'light' || t === 'dark' || t === 'auto') ? t : 'auto';
+        } catch (e) { return 'auto'; }
+    }
+    function applyTheme(t) {
+        if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+        else document.documentElement.setAttribute('data-theme', t);
+    }
+    function updateLabel() {
+        var el = document.querySelector('[data-theme-label]');
+        if (el) el.textContent = THEME_LABEL[readTheme()];
+    }
+    updateLabel();
+    var themeLink = document.querySelector('[data-action="theme"]');
+    if (themeLink) {
+        themeLink.addEventListener('click', function (e) {
+            e.preventDefault();
+            var next = ORDER[(ORDER.indexOf(readTheme()) + 1) % ORDER.length];
+            try { localStorage.setItem('theme', next); } catch (err) { /* blocked */ }
+            applyTheme(next);
+            updateLabel();
+            // Keep menu open so the user can see the label change, matching
+            // the SPA's behavior.
+        });
+    }
 })();
 </script>
 </body>

@@ -18,6 +18,21 @@
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
 
+    <!-- Pre-paint theme application. Reads localStorage and sets data-theme
+         on <html> before CSS resolves, so light/dark overrides don't flash.
+         Kept inline + synchronous on purpose; runtime source of truth is
+         src/themeManager.js after the bundle loads. -->
+    <script>
+    (function () {
+        try {
+            var t = localStorage.getItem('theme');
+            if (t === 'light' || t === 'dark') {
+                document.documentElement.setAttribute('data-theme', t);
+            }
+        } catch (e) { /* localStorage blocked: fall through to auto */ }
+    })();
+    </script>
+
     <script src="./d3.v7.min.js"></script>
     <link rel="stylesheet" type="text/css" href="./viz.css">
 </head>
@@ -33,6 +48,13 @@
             <a href="#" class="menu-item" data-view="calendar">Calendar</a>
             <a href="#" class="menu-item" data-view="dashboard">Dashboard</a>
             <a href="about.html" class="menu-item" data-view="about">About</a>
+            <a href="#" class="menu-item menu-item--action" data-view="theme">
+                <svg class="menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4"/>
+                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+                </svg>
+                <span data-theme-label>Theme: Auto</span>
+            </a>
             <a href="#" class="menu-item menu-item--action" data-view="download-csv">
                 <svg class="menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
