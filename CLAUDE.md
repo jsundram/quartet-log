@@ -11,6 +11,8 @@ Guidance for Claude Code (claude.ai/code) when working with this repository.
 ```
 Outputs to `./last_deploy/` with sourcemaps. Uses `fswatch` (`brew install fswatch`) to re-copy static assets when `index.html` / `CNAME` / `static/` / `md/` change, and to re-run tests on `src/` / `test/` changes (compact dot-reporter output).
 
+If `.dev-data-url` exists (gitignored, one line), the dev build prints a clickable `Preconfigured: http://127.0.0.1:$PORT/?data=<encoded>` line above esbuild's `Local:` URLs. The app's `consumeDataParam()` (`src/urlConfig.js`) reads `?data=…` on first load and persists it to localStorage, so you skip the setup prompt.
+
 **Production build:**
 ```bash
 ./build.sh --prod
@@ -151,5 +153,6 @@ Pandoc reads `gfm+attributes+implicit_figures` so `![alt](path){width=600px}` sy
 - `archive/data.csv` — locally-exported full CSV used by the audit script. Personal data; gitignored.
 - `archive/*.zip` — pre-existing deploy snapshots; gitignored via `*.zip`.
 - `alias-output.txt` — output of `audit_aliases.py` if redirected; gitignored.
+- `.dev-data-url` — single-line Google Sheets CSV URL used by `build.sh` (dev mode only) to print a preconfigured `?data=…` URL. Personal; gitignored.
 - `last_deploy/` — build output; gitignored.
 - `md/*.html` — pandoc previously wrote here; now writes directly to `last_deploy/`. The `md/*.html` glob is still gitignored as a safety net, with `!md/_pandoc_template.html` exception.

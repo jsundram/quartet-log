@@ -152,6 +152,18 @@ else
         echo "      assets and re-run tests on save during watch mode."
     fi
 
+    # If a .dev-data-url file exists, print a clickable URL that pre-seeds
+    # the Google Sheets source via ?data=<encoded>. urlConfig.consumeDataParam()
+    # picks it up on first load and stores it in localStorage. File is gitignored.
+    if [[ -f .dev-data-url ]]; then
+        DEV_URL=$(head -n 1 .dev-data-url | tr -d '[:space:]')
+        if [[ -n "$DEV_URL" ]]; then
+            ENCODED=$(node -e "process.stdout.write(encodeURIComponent(process.argv[1]))" "$DEV_URL")
+            echo ""
+            echo " > Preconfigured: http://127.0.0.1:$PORT/?data=$ENCODED"
+        fi
+    fi
+
     eval "$BASE_ESBUILD_CMD \
         --sourcemap \
         --watch \
