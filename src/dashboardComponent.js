@@ -62,6 +62,8 @@ export class DashboardComponent {
 
     init(data) {
         this.data = data;
+        document.getElementById('dashboardComposerChartTitle').textContent = `Top ${TOP_N} composers`;
+        document.getElementById('dashboardMusicianChartTitle').textContent = `Top ${TOP_N} musicians`;
         this.dateFilter.render();
         this.render();
         this.mounted = true;
