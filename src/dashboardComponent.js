@@ -1,21 +1,30 @@
 import { getPartColor, getCssColor } from './config';
-import { normalizeDashboardPart } from './dataProcessor';
+import { normalizeDashboardPart, peopleKeysFor } from './dataProcessor';
 import { DateFilterWidget } from './dateFilterWidget';
 
-// Dashboard view: two interactive crossfilter charts.
+// Dashboard view: a set of crossfilter charts that all share the same date
+// range plus a registry of dimensions. Each chart "owns" one dimension and
+// shows data with every OTHER dimension's selection applied — the standard
+// crossfilter pattern.
 //
-// - Composer bar chart: top-N composers by play count (with date + part
-//   filters applied, NOT composer — that's this chart's dimension).
-// - Part stacked bar: V1 / V2 / VA segments (with date + composer filters
-//   applied, NOT part).
-//
-// Selection is single-value per dimension. Clicking the active value
-// toggles it off. State is held in `this.state` and mutated only via
-// togglePart / toggleComposer / the DateFilterWidget callback; every
-// mutation re-renders both charts.
+// Adding a chart:
+//   1. Add an entry to DIMENSIONS with `matches(row, selectedValue)`.
+//   2. Add a render method that calls `this.filteredRows(key)` and wires
+//      clicks through `this.toggle(key, value)`.
+//   3. Call it from `render()` and add a container <div> in index.html.
 
-const TOP_COMPOSERS = 20;
+const TOP_N = 20;
 const PARTS = ['V1', 'V2', 'VA'];
+
+// Dimension registry. Selection state lives in this.state.selections[key];
+// `matches(row, selectedValue)` returns true if the row should pass the
+// dimension's filter when `selectedValue` is selected. `null` means no
+// selection — that dimension imposes no filter.
+const DIMENSIONS = {
+    part:     { matches: (d, sel) => normalizeDashboardPart(d.part) === sel },
+    composer: { matches: (d, sel) => d.composer === sel },
+    musician: { matches: (d, sel) => peopleKeysFor(d).includes(sel) },
+};
 
 const MAX_DESIGN_WIDTH = 720;
 const MOBILE_BREAKPOINT = 600;
@@ -27,10 +36,10 @@ function sizing(width) {
     const mobile = width < MOBILE_BREAKPOINT;
     return {
         mobile,
-        composerRowHeight: mobile ? 32 : 22,
-        composerNameFont: mobile ? 14 : 12,
-        composerLabelFont: mobile ? 13 : 11,
-        composerMargin: mobile
+        rankedRowHeight: mobile ? 32 : 22,
+        rankedNameFont: mobile ? 14 : 12,
+        rankedLabelFont: mobile ? 13 : 11,
+        rankedMargin: mobile
             ? { top: 6, right: 90, bottom: 6, left: 96 }
             : { top: 8, right: 96, bottom: 8, left: 120 },
         partHeight: mobile ? 44 : 36,
@@ -42,8 +51,7 @@ export class DashboardComponent {
     constructor() {
         this.data = null;
         this.state = {
-            selectedPart: null,
-            selectedComposer: null,
+            selections: Object.fromEntries(Object.keys(DIMENSIONS).map(k => [k, null])),
         };
         this.dateFilter = new DateFilterWidget(
             '#dashboardDateFilter',
@@ -82,27 +90,26 @@ export class DashboardComponent {
         if (this.mounted) this.render();
     }
 
-    // Apply the dashboard's filters to `this.data`. Exclude flags let each
-    // chart drop its own dimension's filter (standard crossfilter pattern).
-    filteredRows({ excludePart = false, excludeComposer = false } = {}) {
+    // Rows matching every active selection except `excludeKey`'s (so a chart
+    // showing dimension X drops X's own filter and sees everything else).
+    filteredRows(excludeKey = null) {
         const [start, end] = this.dateFilter.getRange();
-        const selPart = this.state.selectedPart;
-        const selComp = this.state.selectedComposer;
+        const sels = this.state.selections;
         return this.data.filter(d => {
             if (d.timestamp < start || d.timestamp > end) return false;
-            if (!excludePart && selPart && normalizeDashboardPart(d.part) !== selPart) return false;
-            if (!excludeComposer && selComp && d.composer !== selComp) return false;
+            for (const [key, dim] of Object.entries(DIMENSIONS)) {
+                if (key === excludeKey) continue;
+                const sel = sels[key];
+                if (sel !== null && !dim.matches(d, sel)) return false;
+            }
             return true;
         });
     }
 
-    togglePart(part) {
-        this.state.selectedPart = this.state.selectedPart === part ? null : part;
-        this.render();
-    }
-
-    toggleComposer(name) {
-        this.state.selectedComposer = this.state.selectedComposer === name ? null : name;
+    // Toggle a dimension's selection: clicking the active value clears it.
+    toggle(key, value) {
+        const cur = this.state.selections[key];
+        this.state.selections[key] = cur === value ? null : value;
         this.render();
     }
 
@@ -110,13 +117,14 @@ export class DashboardComponent {
         if (!this.data) return;
         this.renderPartBar();
         this.renderComposerChart();
+        this.renderMusicianChart();
     }
 
     // ---------------- Part stacked bar ----------------
 
     renderPartBar() {
         const root = d3.select('#dashboardPartBar');
-        const rows = this.filteredRows({ excludePart: true });
+        const rows = this.filteredRows('part');
 
         const counts = new Map(PARTS.map(p => [p, 0]));
         let total = 0;
@@ -129,11 +137,7 @@ export class DashboardComponent {
         });
 
         if (total === 0) {
-            root.selectAll('svg').remove();
-            root.selectAll('p.dashboard-empty').data([1])
-                .join('p')
-                .attr('class', 'dashboard-empty')
-                .text('No data in the current filter.');
+            this.renderEmpty(root);
             return;
         }
         root.selectAll('p.dashboard-empty').remove();
@@ -151,10 +155,10 @@ export class DashboardComponent {
         const s = sizing(width);
         const height = s.partHeight;
 
-        // Anchor the segments to the same horizontal band as the composer
-        // chart's bar plot area, so the two stacks align visually instead of
+        // Anchor the segments to the same horizontal band as the ranked
+        // charts' bar plot area, so the stacks align visually instead of
         // the part bar stretching to the SVG edges.
-        const margin = s.composerMargin;
+        const margin = s.rankedMargin;
         const innerWidth = width - margin.left - margin.right;
 
         const svg = root.selectAll('svg').data([1]).join('svg')
@@ -163,7 +167,7 @@ export class DashboardComponent {
             .attr('viewBox', `0 0 ${width} ${height}`)
             .style('display', 'block');
 
-        const sel = this.state.selectedPart;
+        const sel = this.state.selections.part;
 
         const segs = svg.selectAll('g.seg').data(data, d => d.part);
         segs.exit().remove();
@@ -185,7 +189,7 @@ export class DashboardComponent {
             .attr('stroke-width', d => d.part === sel ? 2 : 0)
             .attr('opacity', d => sel && d.part !== sel ? 0.45 : 1)
             .style('cursor', 'pointer')
-            .on('click', (event, d) => this.togglePart(d.part));
+            .on('click', (event, d) => this.toggle('part', d.part));
 
         merged.select('text')
             // Light cyan V1 needs dark text; V2/VA are dark enough for white.
@@ -206,32 +210,47 @@ export class DashboardComponent {
             });
     }
 
-    // ---------------- Composer bar chart ----------------
+    // ---------------- Ranked charts ----------------
 
     renderComposerChart() {
-        const root = d3.select('#dashboardComposerChart');
-        const rows = this.filteredRows({ excludeComposer: true });
-
+        const rows = this.filteredRows('composer');
         const counts = d3.rollup(rows, v => v.length, d => d.composer);
-        const data = Array.from(counts, ([name, count]) => ({ name, count }))
+        const data = Array.from(counts, ([name, count]) => ({ name, count }));
+        this.renderRankedBars('#dashboardComposerChart', 'composer', data);
+    }
+
+    renderMusicianChart() {
+        const rows = this.filteredRows('musician');
+        // Each row contributes 1 to every unique musician it contains. A
+        // session of 4 musicians gives +1 to each of them, not +4 to one.
+        const counts = new Map();
+        rows.forEach(d => {
+            const seen = new Set(peopleKeysFor(d));
+            seen.forEach(name => counts.set(name, (counts.get(name) ?? 0) + 1));
+        });
+        const data = Array.from(counts, ([name, count]) => ({ name, count }));
+        this.renderRankedBars('#dashboardMusicianChart', 'musician', data);
+    }
+
+    // Generic top-N horizontal bar chart, parameterized by dimension key.
+    // Click toggles `this.state.selections[dimensionKey]`.
+    renderRankedBars(rootSelector, dimensionKey, allData) {
+        const root = d3.select(rootSelector);
+        const data = allData
             .sort((a, b) => d3.descending(a.count, b.count))
-            .slice(0, TOP_COMPOSERS);
+            .slice(0, TOP_N);
         const total = d3.sum(data, d => d.count);
 
         if (data.length === 0) {
-            root.selectAll('svg').remove();
-            root.selectAll('p.dashboard-empty').data([1])
-                .join('p')
-                .attr('class', 'dashboard-empty')
-                .text('No data in the current filter.');
+            this.renderEmpty(root);
             return;
         }
         root.selectAll('p.dashboard-empty').remove();
 
         const width = Math.min(MAX_DESIGN_WIDTH, this.measureWidth());
         const s = sizing(width);
-        const margin = s.composerMargin;
-        const rowHeight = s.composerRowHeight;
+        const margin = s.rankedMargin;
+        const rowHeight = s.rankedRowHeight;
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = data.length * rowHeight;
         const totalHeight = innerHeight + margin.top + margin.bottom;
@@ -255,15 +274,17 @@ export class DashboardComponent {
             .attr('class', 'chart-inner')
             .attr('transform', `translate(${margin.left}, ${margin.top})`);
 
-        const sel = this.state.selectedComposer;
+        const sel = this.state.selections[dimensionKey];
 
         // Each row is a <g> holding the name (left), bar, and count label.
-        const rowSel = inner.selectAll('g.composer-row').data(data, d => d.name);
+        // Key by name AND dimension so switching the chart's data fully
+        // rebuilds DOM (avoids stale rows when totals shift).
+        const rowSel = inner.selectAll('g.ranked-row').data(data, d => d.name);
         rowSel.exit().remove();
-        const rowEnter = rowSel.enter().append('g').attr('class', 'composer-row');
-        rowEnter.append('text').attr('class', 'composer-name');
-        rowEnter.append('rect').attr('class', 'composer-bar');
-        rowEnter.append('text').attr('class', 'composer-label');
+        const rowEnter = rowSel.enter().append('g').attr('class', 'ranked-row');
+        rowEnter.append('text').attr('class', 'ranked-name');
+        rowEnter.append('rect').attr('class', 'ranked-bar');
+        rowEnter.append('text').attr('class', 'ranked-label');
         const rows2 = rowEnter.merge(rowSel);
 
         rows2.attr('transform', d => `translate(0, ${y(d.name)})`);
@@ -274,7 +295,7 @@ export class DashboardComponent {
         const textPrimarySelected = getCssColor('--color-text-emphasis');
         const textSecondary = getCssColor('--color-text-secondary');
 
-        rows2.select('rect.composer-bar')
+        rows2.select('rect.ranked-bar')
             .attr('x', 0)
             .attr('y', 0)
             .attr('height', y.bandwidth())
@@ -282,27 +303,35 @@ export class DashboardComponent {
             .attr('fill', d => d.name === sel ? barFillSelected : barFill)
             .attr('opacity', d => sel && d.name !== sel ? 0.5 : 1)
             .style('cursor', 'pointer')
-            .on('click', (event, d) => this.toggleComposer(d.name));
+            .on('click', (event, d) => this.toggle(dimensionKey, d.name));
 
-        rows2.select('text.composer-name')
+        rows2.select('text.ranked-name')
             .attr('x', -8)
             .attr('y', y.bandwidth() / 2)
             .attr('dy', '0.32em')
             .attr('text-anchor', 'end')
-            .attr('font-size', s.composerNameFont)
+            .attr('font-size', s.rankedNameFont)
             .attr('font-weight', d => d.name === sel ? 'bold' : 'normal')
             .attr('fill', d => d.name === sel ? textPrimarySelected : textPrimary)
             .style('cursor', 'pointer')
-            .on('click', (event, d) => this.toggleComposer(d.name))
+            .on('click', (event, d) => this.toggle(dimensionKey, d.name))
             .text(d => d.name);
 
-        rows2.select('text.composer-label')
+        rows2.select('text.ranked-label')
             .attr('x', d => x(d.count) + 6)
             .attr('y', y.bandwidth() / 2)
             .attr('dy', '0.32em')
-            .attr('font-size', s.composerLabelFont)
+            .attr('font-size', s.rankedLabelFont)
             .attr('fill', textSecondary)
             .attr('pointer-events', 'none')
             .text(d => `${((d.count / total) * 100).toFixed(1)}% (${d.count})`);
+    }
+
+    renderEmpty(root) {
+        root.selectAll('svg').remove();
+        root.selectAll('p.dashboard-empty').data([1])
+            .join('p')
+            .attr('class', 'dashboard-empty')
+            .text('No data in the current filter.');
     }
 }

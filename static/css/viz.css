@@ -728,7 +728,8 @@ h1 {
 
 /* SVGs inside the dashboard share the same font as the rest of the app */
 #dashboardPartBar svg,
-#dashboardComposerChart svg {
+#dashboardComposerChart svg,
+#dashboardMusicianChart svg {
     font-family: sans-serif;
 }
 
