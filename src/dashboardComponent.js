@@ -1,6 +1,7 @@
 import { getPartColor, getCssColor } from './config';
 import { normalizeDashboardPart, peopleKeysFor } from './dataProcessor';
 import { DateFilterWidget } from './dateFilterWidget';
+import { MusicianNetworkComponent } from './musicianNetworkComponent';
 
 // Dashboard view: a set of crossfilter charts that all share the same date
 // range plus a registry of dimensions. Each chart "owns" one dimension and
@@ -57,6 +58,12 @@ export class DashboardComponent {
             '#dashboardDateFilter',
             () => this.render(),
         );
+        this.networkComponent = new MusicianNetworkComponent({
+            getFilteredRows: () => this.filteredRows(null),
+            measureWidth: () => this.measureWidth(),
+            onToggleMusician: (name) => this.toggle('musician', name),
+            getSelectedMusician: () => this.state.selections.musician,
+        });
         this.mounted = false;
     }
 
@@ -65,6 +72,7 @@ export class DashboardComponent {
         document.getElementById('dashboardComposerChartTitle').textContent = `Top ${TOP_N} composers`;
         document.getElementById('dashboardMusicianChartTitle').textContent = `Top ${TOP_N} musicians`;
         this.dateFilter.render();
+        this.networkComponent.init('#dashboardMusicianNetwork');
         this.render();
         this.mounted = true;
         // Re-render on resize so the SVG width tracks the viewport (1:1 pixel
@@ -120,6 +128,7 @@ export class DashboardComponent {
         this.renderPartBar();
         this.renderComposerChart();
         this.renderMusicianChart();
+        this.networkComponent.render();
     }
 
     // ---------------- Part stacked bar ----------------

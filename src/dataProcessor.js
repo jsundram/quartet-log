@@ -105,6 +105,101 @@ export function computeAggregateStats(rows) {
     };
 }
 
+// Co-occurrence network helpers. The spreadsheet owner is already excluded
+// from peopleKeysFor — player1/player2/player3 are the OTHER three quartet
+// members (the user's slot is implicit in d.part, never listed in any
+// player slot). So these helpers consume peopleKeysFor directly, with no
+// user-identity inference needed.
+
+// Count sessions per musician. Each musician counts once per row even
+// if they appear twice (e.g. duplicate othersList entry).
+export function computeNodeCounts(rows) {
+    const counts = new Map();
+    rows.forEach(d => {
+        const seen = new Set(peopleKeysFor(d));
+        seen.forEach(name => counts.set(name, (counts.get(name) ?? 0) + 1));
+    });
+    return Array.from(counts, ([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+// For every unordered pair (a < b lexicographically) of musicians in the
+// same session where both endpoints are in allowedSet, count co-occurrences.
+export function computeEdgeCounts(rows, allowedSet) {
+    const counts = new Map();
+    rows.forEach(d => {
+        const people = Array.from(new Set(peopleKeysFor(d)))
+            .filter(n => allowedSet.has(n))
+            .sort();
+        for (let i = 0; i < people.length; i++) {
+            for (let j = i + 1; j < people.length; j++) {
+                const key = `${people[i]}\t${people[j]}`;
+                counts.set(key, (counts.get(key) ?? 0) + 1);
+            }
+        }
+    });
+    return Array.from(counts, ([key, weight]) => {
+        const [source, target] = key.split('\t');
+        return { source, target, weight };
+    });
+}
+
+// Build the network: nodes are musicians with at least `minCount` sessions,
+// edges are co-occurrences between those nodes. `minCount` is the user-facing
+// threshold from the dashboard slider; a value of 1 includes every musician
+// who appeared at all.
+export function buildNetworkData(rows, minCount = 1) {
+    const allNodes = computeNodeCounts(rows);
+    const nodes = allNodes.filter(n => n.count >= minCount);
+    const allowed = new Set(nodes.map(n => n.name));
+    const edges = computeEdgeCounts(rows, allowed);
+    return { nodes, edges };
+}
+
+// Median session count across all musicians in the dataset. Used as the
+// initial slider value so the graph opens at a balanced midpoint by default.
+export function medianNodeCount(rows) {
+    const counts = computeNodeCounts(rows).map(n => n.count);
+    if (counts.length === 0) return 1;
+    return counts[Math.floor(counts.length / 2)];
+}
+
+// Build short display labels from canonical names. Group by first token: if
+// the first token is unique, that's the label; if two share, fall back to
+// "First L." (first-token + last-name's initial); if those still collide,
+// fall back to the full canonical name.
+export function disambiguateLabels(nodes) {
+    const labels = new Map();
+    const byFirst = new Map();
+    nodes.forEach(n => {
+        const first = n.name.split(/\s+/)[0];
+        if (!byFirst.has(first)) byFirst.set(first, []);
+        byFirst.get(first).push(n.name);
+    });
+    byFirst.forEach((names, first) => {
+        if (names.length === 1) {
+            labels.set(names[0], first);
+            return;
+        }
+        const shortByLastInitial = new Map();
+        names.forEach(name => {
+            const parts = name.split(/\s+/);
+            const lastInitial = parts.length > 1 ? parts[parts.length - 1][0] : '';
+            const short = lastInitial ? `${first} ${lastInitial}.` : first;
+            if (!shortByLastInitial.has(short)) shortByLastInitial.set(short, []);
+            shortByLastInitial.get(short).push(name);
+        });
+        shortByLastInitial.forEach((sharingNames, short) => {
+            if (sharingNames.length === 1) {
+                labels.set(sharingNames[0], short);
+            } else {
+                sharingNames.forEach(name => labels.set(name, name));
+            }
+        });
+    });
+    return labels;
+}
+
 export function parseWork(title) {
     // Incompletely played works are usually noted like e.g. 17#2:I.
     let incomplete = title.indexOf(":") != -1;

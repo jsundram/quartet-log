@@ -10,7 +10,25 @@ import {
     peopleKeysFor,
     computeAggregateStats,
     normalizeDashboardPart,
+    computeNodeCounts,
+    computeEdgeCounts,
+    buildNetworkData,
+    medianNodeCount,
+    disambiguateLabels,
 } from '../src/dataProcessor.js';
+
+// Hand-built rows for the network helpers. Reflects the real data model:
+// player1/player2/player3 are the OTHER three quartet members — the user
+// is implicit via d.part and never listed in any player slot. othersList
+// is the normalized form of the "Others?" column.
+function row(p1, p2, p3, others = []) {
+    return {
+        player1: p1,
+        player2: p2,
+        player3: p3,
+        othersList: others.map(name => ({ name, instrument: null, class: null })),
+    };
+}
 
 // canonicalize tests depend on real entries in PLAYER_ALIASES (Jen, Isaac).
 // If those entries are removed, these tests should fail loudly — that's the
@@ -78,7 +96,7 @@ describe('canonicalize', () => {
 
     it('returns the input when name is not in the alias map', () => {
         assert.equal(canonicalize('Marshall', 'upper'), 'Marshall');
-        assert.equal(canonicalize('Elaine', 'cello'), 'Elaine');
+        assert.equal(canonicalize('Alice', 'cello'), 'Alice');
     });
 
     it('skips aliasing when class is null/undefined', () => {
@@ -121,9 +139,9 @@ describe('parseOthers', () => {
 
     it('splits on commas as a fallback separator', () => {
         assert.deepEqual(
-            parseOthers('Elaine (vla2), josh (vc2), Nathaniel Jarrett (asst v2)'),
+            parseOthers('Alice (vla2), josh (vc2), Nathaniel Jarrett (asst v2)'),
             [
-                { name: 'Elaine', instrument: 'vla2' },
+                { name: 'Alice', instrument: 'vla2' },
                 { name: 'josh', instrument: 'vc2' },
                 { name: 'Nathaniel Jarrett', instrument: 'asst v2' },
             ],
@@ -354,5 +372,208 @@ describe('normalizeDashboardPart', () => {
         assert.equal(normalizeDashboardPart(undefined), null);
         assert.equal(normalizeDashboardPart('VC'), null);
         assert.equal(normalizeDashboardPart('piano'), null);
+    });
+});
+
+describe('computeNodeCounts', () => {
+    it('counts unique sessions per musician from peopleKeysFor', () => {
+        const rows = [
+            row('Alice', 'Bob', 'Carol'),
+            row('Alice', 'Dave', 'Carol'),
+            row('Alice', 'Bob', null),
+        ];
+        const counts = computeNodeCounts(rows);
+        assert.deepEqual(counts, [
+            { name: 'Alice', count: 3 },
+            { name: 'Bob', count: 2 },
+            { name: 'Carol', count: 2 },
+            { name: 'Dave', count: 1 },
+        ]);
+    });
+
+    it('de-dupes within a session (othersList duplicate)', () => {
+        const rows = [row('Alice', null, null, ['Alice'])];
+        const counts = computeNodeCounts(rows);
+        assert.deepEqual(counts, [{ name: 'Alice', count: 1 }]);
+    });
+
+    it('sorts desc by count, asc by name on ties', () => {
+        const rows = [
+            row('Zach', 'Alice', null),
+            row('Bob', 'Alice', null),
+        ];
+        const counts = computeNodeCounts(rows);
+        assert.deepEqual(counts.map(c => c.name), ['Alice', 'Bob', 'Zach']);
+    });
+
+    // The Top Musicians dashboard chart uses the same per-session de-dup over
+    // peopleKeysFor. If this invariant ever breaks, the network's node set
+    // would diverge from the Top Musicians chart's data — which is the
+    // exact bug that surfaced when an inferred "user" was incorrectly
+    // filtered out of the network. Lock the contract.
+    it('matches per-session de-duped peopleKeysFor counts (Top Musicians parity)', () => {
+        const rows = [
+            row('Alice', 'Bob', 'Carol', ['Dave']),
+            row('Alice', 'Bob', null),
+            row('Bob', 'Carol', null, ['Alice']),
+        ];
+        const counts = computeNodeCounts(rows);
+        const expected = new Map();
+        rows.forEach(r => {
+            new Set(peopleKeysFor(r)).forEach(name => {
+                expected.set(name, (expected.get(name) ?? 0) + 1);
+            });
+        });
+        assert.equal(counts.length, expected.size);
+        counts.forEach(({ name, count }) => assert.equal(count, expected.get(name)));
+    });
+});
+
+describe('computeEdgeCounts', () => {
+    it('generates all unordered pairs in a session', () => {
+        const rows = [row('Alice', 'Bob', null, ['Carol'])];
+        const allowed = new Set(['Alice', 'Bob', 'Carol']);
+        const edges = computeEdgeCounts(rows, allowed);
+        assert.equal(edges.length, 3);
+        const keys = edges.map(e => `${e.source}-${e.target}`).sort();
+        assert.deepEqual(keys, ['Alice-Bob', 'Alice-Carol', 'Bob-Carol']);
+    });
+
+    it('increments existing pairs across sessions', () => {
+        const rows = [
+            row('Alice', 'Bob', null),
+            row('Alice', 'Bob', null),
+            row('Alice', 'Carol', null),
+        ];
+        const allowed = new Set(['Alice', 'Bob', 'Carol']);
+        const edges = computeEdgeCounts(rows, allowed);
+        const ab = edges.find(e => e.source === 'Alice' && e.target === 'Bob');
+        const ac = edges.find(e => e.source === 'Alice' && e.target === 'Carol');
+        assert.equal(ab.weight, 2);
+        assert.equal(ac.weight, 1);
+    });
+
+    it('skips pairs where either endpoint is not in allowedSet', () => {
+        const rows = [row('Alice', 'Bob', null, ['Eve'])];
+        const allowed = new Set(['Alice', 'Bob']);
+        const edges = computeEdgeCounts(rows, allowed);
+        assert.equal(edges.length, 1);
+        assert.equal(edges[0].source, 'Alice');
+        assert.equal(edges[0].target, 'Bob');
+    });
+
+    it('returns source < target lexicographically', () => {
+        const rows = [row('Zach', 'Alice', null)];
+        const allowed = new Set(['Zach', 'Alice']);
+        const edges = computeEdgeCounts(rows, allowed);
+        assert.equal(edges[0].source, 'Alice');
+        assert.equal(edges[0].target, 'Zach');
+    });
+});
+
+describe('buildNetworkData', () => {
+    it('drops nodes below minCount', () => {
+        const rows = [
+            row('Alice', 'Bob', null, ['Carol', 'Dave']),
+            row('Alice', 'Bob', null),
+            row('Alice', null, null),
+        ];
+        // Alice=3, Bob=2, Carol=1, Dave=1
+        const { nodes } = buildNetworkData(rows, 2);
+        assert.deepEqual(nodes.map(n => n.name), ['Alice', 'Bob']);
+    });
+
+    it('drops edges whose endpoints are not both in the node set', () => {
+        const rows = [
+            row('Alice', 'Bob', null, ['Carol']),
+            row('Alice', 'Bob', null),
+            row('Alice', null, null),
+        ];
+        // Alice=3, Bob=2, Carol=1. minCount=2 → only Alice + Bob.
+        const { edges } = buildNetworkData(rows, 2);
+        assert.equal(edges.length, 1);
+        assert.equal(edges[0].source, 'Alice');
+        assert.equal(edges[0].target, 'Bob');
+    });
+
+    it('defaults minCount to 1 (every musician with any session)', () => {
+        const rows = [
+            row('Alice', 'Bob', null),
+            row('Carol', null, null),
+        ];
+        const { nodes } = buildNetworkData(rows);
+        assert.equal(nodes.length, 3);
+    });
+
+    // Regression: a previous iteration "inferred a user" and stripped the
+    // top-1 musician from every session. Lock the invariant that the #1
+    // musician by sessions is always included as long as their count meets
+    // the threshold.
+    it('includes the top-1 musician when their count meets the threshold', () => {
+        const rows = [
+            row('Alice', 'Bob', 'Carol'),
+            row('Alice', 'Dave', 'Carol'),
+            row('Alice', 'Bob', 'Frank'),
+            row('Alice', 'Greta', 'Hank'),
+            row('Bob', 'Dave', null),
+        ];
+        const counts = computeNodeCounts(rows);
+        const { nodes } = buildNetworkData(rows, counts[0].count);
+        assert.equal(nodes[0].name, 'Alice');
+        // At threshold = top-1's count, only that musician (and any tied)
+        // should appear.
+        assert.equal(nodes.length, 1);
+    });
+});
+
+describe('medianNodeCount', () => {
+    it('returns the middle session count when there are several musicians', () => {
+        const rows = [
+            row('Alice', 'Bob', null),
+            row('Alice', 'Bob', null),
+            row('Alice', 'Carol', null),
+            row('Alice', 'Dave', null),
+        ];
+        // Alice=4, Bob=2, Carol=1, Dave=1 → sorted [4,2,1,1] → median = 1
+        assert.equal(medianNodeCount(rows), 1);
+    });
+
+    it('returns 1 for empty data', () => {
+        assert.equal(medianNodeCount([]), 1);
+    });
+});
+
+describe('disambiguateLabels', () => {
+    it('uses first name when unique', () => {
+        const nodes = [{ name: 'Alice Smith' }, { name: 'Bob Jones' }];
+        const labels = disambiguateLabels(nodes);
+        assert.equal(labels.get('Alice Smith'), 'Alice');
+        assert.equal(labels.get('Bob Jones'), 'Bob');
+    });
+
+    it('falls back to First L. on first-name collision', () => {
+        const nodes = [{ name: 'Jen Hsiao' }, { name: 'Jen Minnich' }];
+        const labels = disambiguateLabels(nodes);
+        assert.equal(labels.get('Jen Hsiao'), 'Jen H.');
+        assert.equal(labels.get('Jen Minnich'), 'Jen M.');
+    });
+
+    it('falls back to full name when First L. still collides', () => {
+        const nodes = [{ name: 'John Smith' }, { name: 'John Smith Jr' }, { name: 'John Sturges' }];
+        const labels = disambiguateLabels(nodes);
+        // 'John S.' would match all three (Smith, Smith Jr → "Jr" initial,
+        // Sturges → "Sturges" initial). Actually Smith and Sturges both
+        // start with S, so John S. matches Smith and Sturges. Smith Jr's
+        // last token is "Jr" → "John J." which is unique.
+        assert.equal(labels.get('John Smith Jr'), 'John J.');
+        assert.equal(labels.get('John Smith'), 'John Smith');
+        assert.equal(labels.get('John Sturges'), 'John Sturges');
+    });
+
+    it('passes single-token names through unchanged', () => {
+        const nodes = [{ name: 'Madonna' }, { name: 'Bob Jones' }];
+        const labels = disambiguateLabels(nodes);
+        assert.equal(labels.get('Madonna'), 'Madonna');
+        assert.equal(labels.get('Bob Jones'), 'Bob');
     });
 });

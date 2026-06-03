@@ -114,6 +114,24 @@
                 <h2 class="dashboard-chart-title" id="dashboardMusicianChartTitle">Top musicians</h2>
                 <div id="dashboardMusicianChart"></div>
             </section>
+            <section class="dashboard-section">
+                <h2 class="dashboard-chart-title">Musician network</h2>
+                <div id="dashboardMusicianNetwork">
+                    <div class="network-controls">
+                        <div class="network-tabs">
+                            <button type="button" class="network-tab-btn active" data-view="graph">Graph</button>
+                            <button type="button" class="network-tab-btn" data-view="matrix">Matrix</button>
+                        </div>
+                        <label class="network-threshold" for="networkMinCount">
+                            <span class="network-threshold-text">Min sessions:&nbsp;<span class="network-threshold-value">1</span></span>
+                            <input type="range" id="networkMinCount" min="1" max="1" value="1">
+                        </label>
+                    </div>
+                    <div id="dashboardMusicianNetworkGraph" class="network-view"></div>
+                    <div id="dashboardMusicianNetworkMatrix" class="network-view" style="display:none"></div>
+                    <p class="network-caption"></p>
+                </div>
+            </section>
         </div>
     </div>
 

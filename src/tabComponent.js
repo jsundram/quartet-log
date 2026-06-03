@@ -18,6 +18,9 @@ export class TabComponent {
             if (tooltipNode.contains(e.target)) return;
             const cls = e.target.classList;
             if (cls?.contains('work-label') || cls?.contains('play-square')) return;
+            // Musician-network elements re-open the tooltip on click; let them through.
+            if (cls?.contains('network-node') || cls?.contains('network-edge')
+                || cls?.contains('matrix-cell') || cls?.contains('matrix-label')) return;
             this.hideTooltip();
         });
     }

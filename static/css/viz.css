@@ -729,8 +729,103 @@ h1 {
 /* SVGs inside the dashboard share the same font as the rest of the app */
 #dashboardPartBar svg,
 #dashboardComposerChart svg,
-#dashboardMusicianChart svg {
+#dashboardMusicianChart svg,
+#dashboardMusicianNetworkGraph svg,
+#dashboardMusicianNetworkMatrix svg {
     font-family: sans-serif;
+}
+
+/* Musician network: tab toggle + min-sessions slider + view containers. */
+.network-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 8px;
+}
+
+.network-threshold {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font: 12px sans-serif;
+    color: var(--color-text-secondary);
+}
+
+.network-threshold-value {
+    color: var(--color-text-primary);
+    font-weight: 600;
+    min-width: 1.5em;
+    display: inline-block;
+}
+
+.network-threshold input[type="range"] {
+    width: 140px;
+    accent-color: var(--color-accent);
+}
+
+.network-tabs {
+    display: inline-flex;
+    border: 1px solid var(--color-border-strong);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--color-bg-primary);
+}
+
+.network-tab-btn {
+    padding: 6px 14px;
+    background: var(--color-bg-primary);
+    border: none;
+    border-right: 1px solid var(--color-border-strong);
+    cursor: pointer;
+    font: inherit;
+    color: var(--color-text-primary);
+    transition: background-color 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.network-tab-btn:last-child {
+    border-right: none;
+}
+
+.network-tab-btn:hover {
+    background: var(--color-bg-hover);
+}
+
+.network-tab-btn.active {
+    background: var(--color-accent);
+    color: var(--color-text-light);
+}
+
+.network-view svg .network-node,
+.network-view svg .network-edge,
+.network-view svg .matrix-cell,
+.network-view svg .matrix-label {
+    cursor: pointer;
+}
+
+/* Halo around graph labels so they stay legible over edges in both themes
+   without any JS color reads. */
+.network-view svg .network-label {
+    fill: var(--color-text-primary);
+    pointer-events: none;
+    paint-order: stroke;
+    stroke: var(--color-bg-primary);
+    stroke-width: 3px;
+    stroke-linejoin: round;
+}
+
+/* Matrix can exceed container width on narrow viewports; let it scroll
+   horizontally rather than shrinking node-set parity with the graph. */
+#dashboardMusicianNetworkMatrix {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.network-caption {
+    font: 11px sans-serif;
+    color: var(--color-text-tertiary);
+    margin: 6px 0 0 0;
 }
 
 .work-row {
