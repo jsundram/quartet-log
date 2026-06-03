@@ -88,8 +88,12 @@
         </div>
         <div id="tabs"></div>
         <div id="tabContent"></div>
-        <div class="tooltip" id="tooltip"></div>
     </div>
+
+    <!-- Body-level so it stays visible across all SPA views (Home/Dashboard).
+         Calendar has its own #daytooltip inside #calendar because that view's
+         tooltip is structurally different and never coexists with this one. -->
+    <div class="tooltip" id="tooltip"></div>
 
     <div id="calendar" style="display: none">
         <h1 style="text-align: center">Quartet Days</h1>

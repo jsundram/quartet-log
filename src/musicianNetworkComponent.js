@@ -55,6 +55,12 @@ export class MusicianNetworkComponent {
         // the selection restores the user's original value.
         this.userMinCount = null;
         this._effectiveMin = 1;
+        // Selecting a musician (here or in the Top Musicians chart) auto-resets
+        // the slider to the 50-node default for that subset so the focused
+        // neighborhood opens at a layout-friendly density. The user's prior
+        // unfocused value is backed up here and restored on deselect.
+        this._lastSelection = null;
+        this._preSelectionMinCount = null;
         this._state = null;
     }
 
@@ -82,10 +88,12 @@ export class MusicianNetworkComponent {
     }
 
     // Sync the slider to the current filter. On first render we seed
-    // userMinCount from the median of the visible musicians. The effective
-    // (displayed + active) value is userMinCount clamped to [1, max]; we
-    // never mutate userMinCount on clamp, so widening the filter restores
-    // the user's original setting.
+    // userMinCount from defaultMinPiecesForGraph — the smallest threshold
+    // that keeps the rendered node set at or under ~50 musicians, since
+    // force layouts get hairball-y past that. The effective (displayed +
+    // active) value is userMinCount clamped to [1, max]; we never mutate
+    // userMinCount on clamp, so widening the filter restores the user's
+    // original setting.
     //
     // Max is the 5th-ranked musician's count (not the top-1's), so even at
     // the densest setting the graph always includes the top 5 musicians.
@@ -94,9 +102,28 @@ export class MusicianNetworkComponent {
         const counts = computeNodeCounts(rows);
         const idx = Math.min(4, counts.length - 1);
         const max = Math.max(1, counts[idx]?.count ?? 1);
-        if (this.userMinCount === null) {
+
+        const selection = this.getSelectedMusician ? this.getSelectedMusician() : null;
+        // Selection-state transitions: entering or swapping selection
+        // overrides userMinCount with the 50-node default for the filtered
+        // subset; exiting selection restores the user's pre-selection value.
+        // Within a selection, dragging the slider still works normally —
+        // the dragged value is just discarded on deselect.
+        if (selection && selection !== this._lastSelection) {
+            if (this._lastSelection === null) {
+                this._preSelectionMinCount = this.userMinCount;
+            }
+            this.userMinCount = defaultMinPiecesForGraph(rows);
+        } else if (!selection && this._lastSelection !== null) {
+            if (this._preSelectionMinCount !== null) {
+                this.userMinCount = this._preSelectionMinCount;
+                this._preSelectionMinCount = null;
+            }
+        } else if (this.userMinCount === null) {
             this.userMinCount = Math.max(1, Math.min(max, defaultMinPiecesForGraph(rows)));
         }
+        this._lastSelection = selection;
+
         this._effectiveMin = Math.max(1, Math.min(max, this.userMinCount));
         const slider = d3.select(this.mountSelector).select('#networkMinCount');
         slider.attr('max', max);
@@ -429,7 +456,12 @@ export class MusicianNetworkComponent {
         this._attachClickToggle(rowLabelSel, d => d.name);
         this._attachHoverTooltip(rowLabelSel, (event, d) => this._nodeTooltipHtml(d));
 
-        // Column labels (top gutter), rotated -45°.
+        // Column labels (top gutter), rotated -90° so they read bottom-up
+        // with the head tilted left. Perfectly vertical (vs. tilted) avoids
+        // the rightmost label running off the gutter at the matrix edge.
+        // dominant-baseline=central puts the text's vertical center on the
+        // column center; text-anchor=start anchors the first letter just
+        // above the grid so reading direction is bottom→top.
         const colLabelSel = svg.append('g').attr('class', 'matrix-col-labels')
             .selectAll('text')
             .data(nodes)
@@ -438,9 +470,10 @@ export class MusicianNetworkComponent {
             .attr('transform', (d, i) => {
                 const cx = labelGutter + i * cellSize + cellSize / 2;
                 const cy = labelGutter - 6;
-                return `translate(${cx}, ${cy}) rotate(-45)`;
+                return `translate(${cx}, ${cy}) rotate(-90)`;
             })
             .attr('text-anchor', 'start')
+            .attr('dominant-baseline', 'central')
             .attr('font-size', s.matrixLabelFont)
             .attr('fill', d => d.name === selected ? selectedLabelColor : labelColor)
             .attr('font-weight', d => d.name === selected ? 'bold' : 'normal')

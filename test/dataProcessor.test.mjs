@@ -13,7 +13,7 @@ import {
     computeNodeCounts,
     computeEdgeCounts,
     buildNetworkData,
-    medianNodeCount,
+    defaultMinPiecesForGraph,
     disambiguateLabels,
     partFromInstrument,
     computePartBreakdownPerMusician,
@@ -528,20 +528,43 @@ describe('buildNetworkData', () => {
     });
 });
 
-describe('medianNodeCount', () => {
-    it('returns the middle piece count when there are several musicians', () => {
+describe('defaultMinPiecesForGraph', () => {
+    it('returns 1 when there are fewer musicians than the cap', () => {
         const rows = [
             row('Alice', 'Bob', null),
-            row('Alice', 'Bob', null),
             row('Alice', 'Carol', null),
-            row('Alice', 'Dave', null),
         ];
-        // Alice=4, Bob=2, Carol=1, Dave=1 → sorted [4,2,1,1] → median = 1
-        assert.equal(medianNodeCount(rows), 1);
+        // 3 musicians, cap=50 → include everyone
+        assert.equal(defaultMinPiecesForGraph(rows, 50), 1);
     });
 
     it('returns 1 for empty data', () => {
-        assert.equal(medianNodeCount([]), 1);
+        assert.equal(defaultMinPiecesForGraph([], 50), 1);
+    });
+
+    it('picks the count at the cap boundary when counts are distinct', () => {
+        // Build 5 musicians with distinct piece counts 5, 4, 3, 2, 1.
+        const rows = [];
+        const names = ['A', 'B', 'C', 'D', 'E'];
+        names.forEach((name, i) => {
+            const c = names.length - i;
+            for (let k = 0; k < c; k++) rows.push(row(name, null, null));
+        });
+        // With cap=3, the 3rd musician has count 3. T=3 keeps A(5), B(4), C(3) → exactly 3.
+        assert.equal(defaultMinPiecesForGraph(rows, 3), 3);
+    });
+
+    it('bumps past ties at the cap boundary to stay at or under the cap', () => {
+        // 4 musicians with counts [5, 3, 3, 1]. Cap=2: T=3 keeps 3 nodes (>2),
+        // so bump to T=4 → keeps only A(5). Stays ≤ 2.
+        const rows = [
+            row('Alice', null, null), row('Alice', null, null),
+            row('Alice', null, null), row('Alice', null, null), row('Alice', null, null),
+            row('Bob', null, null), row('Bob', null, null), row('Bob', null, null),
+            row('Carol', null, null), row('Carol', null, null), row('Carol', null, null),
+            row('Dave', null, null),
+        ];
+        assert.equal(defaultMinPiecesForGraph(rows, 2), 4);
     });
 });
 
