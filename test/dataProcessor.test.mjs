@@ -15,6 +15,8 @@ import {
     buildNetworkData,
     medianNodeCount,
     disambiguateLabels,
+    partFromInstrument,
+    computePartBreakdownPerMusician,
 } from '../src/dataProcessor.js';
 
 // Hand-built rows for the network helpers. Reflects the real data model:
@@ -575,5 +577,112 @@ describe('disambiguateLabels', () => {
         const labels = disambiguateLabels(nodes);
         assert.equal(labels.get('Madonna'), 'Madonna');
         assert.equal(labels.get('Bob Jones'), 'Bob');
+    });
+});
+
+describe('partFromInstrument', () => {
+    it('parses canonical V1/V2/VA/VC tags', () => {
+        assert.equal(partFromInstrument('v1'), 'V1');
+        assert.equal(partFromInstrument('V2'), 'V2');
+        assert.equal(partFromInstrument('va'), 'VA');
+        assert.equal(partFromInstrument('vc'), 'VC');
+    });
+
+    it('handles numbered variants (va2, vc2)', () => {
+        assert.equal(partFromInstrument('va2'), 'VA');
+        assert.equal(partFromInstrument('vc2'), 'VC');
+        assert.equal(partFromInstrument('v1'), 'V1');
+    });
+
+    it('treats vla as viola', () => {
+        assert.equal(partFromInstrument('vla'), 'VA');
+        assert.equal(partFromInstrument('VLA'), 'VA');
+        assert.equal(partFromInstrument('vla2'), 'VA');
+    });
+
+    it('strips an "asst" or "ast" prefix', () => {
+        assert.equal(partFromInstrument('asst v2'), 'V2');
+        assert.equal(partFromInstrument('ast v1'), 'V1');
+    });
+
+    it('buckets non-string instruments and unknowns as OTHER', () => {
+        assert.equal(partFromInstrument('piano'), 'OTHER');
+        assert.equal(partFromInstrument('harpsichord'), 'OTHER');
+        assert.equal(partFromInstrument(''), 'OTHER');
+        assert.equal(partFromInstrument(null), 'OTHER');
+        assert.equal(partFromInstrument(undefined), 'OTHER');
+    });
+});
+
+describe('computePartBreakdownPerMusician', () => {
+    // Helper that makes rows with an explicit user part so SLOT_TO_PART
+    // can map slot indices correctly.
+    const r = (part, p1, p2, p3, others = []) => ({
+        part,
+        player1: p1,
+        player2: p2,
+        player3: p3,
+        othersList: others.map(([name, instrument]) => ({
+            name,
+            instrument,
+            class: null,
+        })),
+    });
+
+    it('maps player slots via the user part table', () => {
+        const rows = [
+            r('V1', 'Alice', 'Bob', 'Carol'), // Alice=V2, Bob=VA, Carol=VC
+            r('V2', 'Alice', 'Bob', 'Carol'), // Alice=V1, Bob=VA, Carol=VC
+            r('VA', 'Alice', 'Bob', 'Carol'), // Alice=V1, Bob=V2, Carol=VC
+        ];
+        const breakdown = computePartBreakdownPerMusician(rows);
+        assert.deepEqual(breakdown.get('Alice'), { V1: 2, V2: 1, VA: 0, VC: 0, OTHER: 0 });
+        assert.deepEqual(breakdown.get('Bob'),   { V1: 0, V2: 1, VA: 2, VC: 0, OTHER: 0 });
+        assert.deepEqual(breakdown.get('Carol'), { V1: 0, V2: 0, VA: 0, VC: 3, OTHER: 0 });
+    });
+
+    it('attributes othersList entries by parsed instrument', () => {
+        const rows = [
+            r('V1', null, null, null, [
+                ['Dave', 'vc2'],
+                ['Eve', 'piano'],
+                ['Frank', 'asst v2'],
+                ['Greta', 'vla'],
+            ]),
+        ];
+        const breakdown = computePartBreakdownPerMusician(rows);
+        assert.deepEqual(breakdown.get('Dave'),  { V1: 0, V2: 0, VA: 0, VC: 1, OTHER: 0 });
+        assert.deepEqual(breakdown.get('Eve'),   { V1: 0, V2: 0, VA: 0, VC: 0, OTHER: 1 });
+        assert.deepEqual(breakdown.get('Frank'), { V1: 0, V2: 1, VA: 0, VC: 0, OTHER: 0 });
+        assert.deepEqual(breakdown.get('Greta'), { V1: 0, V2: 0, VA: 1, VC: 0, OTHER: 0 });
+    });
+
+    it('skips rows with non-canonical user parts (e.g. quintet VA2)', () => {
+        const rows = [
+            r('VA2', 'Alice', 'Bob', 'Carol'),
+            r('V1', 'Alice', null, null), // Alice=V2 here
+        ];
+        const breakdown = computePartBreakdownPerMusician(rows);
+        // VA2 row contributes nothing for player1/2/3 (slot mapping undefined),
+        // so Alice's only credit is V2 from the V1 row.
+        assert.deepEqual(breakdown.get('Alice'), { V1: 0, V2: 1, VA: 0, VC: 0, OTHER: 0 });
+        // Bob and Carol from the VA2 row never get registered.
+        assert.equal(breakdown.get('Bob'), undefined);
+        assert.equal(breakdown.get('Carol'), undefined);
+    });
+
+    it('sums to per-musician session count (parity with computeNodeCounts)', () => {
+        const rows = [
+            r('V1', 'Alice', 'Bob', 'Carol'),
+            r('V2', 'Alice', 'Dave', 'Carol'),
+            r('VA', 'Alice', 'Bob', null, [['Eve', 'piano']]),
+        ];
+        const breakdown = computePartBreakdownPerMusician(rows);
+        const sum = b => b.V1 + b.V2 + b.VA + b.VC + b.OTHER;
+        assert.equal(sum(breakdown.get('Alice')), 3);
+        assert.equal(sum(breakdown.get('Bob')), 2);
+        assert.equal(sum(breakdown.get('Carol')), 2);
+        assert.equal(sum(breakdown.get('Dave')), 1);
+        assert.equal(sum(breakdown.get('Eve')), 1);
     });
 });

@@ -164,6 +164,59 @@ export function medianNodeCount(rows) {
     return counts[Math.floor(counts.length / 2)];
 }
 
+// What part did the person in this row's player slot play? The user's own
+// part determines the cohort: e.g. when the user plays V1, their player1 is
+// the V2 player, player2 is the VA player, player3 is the cellist. Mirrors
+// the table in extractUniquePlayers. Returns null for non-canonical user
+// parts (e.g. quintets logged as VA2) — the slot mapping is undefined there.
+const SLOT_TO_PART = {
+    V1: ['V2', 'VA', 'VC'],
+    V2: ['V1', 'VA', 'VC'],
+    VA: ['V1', 'V2', 'VC'],
+};
+
+// Map a free-text instrument string (from the "Others?" column) to a part
+// bucket. Handles common shapes: v1, V1, v2, va, va2, vla, vc, vc2, plus
+// "asst v2" assistant notation. Anything unrecognized — piano, harpsichord,
+// blanks — bucketed as OTHER.
+export function partFromInstrument(instrument) {
+    if (!instrument) return 'OTHER';
+    const s = instrument.toLowerCase().trim().replace(/^as?st\s+/, '');
+    if (s.startsWith('vc')) return 'VC';
+    if (s.startsWith('vla') || s.startsWith('va')) return 'VA';
+    if (s.startsWith('v1')) return 'V1';
+    if (s.startsWith('v2')) return 'V2';
+    return 'OTHER';
+}
+
+// For every musician, count how many sessions they played in each part.
+// player1/2/3 slots are mapped via SLOT_TO_PART; othersList entries use the
+// parsed instrument string. The returned breakdown vectors sum to the
+// musician's total appearance count (including any OTHER, like piano).
+export function computePartBreakdownPerMusician(rows) {
+    const result = new Map();
+    const bump = (name, part) => {
+        let parts = result.get(name);
+        if (!parts) {
+            parts = { V1: 0, V2: 0, VA: 0, VC: 0, OTHER: 0 };
+            result.set(name, parts);
+        }
+        parts[part]++;
+    };
+    rows.forEach(d => {
+        const slotParts = SLOT_TO_PART[d.part];
+        if (slotParts) {
+            [d.player1, d.player2, d.player3].forEach((name, i) => {
+                if (name && name !== '-') bump(name, slotParts[i]);
+            });
+        }
+        d.othersList?.forEach(o => {
+            if (o.name) bump(o.name, partFromInstrument(o.instrument));
+        });
+    });
+    return result;
+}
+
 // Build short display labels from canonical names. Group by first token: if
 // the first token is unique, that's the label; if two share, fall back to
 // "First L." (first-token + last-name's initial); if those still collide,

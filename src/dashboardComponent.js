@@ -1,5 +1,5 @@
 import { getPartColor, getCssColor } from './config';
-import { normalizeDashboardPart, peopleKeysFor } from './dataProcessor';
+import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician } from './dataProcessor';
 import { DateFilterWidget } from './dateFilterWidget';
 import { MusicianNetworkComponent } from './musicianNetworkComponent';
 
@@ -239,7 +239,14 @@ export class DashboardComponent {
             const seen = new Set(peopleKeysFor(d));
             seen.forEach(name => counts.set(name, (counts.get(name) ?? 0) + 1));
         });
-        const data = Array.from(counts, ([name, count]) => ({ name, count }));
+        // Per-musician parts breakdown so renderRankedBars can stack the
+        // bar by instrument (V1/V2/VA/VC/OTHER) using getPartColor.
+        const breakdown = computePartBreakdownPerMusician(rows);
+        const data = Array.from(counts, ([name, count]) => ({
+            name,
+            count,
+            parts: breakdown.get(name),
+        }));
         this.renderRankedBars('#dashboardMusicianChart', 'musician', data);
     }
 
@@ -287,14 +294,15 @@ export class DashboardComponent {
 
         const sel = this.state.selections[dimensionKey];
 
-        // Each row is a <g> holding the name (left), bar, and count label.
-        // Key by name AND dimension so switching the chart's data fully
-        // rebuilds DOM (avoids stale rows when totals shift).
+        // Each row is a <g> holding the name (left), bar (group of one or
+        // more segment rects), and count label. Key by name AND dimension so
+        // switching the chart's data fully rebuilds DOM (avoids stale rows
+        // when totals shift).
         const rowSel = inner.selectAll('g.ranked-row').data(data, d => d.name);
         rowSel.exit().remove();
         const rowEnter = rowSel.enter().append('g').attr('class', 'ranked-row');
         rowEnter.append('text').attr('class', 'ranked-name');
-        rowEnter.append('rect').attr('class', 'ranked-bar');
+        rowEnter.append('g').attr('class', 'ranked-bar');
         rowEnter.append('text').attr('class', 'ranked-label');
         const rows2 = rowEnter.merge(rowSel);
 
@@ -305,16 +313,56 @@ export class DashboardComponent {
         const textPrimary = getCssColor('--color-text-primary');
         const textPrimarySelected = getCssColor('--color-text-emphasis');
         const textSecondary = getCssColor('--color-text-secondary');
+        const otherFill = getCssColor('--color-part-fallback');
 
-        rows2.select('rect.ranked-bar')
-            .attr('x', 0)
-            .attr('y', 0)
-            .attr('height', y.bandwidth())
-            .attr('width', d => x(d.count))
-            .attr('fill', d => d.name === sel ? barFillSelected : barFill)
-            .attr('opacity', d => sel && d.name !== sel ? 0.5 : 1)
-            .style('cursor', 'pointer')
-            .on('click', (event, d) => this.toggle(dimensionKey, d.name));
+        // Build the segment array for a row. When d.parts is present (the
+        // Top Musicians chart), the bar stacks by instrument left-to-right
+        // in V1 → V2 → VA → VC → OTHER order. Without d.parts (composer
+        // chart), there's a single accent-colored segment.
+        const PART_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
+        const segmentsOf = (d) => {
+            if (!d.parts) return [{ part: null, count: d.count, x0: 0 }];
+            const result = [];
+            let cum = 0;
+            PART_ORDER.forEach(part => {
+                const c = d.parts[part] ?? 0;
+                if (c > 0) {
+                    result.push({ part, count: c, x0: cum });
+                    cum += c;
+                }
+            });
+            return result;
+        };
+        const segmentFill = (s, rowName) => {
+            if (s.part === null) {
+                return rowName === sel ? barFillSelected : barFill;
+            }
+            if (s.part === 'OTHER') return otherFill;
+            return getPartColor(s.part);
+        };
+
+        // Render segments per row. Bind by part key so adding/removing a
+        // part bucket (e.g. a musician picks up a VC session) animates cleanly.
+        // Capture `self` because d3's .each sets `this` to the DOM element.
+        const self = this;
+        rows2.select('g.ranked-bar').each(function (d) {
+            const segments = segmentsOf(d);
+            const segSel = d3.select(this).selectAll('rect.ranked-segment')
+                .data(segments, s => s.part ?? 'all');
+            segSel.exit().remove();
+            const segMerged = segSel.enter().append('rect')
+                .attr('class', 'ranked-segment')
+                .merge(segSel);
+            segMerged
+                .attr('x', s => x(s.x0))
+                .attr('y', 0)
+                .attr('height', y.bandwidth())
+                .attr('width', s => x(s.count))
+                .attr('fill', s => segmentFill(s, d.name))
+                .attr('opacity', sel && d.name !== sel ? 0.5 : 1)
+                .style('cursor', 'pointer')
+                .on('click', () => self.toggle(dimensionKey, d.name));
+        });
 
         rows2.select('text.ranked-name')
             .attr('x', -8)

@@ -41,6 +41,7 @@ export function getPartColor(part) {
         V1: '--color-part-v1',
         V2: '--color-part-v2',
         VA: '--color-part-va',
+        VC: '--color-part-vc',
     }[part];
     return token ? getCssColor(token) : getCssColor('--color-part-fallback');
 }

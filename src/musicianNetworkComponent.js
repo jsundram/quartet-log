@@ -1,5 +1,11 @@
-import { getCssColor } from './config';
-import { buildNetworkData, disambiguateLabels, computeNodeCounts, medianNodeCount } from './dataProcessor';
+import { getCssColor, getPartColor } from './config';
+import {
+    buildNetworkData,
+    disambiguateLabels,
+    computeNodeCounts,
+    medianNodeCount,
+    computePartBreakdownPerMusician,
+} from './dataProcessor';
 
 // Tabbed view of the musician co-occurrence network: a force-directed
 // graph and an adjacency matrix over the same top-N node set.
@@ -145,7 +151,12 @@ export class MusicianNetworkComponent {
         // Drop isolated nodes after cutoff (no edges to other top-N nodes).
         const endpoints = new Set();
         edges.forEach(e => { endpoints.add(e.source); endpoints.add(e.target); });
-        const nodes = rawNodes.filter(n => endpoints.has(n.name));
+        const nodesNoBreakdown = rawNodes.filter(n => endpoints.has(n.name));
+
+        // Per-musician part vector so graph nodes can render as pies and
+        // tooltips can show the breakdown.
+        const breakdown = computePartBreakdownPerMusician(rows);
+        const nodes = nodesNoBreakdown.map(n => ({ ...n, parts: breakdown.get(n.name) }));
 
         const labels = disambiguateLabels(nodes);
         const maxNodeCount = nodes.reduce((m, n) => Math.max(m, n.count), 0);
@@ -206,13 +217,35 @@ export class MusicianNetworkComponent {
             n.labelOnRight = (n.x + r + s.labelDx + lw) <= (width - margin);
         });
 
-        const accent = getCssColor('--color-accent');
         const edgeColor = getCssColor('--color-border-strong') || getCssColor('--color-text-secondary');
         const selectedStroke = getCssColor('--color-text-dark') || getCssColor('--color-text-primary');
+        const sliceStroke = getCssColor('--color-bg-primary');
+        const otherFill = getCssColor('--color-part-fallback');
         const selected = this.getSelectedMusician ? this.getSelectedMusician() : null;
         const isEdgeIncident = e => selected && (
             (e.source.name ?? e.source) === selected || (e.target.name ?? e.target) === selected
         );
+
+        // Pie-arc helpers for the node breakdown. Each non-zero part bucket
+        // becomes one slice. The slices add up to the node's total session
+        // count so the pie fills the full node circle.
+        const PART_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
+        const pieGen = d3.pie().value(d => d.count).sort(null);
+        const slicesFor = (n) => {
+            const parts = n.parts ?? { V1: 0, V2: 0, VA: 0, VC: 0, OTHER: 0 };
+            const entries = PART_ORDER
+                .map(part => ({ part, count: parts[part] ?? 0 }))
+                .filter(p => p.count > 0);
+            // Fallback for the unlikely empty-vector case: paint as a single
+            // accent-colored disc so the node is still visible.
+            if (entries.length === 0) entries.push({ part: null, count: 1 });
+            return pieGen(entries);
+        };
+        const sliceFill = (part) => {
+            if (part === null) return getCssColor('--color-accent');
+            if (part === 'OTHER') return otherFill;
+            return getPartColor(part);
+        };
 
         // Build SVG fresh each render — node count is small and re-laying out
         // is the dominant cost; redraw is negligible.
@@ -241,20 +274,51 @@ export class MusicianNetworkComponent {
             });
         this._attachTooltip(linkSel, (event, d) => this._edgeTooltipHtml(d));
 
-        const nodeSel = svg.append('g').attr('class', 'network-nodes')
-            .selectAll('circle')
-            .data(nodes)
-            .join('circle')
+        // Each node is a <g> at (x, y) with pie slices + a selection-outline
+        // circle + a transparent overlay that absorbs clicks/hovers (so a
+        // single handler set serves the whole node regardless of which slice
+        // the user lands on).
+        const nodeG = svg.append('g').attr('class', 'network-nodes')
+            .selectAll('g.network-node')
+            .data(nodes, d => d.name)
+            .join('g')
             .attr('class', 'network-node')
-            .attr('cx', d => d.x)
-            .attr('cy', d => d.y)
-            .attr('r', d => nodeRadius(d))
-            .attr('fill', accent)
-            .attr('stroke', d => d.name === selected ? selectedStroke : 'none')
-            .attr('stroke-width', d => d.name === selected ? 2 : 0)
+            .attr('transform', d => `translate(${d.x}, ${d.y})`)
             .attr('opacity', d => !selected || d.name === selected ? 1 : 0.35);
-        this._attachClickToggle(nodeSel, d => d.name);
-        this._attachHoverTooltip(nodeSel, (event, d) => this._nodeTooltipHtml(d));
+
+        nodeG.each(function (d) {
+            const r = nodeRadius(d);
+            const arcGen = d3.arc().innerRadius(0).outerRadius(r);
+            const g = d3.select(this);
+            g.selectAll('path.network-slice')
+                .data(slicesFor(d), s => s.data.part ?? 'fallback')
+                .join('path')
+                .attr('class', 'network-slice')
+                .attr('d', arcGen)
+                .attr('fill', s => sliceFill(s.data.part))
+                .attr('stroke', sliceStroke)
+                .attr('stroke-width', 0.5)
+                .attr('pointer-events', 'none');
+            g.selectAll('circle.network-node-outline')
+                .data([d])
+                .join('circle')
+                .attr('class', 'network-node-outline')
+                .attr('r', r)
+                .attr('fill', 'none')
+                .attr('stroke', d.name === selected ? selectedStroke : 'none')
+                .attr('stroke-width', d.name === selected ? 2 : 0)
+                .attr('pointer-events', 'none');
+            g.selectAll('circle.network-node-hit')
+                .data([d])
+                .join('circle')
+                .attr('class', 'network-node-hit')
+                .attr('r', r)
+                .attr('fill', 'transparent');
+        });
+
+        const hitSel = nodeG.selectAll('circle.network-node-hit');
+        this._attachClickToggle(hitSel, d => d.name);
+        this._attachHoverTooltip(hitSel, (event, d) => this._nodeTooltipHtml(d));
 
         svg.append('g').attr('class', 'network-labels')
             .selectAll('text')
@@ -277,7 +341,13 @@ export class MusicianNetworkComponent {
             (e.source.name ?? e.source) === n.name ||
             (e.target.name ?? e.target) === n.name
         ).length;
-        return `<h4>${n.name}</h4><ul><li>${n.count} session${n.count === 1 ? '' : 's'}</li><li>${partners} co-player${partners === 1 ? '' : 's'} shown</li></ul>`;
+        const parts = n.parts ?? {};
+        const breakdown = ['V1', 'V2', 'VA', 'VC', 'OTHER']
+            .filter(p => (parts[p] ?? 0) > 0)
+            .map(p => `${p === 'OTHER' ? 'Other' : p} ×${parts[p]}`)
+            .join(' · ');
+        const breakdownLi = breakdown ? `<li>${breakdown}</li>` : '';
+        return `<h4>${n.name}</h4><ul><li>${n.count} session${n.count === 1 ? '' : 's'}</li>${breakdownLi}<li>${partners} co-player${partners === 1 ? '' : 's'} shown</li></ul>`;
     }
 
     _edgeTooltipHtml(e) {

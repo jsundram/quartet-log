@@ -54,10 +54,12 @@
     --color-part-v1:        #1ceaf9;
     --color-part-v2:        #01c472;
     --color-part-va:        #007961;
+    --color-part-vc:        #003b85;
     --color-part-fallback:  var(--gray-9);
     --color-part-v1-text:   var(--color-text-dark);  /* dark text on bright cyan */
     --color-part-v2-text:   var(--color-text-light);
     --color-part-va-text:   var(--color-text-light);
+    --color-part-vc-text:   var(--color-text-light);
 
     /* Shadows */
     --color-shadow-subtle: rgba(0, 0, 0, 0.12);
