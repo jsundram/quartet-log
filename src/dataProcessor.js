@@ -86,7 +86,7 @@ function dayKey(ts) {
     return new Date(ts.getFullYear(), ts.getMonth(), ts.getDate()).getTime();
 }
 
-// Aggregate stats over an arbitrary slice of session rows. Used by both
+// Aggregate stats over an arbitrary slice of piece rows. Used by both
 // the calendar header ("Last 365 days") and the ALL tab.
 export function computeAggregateStats(rows) {
     const works = new Set();
@@ -111,7 +111,7 @@ export function computeAggregateStats(rows) {
 // player slot). So these helpers consume peopleKeysFor directly, with no
 // user-identity inference needed.
 
-// Count sessions per musician. Each musician counts once per row even
+// Count pieces per musician. Each musician counts once per row even
 // if they appear twice (e.g. duplicate othersList entry).
 export function computeNodeCounts(rows) {
     const counts = new Map();
@@ -124,7 +124,7 @@ export function computeNodeCounts(rows) {
 }
 
 // For every unordered pair (a < b lexicographically) of musicians in the
-// same session where both endpoints are in allowedSet, count co-occurrences.
+// same piece where both endpoints are in allowedSet, count co-occurrences.
 export function computeEdgeCounts(rows, allowedSet) {
     const counts = new Map();
     rows.forEach(d => {
@@ -144,7 +144,7 @@ export function computeEdgeCounts(rows, allowedSet) {
     });
 }
 
-// Build the network: nodes are musicians with at least `minCount` sessions,
+// Build the network: nodes are musicians with at least `minCount` pieces,
 // edges are co-occurrences between those nodes. `minCount` is the user-facing
 // threshold from the dashboard slider; a value of 1 includes every musician
 // who appeared at all.
@@ -156,12 +156,19 @@ export function buildNetworkData(rows, minCount = 1) {
     return { nodes, edges };
 }
 
-// Median session count across all musicians in the dataset. Used as the
-// initial slider value so the graph opens at a balanced midpoint by default.
-export function medianNodeCount(rows) {
+// Smallest piece-count threshold that keeps the rendered node set under
+// `maxNodes`. Used as the initial slider value so the graph opens at a
+// density the layout can handle. Returns 1 (= include everyone) when there
+// are fewer musicians than the cap. When there are ties at the cap boundary,
+// bumps the threshold by one so we stay at or under the cap.
+export function defaultMinPiecesForGraph(rows, maxNodes = 50) {
     const counts = computeNodeCounts(rows).map(n => n.count);
-    if (counts.length === 0) return 1;
-    return counts[Math.floor(counts.length / 2)];
+    if (counts.length <= maxNodes) return 1;
+    const cutoff = counts[maxNodes - 1];
+    // If the next musician past the cap is tied, bump to exclude the tie
+    // so we don't overshoot.
+    if (counts[maxNodes] === cutoff) return cutoff + 1;
+    return cutoff;
 }
 
 // What part did the person in this row's player slot play? The user's own
@@ -189,7 +196,7 @@ export function partFromInstrument(instrument) {
     return 'OTHER';
 }
 
-// For every musician, count how many sessions they played in each part.
+// For every musician, count how many pieces they played in each part.
 // player1/2/3 slots are mapped via SLOT_TO_PART; othersList entries use the
 // parsed instrument string. The returned breakdown vectors sum to the
 // musician's total appearance count (including any OTHER, like piano).

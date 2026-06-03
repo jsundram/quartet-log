@@ -3,7 +3,7 @@ import {
     buildNetworkData,
     disambiguateLabels,
     computeNodeCounts,
-    medianNodeCount,
+    defaultMinPiecesForGraph,
     computePartBreakdownPerMusician,
 } from './dataProcessor';
 
@@ -95,7 +95,7 @@ export class MusicianNetworkComponent {
         const idx = Math.min(4, counts.length - 1);
         const max = Math.max(1, counts[idx]?.count ?? 1);
         if (this.userMinCount === null) {
-            this.userMinCount = Math.max(1, Math.min(max, medianNodeCount(rows)));
+            this.userMinCount = Math.max(1, Math.min(max, defaultMinPiecesForGraph(rows)));
         }
         this._effectiveMin = Math.max(1, Math.min(max, this.userMinCount));
         const slider = d3.select(this.mountSelector).select('#networkMinCount');
@@ -128,7 +128,7 @@ export class MusicianNetworkComponent {
 
         const caption = d3.select(this.mountSelector).select('.network-caption');
         if (this._state.nodes.length === 0) {
-            caption.text(`No musicians at this threshold (≥ ${this._effectiveMin} session${this._effectiveMin === 1 ? '' : 's'}).`);
+            caption.text(`No musicians at this threshold (≥ ${this._effectiveMin} piece${this._effectiveMin === 1 ? '' : 's'}).`);
             d3.select('#dashboardMusicianNetworkGraph').selectAll('*').remove();
             d3.select('#dashboardMusicianNetworkMatrix').selectAll('*').remove();
             return;
@@ -136,10 +136,10 @@ export class MusicianNetworkComponent {
 
         const n = this._state.nodes.length;
         if (this.activeView === 'graph') {
-            caption.text(`${n} co-player${n === 1 ? '' : 's'} · edges shown when ≥ ${MIN_EDGE_WEIGHT} shared sessions`);
+            caption.text(`${n} co-player${n === 1 ? '' : 's'} · edges shown when ≥ ${MIN_EDGE_WEIGHT} shared pieces`);
             this._renderGraph(width, s);
         } else {
-            caption.text(`${n} co-player${n === 1 ? '' : 's'} · diagonal omitted · cell shade = sessions played together`);
+            caption.text(`${n} co-player${n === 1 ? '' : 's'} · diagonal omitted · cell shade = pieces played together`);
             this._renderMatrix(width, s);
         }
     }
@@ -227,7 +227,7 @@ export class MusicianNetworkComponent {
         );
 
         // Pie-arc helpers for the node breakdown. Each non-zero part bucket
-        // becomes one slice. The slices add up to the node's total session
+        // becomes one slice. The slices add up to the node's total piece
         // count so the pie fills the full node circle.
         const PART_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
         const pieGen = d3.pie().value(d => d.count).sort(null);
@@ -347,13 +347,13 @@ export class MusicianNetworkComponent {
             .map(p => `${p === 'OTHER' ? 'Other' : p} ×${parts[p]}`)
             .join(' · ');
         const breakdownLi = breakdown ? `<li>${breakdown}</li>` : '';
-        return `<h4>${n.name}</h4><ul><li>${n.count} session${n.count === 1 ? '' : 's'}</li>${breakdownLi}<li>${partners} co-player${partners === 1 ? '' : 's'} shown</li></ul>`;
+        return `<h4>${n.name}</h4><ul><li>${n.count} piece${n.count === 1 ? '' : 's'}</li>${breakdownLi}<li>${partners} co-player${partners === 1 ? '' : 's'} shown</li></ul>`;
     }
 
     _edgeTooltipHtml(e) {
         const a = e.source.name ?? e.source;
         const b = e.target.name ?? e.target;
-        return `<h4>${a} · ${b}</h4><ul><li>${e.weight} sessions together</li></ul>`;
+        return `<h4>${a} · ${b}</h4><ul><li>${e.weight} pieces together</li></ul>`;
     }
 
     // ---------------- Matrix ----------------
@@ -493,9 +493,9 @@ export class MusicianNetworkComponent {
 
     _cellTooltipHtml(c) {
         if (c.weight === 0) {
-            return `<h4>${c.a} · ${c.b}</h4><ul><li>No sessions together</li></ul>`;
+            return `<h4>${c.a} · ${c.b}</h4><ul><li>No pieces together</li></ul>`;
         }
-        return `<h4>${c.a} · ${c.b}</h4><ul><li>${c.weight} session${c.weight === 1 ? '' : 's'} together</li></ul>`;
+        return `<h4>${c.a} · ${c.b}</h4><ul><li>${c.weight} piece${c.weight === 1 ? '' : 's'} together</li></ul>`;
     }
 
     _truncate(text, maxWidthPx, fontPx) {

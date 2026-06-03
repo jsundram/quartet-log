@@ -233,7 +233,7 @@ export class DashboardComponent {
     renderMusicianChart() {
         const rows = this.filteredRows('musician');
         // Each row contributes 1 to every unique musician it contains. A
-        // session of 4 musicians gives +1 to each of them, not +4 to one.
+        // piece of 4 musicians gives +1 to each of them, not +4 to one.
         const counts = new Map();
         rows.forEach(d => {
             const seen = new Set(peopleKeysFor(d));
@@ -342,7 +342,7 @@ export class DashboardComponent {
         };
 
         // Render segments per row. Bind by part key so adding/removing a
-        // part bucket (e.g. a musician picks up a VC session) animates cleanly.
+        // part bucket (e.g. a musician picks up a VC piece) animates cleanly.
         // Capture `self` because d3's .each sets `this` to the DOM element.
         const self = this;
         rows2.select('g.ranked-bar').each(function (d) {

@@ -378,7 +378,7 @@ describe('normalizeDashboardPart', () => {
 });
 
 describe('computeNodeCounts', () => {
-    it('counts unique sessions per musician from peopleKeysFor', () => {
+    it('counts unique pieces per musician from peopleKeysFor', () => {
         const rows = [
             row('Alice', 'Bob', 'Carol'),
             row('Alice', 'Dave', 'Carol'),
@@ -393,7 +393,7 @@ describe('computeNodeCounts', () => {
         ]);
     });
 
-    it('de-dupes within a session (othersList duplicate)', () => {
+    it('de-dupes within a piece (othersList duplicate)', () => {
         const rows = [row('Alice', null, null, ['Alice'])];
         const counts = computeNodeCounts(rows);
         assert.deepEqual(counts, [{ name: 'Alice', count: 1 }]);
@@ -408,12 +408,12 @@ describe('computeNodeCounts', () => {
         assert.deepEqual(counts.map(c => c.name), ['Alice', 'Bob', 'Zach']);
     });
 
-    // The Top Musicians dashboard chart uses the same per-session de-dup over
+    // The Top Musicians dashboard chart uses the same per-piece de-dup over
     // peopleKeysFor. If this invariant ever breaks, the network's node set
     // would diverge from the Top Musicians chart's data — which is the
     // exact bug that surfaced when an inferred "user" was incorrectly
     // filtered out of the network. Lock the contract.
-    it('matches per-session de-duped peopleKeysFor counts (Top Musicians parity)', () => {
+    it('matches per-piece de-duped peopleKeysFor counts (Top Musicians parity)', () => {
         const rows = [
             row('Alice', 'Bob', 'Carol', ['Dave']),
             row('Alice', 'Bob', null),
@@ -432,7 +432,7 @@ describe('computeNodeCounts', () => {
 });
 
 describe('computeEdgeCounts', () => {
-    it('generates all unordered pairs in a session', () => {
+    it('generates all unordered pairs in a piece', () => {
         const rows = [row('Alice', 'Bob', null, ['Carol'])];
         const allowed = new Set(['Alice', 'Bob', 'Carol']);
         const edges = computeEdgeCounts(rows, allowed);
@@ -441,7 +441,7 @@ describe('computeEdgeCounts', () => {
         assert.deepEqual(keys, ['Alice-Bob', 'Alice-Carol', 'Bob-Carol']);
     });
 
-    it('increments existing pairs across sessions', () => {
+    it('increments existing pairs across pieces', () => {
         const rows = [
             row('Alice', 'Bob', null),
             row('Alice', 'Bob', null),
@@ -498,7 +498,7 @@ describe('buildNetworkData', () => {
         assert.equal(edges[0].target, 'Bob');
     });
 
-    it('defaults minCount to 1 (every musician with any session)', () => {
+    it('defaults minCount to 1 (every musician with any piece)', () => {
         const rows = [
             row('Alice', 'Bob', null),
             row('Carol', null, null),
@@ -508,8 +508,8 @@ describe('buildNetworkData', () => {
     });
 
     // Regression: a previous iteration "inferred a user" and stripped the
-    // top-1 musician from every session. Lock the invariant that the #1
-    // musician by sessions is always included as long as their count meets
+    // top-1 musician from every piece. Lock the invariant that the #1
+    // musician by pieces is always included as long as their count meets
     // the threshold.
     it('includes the top-1 musician when their count meets the threshold', () => {
         const rows = [
@@ -529,7 +529,7 @@ describe('buildNetworkData', () => {
 });
 
 describe('medianNodeCount', () => {
-    it('returns the middle session count when there are several musicians', () => {
+    it('returns the middle piece count when there are several musicians', () => {
         const rows = [
             row('Alice', 'Bob', null),
             row('Alice', 'Bob', null),
@@ -671,7 +671,7 @@ describe('computePartBreakdownPerMusician', () => {
         assert.equal(breakdown.get('Carol'), undefined);
     });
 
-    it('sums to per-musician session count (parity with computeNodeCounts)', () => {
+    it('sums to per-musician piece count (parity with computeNodeCounts)', () => {
         const rows = [
             r('V1', 'Alice', 'Bob', 'Carol'),
             r('V2', 'Alice', 'Dave', 'Carol'),
