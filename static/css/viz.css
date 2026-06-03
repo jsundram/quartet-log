@@ -745,6 +745,14 @@ h1 {
     align-items: center;
     gap: 14px;
     margin-bottom: 8px;
+    /* Match the visualization's MAX_DESIGN_WIDTH from
+       musicianNetworkComponent.js so the right-aligned fullscreen button
+       lines up with the graph view's right edge instead of the section's. */
+    max-width: 720px;
+}
+
+#dashboardMusicianNetwork.fullscreen .network-controls {
+    max-width: none;
 }
 
 .network-threshold {
@@ -777,6 +785,9 @@ h1 {
     cursor: pointer;
     padding: 5px 9px;
     color: var(--color-text-primary);
+    /* Push to the right edge of the flex controls row so it sits opposite
+       the tabs/slider instead of immediately to the right of them. */
+    margin-left: auto;
     -webkit-tap-highlight-color: transparent;
 }
 
