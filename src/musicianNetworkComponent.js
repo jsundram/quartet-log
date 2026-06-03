@@ -654,14 +654,48 @@ export class MusicianNetworkComponent {
         // Radial labels just outside the arcs. The conditional rotate(180)
         // flips text on the left half of the circle so it always reads
         // outward-to-inward rather than upside-down.
+        //
+        // Font size: cap each label at the per-arc tangential budget
+        // (arcAngular × labelRadius), clamped to a floor — adjacent labels
+        // compete tangentially, not radially. If even the floor doesn't
+        // fit, the greedy visibility pass below alternately hides labels
+        // so survivors stay legible.
+        const labelRadius = outerRadius + 6;
+        const MIN_LABEL_FONT = 7;
+        const fontFor = (d) => {
+            const arcAngular = d.endAngle - d.startAngle;
+            return Math.max(MIN_LABEL_FONT, Math.min(s.chordLabelFont, arcAngular * labelRadius));
+        };
+
+        // Greedy de-overlap: walk groups around the circle, tracking the
+        // tangential right edge of the last shown label. Hide any label
+        // whose left edge would intrude on it. Effect on dense arcs: roughly
+        // alternating labels (show one, skip the next), which beats a wall
+        // of overlapping text. Tooltip still has the full name for hidden
+        // arcs.
+        const visible = new Array(layout.groups.length).fill(true);
+        let lastShownEnd = -Infinity;
+        layout.groups.forEach((d, i) => {
+            const font = fontFor(d);
+            const mid = (d.startAngle + d.endAngle) / 2;
+            const halfAngular = (font / 2) / labelRadius;
+            if (mid - halfAngular >= lastShownEnd) {
+                visible[i] = true;
+                lastShownEnd = mid + halfAngular;
+            } else {
+                visible[i] = false;
+            }
+        });
+
         arcG.append('text')
             .attr('class', 'network-arc-label')
-            .attr('font-size', s.chordLabelFont)
+            .attr('data-arc-index', (d, i) => i)
+            .attr('font-size', fontFor)
             .attr('dy', '0.32em')
             .attr('transform', d => {
                 const angleDeg = (d.startAngle + d.endAngle) / 2 * 180 / Math.PI - 90;
                 const flip = angleDeg > 90;
-                return `rotate(${angleDeg}) translate(${outerRadius + 6})${flip ? ' rotate(180)' : ''}`;
+                return `rotate(${angleDeg}) translate(${labelRadius})${flip ? ' rotate(180)' : ''}`;
             })
             .attr('text-anchor', d => {
                 const angleDeg = (d.startAngle + d.endAngle) / 2 * 180 / Math.PI - 90;
@@ -672,7 +706,32 @@ export class MusicianNetworkComponent {
                 return !selected || name === selected ? 1 : 0.35;
             })
             .attr('font-weight', d => ordered[d.index].name === selected ? 'bold' : 'normal')
+            // Text content is always populated; hidden labels are display:none
+            // so chord hover can unhide the two endpoint labels (and re-hide
+            // them on leave) without rewriting any DOM text.
+            .style('display', (d, i) => visible[i] ? null : 'none')
             .text(d => labels.get(ordered[d.index].name) || ordered[d.index].name);
+
+        // Chord hover surfaces the two endpoint labels even when they were
+        // hidden by the de-overlap pass — useful for tracing a ribbon back to
+        // both musicians. Namespaced so it doesn't trample _attachTooltip's
+        // own mouseenter/leave handlers on the same selection.
+        const labelTextSel = svg.select('g.network-arcs').selectAll('text.network-arc-label');
+        const showEndpoints = (event, d) => {
+            [d.source.index, d.target.index].forEach(idx => {
+                labelTextSel.filter(`[data-arc-index="${idx}"]`).style('display', null);
+            });
+        };
+        const restoreEndpoints = (event, d) => {
+            [d.source.index, d.target.index].forEach(idx => {
+                if (!visible[idx]) {
+                    labelTextSel.filter(`[data-arc-index="${idx}"]`).style('display', 'none');
+                }
+            });
+        };
+        chordSel
+            .on('mouseenter.labels', showEndpoints)
+            .on('mouseleave.labels', restoreEndpoints);
     }
 
     _truncate(text, maxWidthPx, fontPx) {
