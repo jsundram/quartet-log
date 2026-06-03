@@ -196,6 +196,24 @@ export function partFromInstrument(instrument) {
     return 'OTHER';
 }
 
+// Argmax over a part-breakdown vector: which instrument did this musician
+// play most? Ties broken by V1 → V2 → VA → VC → OTHER (the iteration order).
+// Used by the chord view to group musicians into instrument blocks.
+const PRED_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
+export function predominantPart(parts) {
+    if (!parts) return null;
+    let best = null;
+    let bestCount = -1;
+    for (const part of PRED_ORDER) {
+        const c = parts[part] ?? 0;
+        if (c > bestCount) {
+            best = part;
+            bestCount = c;
+        }
+    }
+    return bestCount > 0 ? best : null;
+}
+
 // For every musician, count how many pieces they played in each part.
 // player1/2/3 slots are mapped via SLOT_TO_PART; othersList entries use the
 // parsed instrument string. The returned breakdown vectors sum to the

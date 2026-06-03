@@ -17,6 +17,7 @@ import {
     disambiguateLabels,
     partFromInstrument,
     computePartBreakdownPerMusician,
+    predominantPart,
 } from '../src/dataProcessor.js';
 
 // Hand-built rows for the network helpers. Reflects the real data model:
@@ -707,5 +708,26 @@ describe('computePartBreakdownPerMusician', () => {
         assert.equal(sum(breakdown.get('Carol')), 2);
         assert.equal(sum(breakdown.get('Dave')), 1);
         assert.equal(sum(breakdown.get('Eve')), 1);
+    });
+});
+
+describe('predominantPart', () => {
+    it('returns the part with the most pieces', () => {
+        assert.equal(predominantPart({ V1: 10, V2: 3, VA: 0, VC: 0, OTHER: 0 }), 'V1');
+        assert.equal(predominantPart({ V1: 0, V2: 0, VA: 0, VC: 12, OTHER: 0 }), 'VC');
+        assert.equal(predominantPart({ V1: 0, V2: 0, VA: 0, VC: 0, OTHER: 5 }), 'OTHER');
+    });
+
+    it('breaks ties in V1 > V2 > VA > VC > OTHER order', () => {
+        assert.equal(predominantPart({ V1: 3, V2: 3, VA: 0, VC: 0, OTHER: 0 }), 'V1');
+        assert.equal(predominantPart({ V1: 0, V2: 5, VA: 5, VC: 0, OTHER: 0 }), 'V2');
+        assert.equal(predominantPart({ V1: 0, V2: 0, VA: 4, VC: 4, OTHER: 0 }), 'VA');
+        assert.equal(predominantPart({ V1: 0, V2: 0, VA: 0, VC: 2, OTHER: 2 }), 'VC');
+    });
+
+    it('returns null for null/empty input', () => {
+        assert.equal(predominantPart(null), null);
+        assert.equal(predominantPart(undefined), null);
+        assert.equal(predominantPart({ V1: 0, V2: 0, VA: 0, VC: 0, OTHER: 0 }), null);
     });
 });

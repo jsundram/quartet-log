@@ -5,6 +5,7 @@ import {
     computeNodeCounts,
     defaultMinPiecesForGraph,
     computePartBreakdownPerMusician,
+    predominantPart,
 } from './dataProcessor';
 
 // Tabbed view of the musician co-occurrence network: a force-directed
@@ -32,6 +33,10 @@ function sizing(width) {
         matrixCellMin: mobile ? 14 : 18,
         matrixLabelGutter: mobile ? 70 : 90,
         matrixLabelFont: mobile ? 10 : 11,
+        chordDiameter: mobile ? 340 : 500,
+        chordLabelPad: mobile ? 40 : 60,
+        chordArcThickness: mobile ? 9 : 12,
+        chordLabelFont: mobile ? 10 : 11,
         tabPad: mobile ? '7px 10px' : '6px 14px',
     };
 }
@@ -142,6 +147,8 @@ export class MusicianNetworkComponent {
             .style('display', view === 'graph' ? null : 'none');
         d3.select('#dashboardMusicianNetworkMatrix')
             .style('display', view === 'matrix' ? null : 'none');
+        d3.select('#dashboardMusicianNetworkChord')
+            .style('display', view === 'chord' ? null : 'none');
         this.render();
     }
 
@@ -158,6 +165,7 @@ export class MusicianNetworkComponent {
             caption.text(`No musicians at this threshold (≥ ${this._effectiveMin} piece${this._effectiveMin === 1 ? '' : 's'}).`);
             d3.select('#dashboardMusicianNetworkGraph').selectAll('*').remove();
             d3.select('#dashboardMusicianNetworkMatrix').selectAll('*').remove();
+            d3.select('#dashboardMusicianNetworkChord').selectAll('*').remove();
             return;
         }
 
@@ -165,9 +173,12 @@ export class MusicianNetworkComponent {
         if (this.activeView === 'graph') {
             caption.text(`${n} co-player${n === 1 ? '' : 's'} · edges shown when ≥ ${MIN_EDGE_WEIGHT} shared pieces`);
             this._renderGraph(width, s);
-        } else {
+        } else if (this.activeView === 'matrix') {
             caption.text(`${n} co-player${n === 1 ? '' : 's'} · diagonal omitted · cell shade = pieces played together`);
             this._renderMatrix(width, s);
+        } else {
+            caption.text(`${n} co-player${n === 1 ? '' : 's'} · grouped by predominant instrument · ribbon = pieces played together`);
+            this._renderChord(width, s);
         }
     }
 
@@ -529,6 +540,139 @@ export class MusicianNetworkComponent {
             return `<h4>${c.a} · ${c.b}</h4><ul><li>No pieces together</li></ul>`;
         }
         return `<h4>${c.a} · ${c.b}</h4><ul><li>${c.weight} piece${c.weight === 1 ? '' : 's'} together</li></ul>`;
+    }
+
+    // ---------------- Chord ----------------
+
+    _renderChord(containerWidth, s) {
+        const root = d3.select('#dashboardMusicianNetworkChord');
+        const { nodes, edges, labels } = this._state;
+
+        // Group musicians by predominant instrument (V1 → V2 → VA → VC → OTHER),
+        // sorted by piece count desc within each block. The chord layout then
+        // arranges them in this order around the circle so each instrument
+        // family occupies a contiguous arc segment.
+        const order = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
+        const ordered = nodes.slice().sort((a, b) => {
+            const pa = predominantPart(a.parts) ?? 'OTHER';
+            const pb = predominantPart(b.parts) ?? 'OTHER';
+            const oa = order.indexOf(pa);
+            const ob = order.indexOf(pb);
+            if (oa !== ob) return oa - ob;
+            return b.count - a.count;
+        });
+
+        const N = ordered.length;
+        const indexOf = new Map(ordered.map((n, i) => [n.name, i]));
+
+        // Build symmetric co-occurrence matrix.
+        const matrix = Array.from({ length: N }, () => new Array(N).fill(0));
+        edges.forEach(e => {
+            const a = e.source.name ?? e.source;
+            const b = e.target.name ?? e.target;
+            const i = indexOf.get(a);
+            const j = indexOf.get(b);
+            if (i === undefined || j === undefined) return;
+            matrix[i][j] = e.weight;
+            matrix[j][i] = e.weight;
+        });
+
+        // Square container, capped by both the section width and the per-
+        // breakpoint design size. The chord diagram inscribes a circle into it.
+        const diameter = Math.min(containerWidth, s.chordDiameter);
+        const outerRadius = (diameter / 2) - s.chordLabelPad;
+        const innerRadius = outerRadius - s.chordArcThickness;
+
+        const chord = d3.chord()
+            .padAngle(0.015)
+            .sortGroups(null)
+            .sortSubgroups(null);
+        const layout = chord(matrix);
+        const arcGen = d3.arc().innerRadius(innerRadius).outerRadius(outerRadius);
+        const ribbonGen = d3.ribbon().radius(innerRadius);
+
+        const selected = this.getSelectedMusician ? this.getSelectedMusician() : null;
+        const otherFill = getCssColor('--color-part-fallback');
+        const selectedStroke = getCssColor('--color-text-dark') || getCssColor('--color-text-primary');
+
+        const arcFill = (i) => {
+            const part = predominantPart(ordered[i].parts) ?? 'OTHER';
+            return part === 'OTHER' ? otherFill : getPartColor(part);
+        };
+        // Blended ribbon color (per request). If it ends up muddy on real data
+        // we can swap to a neutral gray here without touching the rest.
+        const ribbonFill = (i, j) => d3.interpolateRgb(arcFill(i), arcFill(j))(0.5);
+
+        root.selectAll('*').remove();
+        const svg = root.append('svg')
+            .attr('width', diameter)
+            .attr('height', diameter)
+            .attr('viewBox', `${-diameter / 2} ${-diameter / 2} ${diameter} ${diameter}`)
+            .style('display', 'block');
+
+        // Ribbons (chords) — drawn first so arcs sit on top.
+        const chordSel = svg.append('g').attr('class', 'network-chords')
+            .selectAll('path')
+            .data(layout, d => `${ordered[d.source.index].name}::${ordered[d.target.index].name}`)
+            .join('path')
+            .attr('class', 'network-chord')
+            .attr('d', ribbonGen)
+            .attr('fill', d => ribbonFill(d.source.index, d.target.index))
+            .attr('fill-opacity', d => {
+                if (!selected) return 0.45;
+                const a = ordered[d.source.index].name;
+                const b = ordered[d.target.index].name;
+                return (a === selected || b === selected) ? 0.75 : 0.04;
+            });
+        this._attachTooltip(chordSel, (event, d) => {
+            const a = ordered[d.source.index].name;
+            const b = ordered[d.target.index].name;
+            const w = matrix[d.source.index][d.target.index];
+            return `<h4>${a} · ${b}</h4><ul><li>${w} piece${w === 1 ? '' : 's'} together</li></ul>`;
+        });
+
+        // Outer arcs + labels.
+        const arcG = svg.append('g').attr('class', 'network-arcs')
+            .selectAll('g.network-arc-group')
+            .data(layout.groups, d => ordered[d.index].name)
+            .join('g')
+            .attr('class', 'network-arc-group');
+
+        const arcPathSel = arcG.append('path')
+            .attr('class', 'network-arc')
+            .attr('d', arcGen)
+            .attr('fill', d => arcFill(d.index))
+            .attr('opacity', d => {
+                const name = ordered[d.index].name;
+                return !selected || name === selected ? 1 : 0.35;
+            })
+            .attr('stroke', d => ordered[d.index].name === selected ? selectedStroke : 'none')
+            .attr('stroke-width', d => ordered[d.index].name === selected ? 2 : 0);
+        this._attachClickToggle(arcPathSel, d => ordered[d.index].name);
+        this._attachHoverTooltip(arcPathSel, (event, d) => this._nodeTooltipHtml(ordered[d.index]));
+
+        // Radial labels just outside the arcs. The conditional rotate(180)
+        // flips text on the left half of the circle so it always reads
+        // outward-to-inward rather than upside-down.
+        arcG.append('text')
+            .attr('class', 'network-arc-label')
+            .attr('font-size', s.chordLabelFont)
+            .attr('dy', '0.32em')
+            .attr('transform', d => {
+                const angleDeg = (d.startAngle + d.endAngle) / 2 * 180 / Math.PI - 90;
+                const flip = angleDeg > 90;
+                return `rotate(${angleDeg}) translate(${outerRadius + 6})${flip ? ' rotate(180)' : ''}`;
+            })
+            .attr('text-anchor', d => {
+                const angleDeg = (d.startAngle + d.endAngle) / 2 * 180 / Math.PI - 90;
+                return angleDeg > 90 ? 'end' : 'start';
+            })
+            .attr('opacity', d => {
+                const name = ordered[d.index].name;
+                return !selected || name === selected ? 1 : 0.35;
+            })
+            .attr('font-weight', d => ordered[d.index].name === selected ? 'bold' : 'normal')
+            .text(d => labels.get(ordered[d.index].name) || ordered[d.index].name);
     }
 
     _truncate(text, maxWidthPx, fontPx) {

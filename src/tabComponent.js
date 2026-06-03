@@ -20,7 +20,8 @@ export class TabComponent {
             if (cls?.contains('work-label') || cls?.contains('play-square')) return;
             // Musician-network elements re-open the tooltip on click; let them through.
             if (cls?.contains('network-node') || cls?.contains('network-edge')
-                || cls?.contains('matrix-cell') || cls?.contains('matrix-label')) return;
+                || cls?.contains('matrix-cell') || cls?.contains('matrix-label')
+                || cls?.contains('network-arc') || cls?.contains('network-chord')) return;
             this.hideTooltip();
         });
     }

@@ -733,7 +733,8 @@ h1 {
 #dashboardComposerChart svg,
 #dashboardMusicianChart svg,
 #dashboardMusicianNetworkGraph svg,
-#dashboardMusicianNetworkMatrix svg {
+#dashboardMusicianNetworkMatrix svg,
+#dashboardMusicianNetworkChord svg {
     font-family: sans-serif;
 }
 
@@ -802,8 +803,21 @@ h1 {
 .network-view svg .network-node,
 .network-view svg .network-edge,
 .network-view svg .matrix-cell,
-.network-view svg .matrix-label {
+.network-view svg .matrix-label,
+.network-view svg .network-arc,
+.network-view svg .network-chord {
     cursor: pointer;
+}
+
+/* Chord arc labels match the graph-node label halo so they stay legible
+   over ribbons in both themes. */
+.network-view svg .network-arc-label {
+    fill: var(--color-text-primary);
+    pointer-events: none;
+    paint-order: stroke;
+    stroke: var(--color-bg-primary);
+    stroke-width: 3px;
+    stroke-linejoin: round;
 }
 
 /* Halo around graph labels so they stay legible over edges in both themes
