@@ -74,6 +74,11 @@ export class MusicianNetworkComponent {
         // re-runs the force simulation for the graph view at the new width.
         this._isFullscreen = false;
         this._escHandler = null;
+        // When false, all rendered labels (graph nodes, matrix axes, chord
+        // arcs) become empty strings — useful for taking shareable
+        // screenshots without leaking real names. Tooltips still work for
+        // interactive use; they don't bake into a screenshot.
+        this.showNames = true;
     }
 
     init(mountSelector) {
@@ -94,6 +99,11 @@ export class MusicianNetworkComponent {
         });
 
         root.select('#networkFullscreenBtn').on('click', () => this._toggleFullscreen());
+
+        root.select('#networkShowNames').on('change', (event) => {
+            this.showNames = event.currentTarget.checked;
+            this.render();
+        });
     }
 
     _toggleFullscreen() {
@@ -419,7 +429,7 @@ export class MusicianNetworkComponent {
             .attr('text-anchor', d => d.labelOnRight ? 'start' : 'end')
             .attr('opacity', d => !selected || d.name === selected ? 1 : 0.35)
             .attr('font-weight', d => d.name === selected ? 'bold' : 'normal')
-            .text(d => d.label);
+            .text(d => this.showNames ? d.label : '');
     }
 
     _nodeTooltipHtml(n) {
@@ -449,6 +459,9 @@ export class MusicianNetworkComponent {
         const root = d3.select('#dashboardMusicianNetworkMatrix');
         const { nodes, edges, labels, maxEdgeWeight } = this._state;
         const n = nodes.length;
+        // Captured locally so the d3 .each callbacks (where `this` is the
+        // DOM element) can still gate name rendering off the toggle.
+        const showNames = this.showNames;
 
         const labelGutter = s.matrixLabelGutter;
         const availableForCells = containerWidth - labelGutter - 4;
@@ -516,9 +529,9 @@ export class MusicianNetworkComponent {
             .attr('fill', d => d.name === selected ? selectedLabelColor : labelColor)
             .attr('font-weight', d => d.name === selected ? 'bold' : 'normal')
             .attr('opacity', d => !selected || d.name === selected ? 1 : 0.5)
-            .text(d => this._truncate(labels.get(d.name), labelGutter - 10, s.matrixLabelFont))
+            .text(d => showNames ? this._truncate(labels.get(d.name), labelGutter - 10, s.matrixLabelFont) : '')
             .each(function (d) {
-                d3.select(this).append('title').text(d.name);
+                d3.select(this).append('title').text(showNames ? d.name : '');
             });
         this._attachClickToggle(rowLabelSel, d => d.name);
         this._attachHoverTooltip(rowLabelSel, (event, d) => this._nodeTooltipHtml(d));
@@ -545,9 +558,9 @@ export class MusicianNetworkComponent {
             .attr('fill', d => d.name === selected ? selectedLabelColor : labelColor)
             .attr('font-weight', d => d.name === selected ? 'bold' : 'normal')
             .attr('opacity', d => !selected || d.name === selected ? 1 : 0.5)
-            .text(d => this._truncate(labels.get(d.name), labelGutter - 10, s.matrixLabelFont))
+            .text(d => showNames ? this._truncate(labels.get(d.name), labelGutter - 10, s.matrixLabelFont) : '')
             .each(function (d) {
-                d3.select(this).append('title').text(d.name);
+                d3.select(this).append('title').text(showNames ? d.name : '');
             });
         this._attachClickToggle(colLabelSel, d => d.name);
         this._attachHoverTooltip(colLabelSel, (event, d) => this._nodeTooltipHtml(d));
@@ -766,7 +779,7 @@ export class MusicianNetworkComponent {
             // so chord hover can unhide the two endpoint labels (and re-hide
             // them on leave) without rewriting any DOM text.
             .style('display', (d, i) => visible[i] ? null : 'none')
-            .text(d => labels.get(ordered[d.index].name) || ordered[d.index].name);
+            .text(d => this.showNames ? (labels.get(ordered[d.index].name) || ordered[d.index].name) : '');
 
         // Chord hover surfaces the two endpoint labels even when they were
         // hidden by the de-overlap pass — useful for tracing a ribbon back to

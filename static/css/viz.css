@@ -543,6 +543,9 @@ h1 {
     border: 1px solid var(--color-text-emphasis);
     padding: 5px;
     border-radius: 5px;
+    /* Above the network's fullscreen overlay (z-index 1000) so tooltips
+       stay visible when interacting with the lightbox. */
+    z-index: 1001;
 }
 
 .tooltip h4 {
@@ -896,6 +899,38 @@ h1 {
     font: 11px sans-serif;
     color: var(--color-text-tertiary);
     margin: 6px 0 0 0;
+    flex: 1;
+}
+
+/* Caption sits to the left, "Names" toggle on the right. Same max-width
+   as the controls row so it lines up with the visualization's right edge. */
+.network-caption-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    max-width: 720px;
+}
+
+#dashboardMusicianNetwork.fullscreen .network-caption-row {
+    max-width: none;
+}
+
+.network-show-names {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font: 11px sans-serif;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    white-space: nowrap;
+}
+
+.network-show-names input[type="checkbox"] {
+    margin: 0;
+    accent-color: var(--color-accent);
+    cursor: pointer;
 }
 
 .work-row {
