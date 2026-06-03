@@ -30,9 +30,10 @@ function sizing(width) {
         labelDx: mobile ? 8 : 10,
         chargeStrength: mobile ? -180 : -260,
         linkDistance: mobile ? 55 : 75,
-        matrixCellMin: mobile ? 14 : 18,
-        matrixLabelGutter: mobile ? 70 : 90,
-        matrixLabelFont: mobile ? 10 : 11,
+        matrixCellMin: mobile ? 10 : 13,
+        matrixCellMax: mobile ? 26 : 36,
+        matrixLabelGutter: mobile ? 60 : 78,
+        matrixLabelFont: mobile ? 9 : 10,
         chordDiameter: mobile ? 340 : 500,
         chordLabelPad: mobile ? 40 : 60,
         chordArcThickness: mobile ? 9 : 12,
@@ -202,6 +203,7 @@ export class MusicianNetworkComponent {
             s = sizing(width);
             s.graphHeight = Math.max(s.graphHeight, containerHeight);
             s.chordDiameter = Math.max(s.chordDiameter, Math.min(width, containerHeight));
+            s.matrixCellMax = Math.max(s.matrixCellMax, 56);
         } else {
             width = Math.min(MAX_DESIGN_WIDTH, this.measureWidth());
             s = sizing(width);
@@ -450,7 +452,14 @@ export class MusicianNetworkComponent {
 
         const labelGutter = s.matrixLabelGutter;
         const availableForCells = containerWidth - labelGutter - 4;
-        const cellSize = Math.max(s.matrixCellMin, Math.floor(availableForCells / n));
+        // Clamped both ways: shrinks to matrixCellMin (horizontal scroll
+        // when the matrix exceeds container width), and capped at
+        // matrixCellMax so a sparse matrix (after selecting a musician
+        // and only ~10 cells remain) doesn't blow up into giant squares.
+        const cellSize = Math.max(
+            s.matrixCellMin,
+            Math.min(s.matrixCellMax, Math.floor(availableForCells / n))
+        );
         const gridSize = cellSize * n;
         const svgWidth = labelGutter + gridSize;
         const svgHeight = labelGutter + gridSize;
