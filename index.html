@@ -131,6 +131,14 @@
                             <span class="network-threshold-text">Min pieces:&nbsp;<span class="network-threshold-value">1</span></span>
                             <input type="range" id="networkMinCount" min="1" max="1" value="1">
                         </label>
+                        <button type="button" id="networkFullscreenBtn" class="network-fullscreen-btn" title="Expand to full screen" aria-label="Expand to full screen">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <polyline points="9 21 3 21 3 15"></polyline>
+                                <line x1="21" y1="3" x2="14" y2="10"></line>
+                                <line x1="3" y1="21" x2="10" y2="14"></line>
+                            </svg>
+                        </button>
                     </div>
                     <div id="dashboardMusicianNetworkGraph" class="network-view"></div>
                     <div id="dashboardMusicianNetworkMatrix" class="network-view" style="display:none"></div>

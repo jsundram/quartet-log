@@ -67,6 +67,12 @@ export class MusicianNetworkComponent {
         this._lastSelection = null;
         this._preSelectionMinCount = null;
         this._state = null;
+        // Lightbox / fullscreen mode. When on, the section's container fills
+        // the viewport via the .fullscreen CSS class; we expand the per-view
+        // sizing knobs to fill the new room and re-run render(), which
+        // re-runs the force simulation for the graph view at the new width.
+        this._isFullscreen = false;
+        this._escHandler = null;
     }
 
     init(mountSelector) {
@@ -85,6 +91,28 @@ export class MusicianNetworkComponent {
             this.userMinCount = Math.max(1, parseInt(event.currentTarget.value, 10) || 1);
             this.render();
         });
+
+        root.select('#networkFullscreenBtn').on('click', () => this._toggleFullscreen());
+    }
+
+    _toggleFullscreen() {
+        this._isFullscreen = !this._isFullscreen;
+        const root = d3.select(this.mountSelector);
+        root.classed('fullscreen', this._isFullscreen);
+        d3.select('#networkFullscreenBtn')
+            .attr('aria-label', this._isFullscreen ? 'Exit full screen' : 'Expand to full screen')
+            .attr('title', this._isFullscreen ? 'Exit full screen' : 'Expand to full screen');
+
+        if (this._isFullscreen) {
+            this._escHandler = (e) => {
+                if (e.key === 'Escape') this._toggleFullscreen();
+            };
+            document.addEventListener('keydown', this._escHandler);
+        } else if (this._escHandler) {
+            document.removeEventListener('keydown', this._escHandler);
+            this._escHandler = null;
+        }
+        this.render();
     }
 
     _syncSliderLabel(value) {
@@ -157,8 +185,27 @@ export class MusicianNetworkComponent {
         this._syncSlider(rows);
         this._recomputeState(rows);
 
-        const width = Math.min(MAX_DESIGN_WIDTH, this.measureWidth());
-        const s = sizing(width);
+        // Dimensions: normal mode is capped by MAX_DESIGN_WIDTH and the
+        // breakpoint-default heights from sizing(). Fullscreen reads the
+        // expanded container directly and overrides graphHeight / chordDiameter
+        // to fill it (matrix scales naturally via cellSize).
+        let width;
+        let s;
+        if (this._isFullscreen) {
+            const node = d3.select(this.mountSelector).node();
+            const rect = node?.getBoundingClientRect();
+            const padding = 40;
+            const containerWidth = (rect?.width ?? window.innerWidth) - padding;
+            // Reserve room for the controls row + caption (~120px).
+            const containerHeight = (rect?.height ?? window.innerHeight) - padding - 80;
+            width = containerWidth;
+            s = sizing(width);
+            s.graphHeight = Math.max(s.graphHeight, containerHeight);
+            s.chordDiameter = Math.max(s.chordDiameter, Math.min(width, containerHeight));
+        } else {
+            width = Math.min(MAX_DESIGN_WIDTH, this.measureWidth());
+            s = sizing(width);
+        }
 
         const caption = d3.select(this.mountSelector).select('.network-caption');
         if (this._state.nodes.length === 0) {

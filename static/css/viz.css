@@ -767,6 +767,49 @@ h1 {
     accent-color: var(--color-accent);
 }
 
+.network-fullscreen-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border-strong);
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 5px 9px;
+    color: var(--color-text-primary);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.network-fullscreen-btn:hover {
+    background: var(--color-bg-hover);
+}
+
+.network-fullscreen-btn svg {
+    pointer-events: none;
+}
+
+/* Mobile breakpoint mirrors MOBILE_BREAKPOINT in musicianNetworkComponent.js.
+   A lightbox on phones isn't useful when the viewport is already small. */
+@media only screen and (max-width: 599px) {
+    .network-fullscreen-btn { display: none; }
+}
+
+/* Lightbox mode: the section fills the viewport. The tabs / slider / caption
+   stay in place; the active view's SVG grows because render() re-measures
+   the container and re-runs the force layout at the new size. */
+#dashboardMusicianNetwork.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1000;
+    background: var(--color-bg-primary);
+    padding: 20px;
+    overflow: auto;
+    box-sizing: border-box;
+}
+
 .network-tabs {
     display: inline-flex;
     border: 1px solid var(--color-border-strong);
