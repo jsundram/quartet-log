@@ -24,19 +24,43 @@ export function stripParens(name) {
     return m ? m[1].trim() : name;
 }
 
-// Format is "Name (instrument); Name (instrument)" — usually well-adhered.
-// Also handles "," as a fallback separator and fragments without parens.
+// Split `s` on `,` or `;` at paren depth 0 only — so commas inside a
+// "(instrument, comment)" annotation don't tear an entry in half.
+function splitOutsideParens(s) {
+    const parts = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (c === '(') depth++;
+        else if (c === ')') depth = Math.max(0, depth - 1);
+        else if (depth === 0 && (c === ',' || c === ';')) {
+            parts.push(s.slice(start, i));
+            start = i + 1;
+        }
+    }
+    parts.push(s.slice(start));
+    return parts;
+}
+
+// Format: "Name (instrument, comment); Name (instrument)" — separators `,` or
+// `;` between entries, paren-aware so commas inside the annotation don't
+// split. Inside the parens the first comma separates the instrument code
+// from a free-form comment ("v2, on III", "vc, doubling", "v1, shadowing on
+// II, III"); only the instrument piece is kept on the parsed entry, and
+// further commas inside the comment are tolerated.
 export function parseOthers(others) {
     if (!others) return [];
-    return others
-        .split(/[;,]/)
+    return splitOutsideParens(others)
         .map(s => s.trim())
         .filter(s => s && s !== '-')
         .map(s => {
             const m = s.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
-            return m
-                ? { name: m[1].trim(), instrument: m[2].trim() }
-                : { name: s, instrument: null };
+            if (!m) return { name: s, instrument: null };
+            const inside = m[2];
+            const commaIdx = inside.indexOf(',');
+            const instrument = (commaIdx >= 0 ? inside.slice(0, commaIdx) : inside).trim();
+            return { name: m[1].trim(), instrument };
         });
 }
 

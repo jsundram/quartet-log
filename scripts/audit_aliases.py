@@ -65,17 +65,42 @@ def class_of(instrument: str | None) -> str | None:
     return "cello" if instrument.lower().strip().startswith("vc") else "upper"
 
 
+def _split_outside_parens(s: str) -> list[str]:
+    """Split on ',' or ';' at paren depth 0 — mirrors splitOutsideParens
+    in src/dataProcessor.js so a comma inside a "(instrument, comment)"
+    annotation doesn't tear an entry in half."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for i, c in enumerate(s):
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and c in ",;":
+            parts.append(s[start:i])
+            start = i + 1
+    parts.append(s[start:])
+    return parts
+
+
 def parse_others(others: str) -> list[tuple[str, str | None]]:
+    """Mirror parseOthers in src/dataProcessor.js: paren-aware top-level
+    split, then inside the parens the first comma separates the instrument
+    code from a free-form comment (only the instrument is kept)."""
     if not others:
         return []
     out = []
-    for frag in re.split(r"[;,]", others):
+    for frag in _split_outside_parens(others):
         frag = frag.strip()
         if not frag or frag == "-":
             continue
         m = re.match(r"^(.+?)\s*\(([^)]+)\)\s*$", frag)
         if m:
-            out.append((m.group(1).strip(), m.group(2).strip()))
+            inside = m.group(2)
+            comma_idx = inside.find(",")
+            instrument = (inside[:comma_idx] if comma_idx >= 0 else inside).strip()
+            out.append((m.group(1).strip(), instrument))
         else:
             out.append((frag, None))
     return out

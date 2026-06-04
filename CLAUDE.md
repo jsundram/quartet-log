@@ -105,7 +105,7 @@ Classes: `upper` (V1, V2, VA, VLA — violin/viola alias as one person) and `cel
 
 **Player slot conventions**: `player1`/`player2` are always "upper" class, `player3` is always "cello" — derived from the user's own part (V1/V2/VA). `stripParens` removes inline `(instrument)` annotations like `Lois Shapiro (piano)` from player slots before aliasing.
 
-**Others? column**: free-form, parsed by `parseOthers` (splits on `;` or `,`, extracts `Name (instrument)`). The instrument string classifies via `classOf` (`vc*` → cello, else upper). The parsed list is attached as `othersList` on each row; the raw `others` string stays untouched for the CSV-download path.
+**Others? column**: free-form, parsed by `parseOthers`. Entries are separated by `;` or `,` **at paren depth 0** (paren-aware split, so commas inside an annotation don't tear an entry in half). Each entry is `Name`, `Name (instrument)`, or `Name (instrument, comment)`. Inside the parens, the **first** comma separates the instrument code from a free-form comment — later commas stay in the comment (e.g. `Isaac (v1, shadowing on II, III)` → instrument `v1`, comment ignored). The instrument string classifies via `classOf` (`vc*` → cello, else upper). The parsed list is attached as `othersList` on each row; the raw `others` string stays untouched for the CSV-download path.
 
 **Audit script** (`scripts/audit_aliases.py`) reads an exported CSV (default `archive/data.csv`, gitignored) and surfaces candidate aliases by lowercased first-token grouping + teammate-overlap. Reads `PLAYER_ALIASES` live from `src/config.js` via a `node -e` subshell — single source of truth, no manual sync.
 

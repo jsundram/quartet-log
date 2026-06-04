@@ -171,6 +171,38 @@ describe('parseOthers', () => {
             { name: 'B', instrument: null },
         ]);
     });
+
+    // Parenthetical comment support: inside the parens, the first comma
+    // separates the instrument code from a free-form comment; the
+    // top-level split is paren-aware so the inner comma doesn't tear the
+    // entry in half.
+    it('treats the first inner comma as the instrument/comment boundary', () => {
+        assert.deepEqual(parseOthers('Alice (va, unison)'), [
+            { name: 'Alice', instrument: 'va' },
+        ]);
+        assert.deepEqual(parseOthers('Bob (vc, doubling)'), [
+            { name: 'Bob', instrument: 'vc' },
+        ]);
+    });
+
+    it('only the first inner comma splits — later commas stay in the comment', () => {
+        // Real-world entry: "Isaac (v1, shadowing on II, III)" — second comma
+        // is inside the comment and must not split the instrument.
+        assert.deepEqual(parseOthers('Carol (v1, shadowing on II, III)'), [
+            { name: 'Carol', instrument: 'v1' },
+        ]);
+    });
+
+    it('paren-aware top-level split lets inner commas coexist with multiple entries', () => {
+        assert.deepEqual(
+            parseOthers('Alice (va, unison); Bob (vc, doubling), Carol (v2, on III)'),
+            [
+                { name: 'Alice', instrument: 'va' },
+                { name: 'Bob', instrument: 'vc' },
+                { name: 'Carol', instrument: 'v2' },
+            ],
+        );
+    });
 });
 
 describe('normalizePlayerNames', () => {
