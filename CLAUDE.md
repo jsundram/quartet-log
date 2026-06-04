@@ -109,6 +109,10 @@ Classes: `upper` (V1, V2, VA, VLA — violin/viola alias as one person) and `cel
 
 **Audit script** (`scripts/audit_aliases.py`) reads an exported CSV (default `archive/data.csv`, gitignored) and surfaces candidate aliases by lowercased first-token grouping + teammate-overlap. Reads `PLAYER_ALIASES` live from `src/config.js` via a `node -e` subshell — single source of truth, no manual sync.
 
+**Fetch scripts** (both read source URL from `.dev-data-url`, both gitignore their outputs):
+- `scripts/fetch_processed.mjs` — fetches the sheet, runs the same `fillForward` + `normalizePlayerNames` + drop-incompletes pipeline as the in-browser "Download Data" button, writes `archive/data.csv` in the matching CSV format. This is the file `audit_aliases.py` defaults to.
+- `scripts/fetch_raw.sh` — `curl`s the raw published CSV verbatim to `archive/data-raw.csv` (no JS processing, partial-movements included, names un-normalized).
+
 ### Calendar specifics
 
 Per-year stats column shows four numbers (Pieces, Unique Pieces, People played with, Playing Days) at `cellSize*2` through `cellSize*5`, with tooltips wired via `attachStatTooltip` (works on hover and tap). The legend SVG is sized to exactly `10 * cellSize` wide and uses CSS `width: min(170px, 17%)` + `margin-left: min(40.5px, 4.05%)` so it tracks the calendar grid's first 10 cells across all viewport widths.
@@ -150,7 +154,8 @@ Pandoc reads `gfm+attributes+implicit_figures` so `![alt](path){width=600px}` sy
 
 ## Gitignored / untracked things to know
 
-- `archive/data.csv` — locally-exported full CSV used by the audit script. Personal data; gitignored.
+- `archive/data.csv` — full CSV used by the audit script. Refresh via `scripts/fetch_processed.mjs` (mirrors the in-browser "Download Data" output). Personal data; gitignored.
+- `archive/data-raw.csv` — raw unprocessed sheet, refreshed via `scripts/fetch_raw.sh`. Personal data; gitignored.
 - `archive/*.zip` — pre-existing deploy snapshots; gitignored via `*.zip`.
 - `alias-output.txt` — output of `audit_aliases.py` if redirected; gitignored.
 - `.dev-data-url` — single-line Google Sheets CSV URL used by `build.sh` (dev mode only) to print a preconfigured `?data=…` URL. Personal; gitignored.
