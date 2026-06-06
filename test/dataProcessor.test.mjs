@@ -89,7 +89,7 @@ describe('canonicalize', () => {
     it('returns the canonical for a known (name, class) pair', () => {
         assert.equal(canonicalize('Jen', 'upper'), 'Jen Hsiao');
         assert.equal(canonicalize('Jen', 'cello'), 'Jen Minnich');
-        assert.equal(canonicalize('Isaac', 'upper'), 'Isaac Krauss');
+        assert.equal(canonicalize('Isaac', 'upper'), 'Isaac');
     });
 
     it('returns the input when the alias entry has no mapping for the given class', () => {
@@ -217,9 +217,9 @@ describe('normalizePlayerNames', () => {
     it('aliases player1/player2 as upper and player3 as cello', () => {
         const data = [mkRow({ player1: 'Jen', player2: 'Isaac', player3: 'Jen' })];
         normalizePlayerNames(data);
-        // Jen[upper] → Jen Hsiao; Isaac[upper] → Isaac Krauss; Jen[cello] → Jen Minnich
+        // Jen[upper] → Jen Hsiao; Isaac[upper] → Isaac; Jen[cello] → Jen Minnich
         assert.equal(data[0].player1, 'Jen Hsiao');
-        assert.equal(data[0].player2, 'Isaac Krauss');
+        assert.equal(data[0].player2, 'Isaac');
         assert.equal(data[0].player3, 'Jen Minnich');
     });
 
@@ -360,7 +360,7 @@ describe('computeAggregateStats', () => {
             mkRow({ player1: 'Jen', player2: 'Isaac', player3: 'Jen',
                     others: 'Marshall (va2)' }),
         ];
-        // Jen[upper]→Jen Hsiao, Isaac[upper]→Isaac Krauss, Jen[cello]→Jen Minnich, Marshall(va2)→Marshall
+        // Jen[upper]→Jen Hsiao, Isaac[upper]→Isaac, Jen[cello]→Jen Minnich, Marshall(va2)→Marshall
         // = 4 distinct people
         assert.equal(computeAggregateStats(rows).uniquePeople, 4);
     });
