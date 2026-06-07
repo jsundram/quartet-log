@@ -741,6 +741,34 @@ h1 {
     font-family: sans-serif;
 }
 
+/* Reserve room for the full TOP_N rows so filter toggles (and the empty
+   "no data" state) don't change the chart container's height — otherwise
+   the network section below would scroll up/down with every filter click.
+   Keep in sync with TOP_N=20 + rankedRowHeight in src/dashboardComponent.js. */
+#dashboardComposerChart,
+#dashboardMusicianChart {
+    min-height: 456px; /* desktop: 20 * 22 + 8 + 8 */
+}
+@media (max-width: 599px) {
+    #dashboardComposerChart,
+    #dashboardMusicianChart {
+        min-height: 652px; /* mobile: 20 * 32 + 6 + 6 */
+    }
+}
+
+/* Reserve room for the tallest network view (chord on desktop, graph on
+   mobile) so switching tabs doesn't shift the page. Inactive views are
+   display:none so they don't double-count. Keep in sync with sizing() in
+   src/musicianNetworkComponent.js (graphHeight, chordDiameter). */
+.network-view {
+    min-height: 500px; /* desktop: max(graphHeight 460, chordDiameter 500) */
+}
+@media (max-width: 599px) {
+    .network-view {
+        min-height: 380px; /* mobile: max(graphHeight 380, chordDiameter 340) */
+    }
+}
+
 /* Musician network: tab toggle + min-sessions slider + view containers. */
 .network-controls {
     display: flex;
