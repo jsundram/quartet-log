@@ -21,10 +21,18 @@ const MAX_DESIGN_WIDTH = 720;
 
 function sizing(width) {
     const mobile = width < MOBILE_BREAKPOINT;
+    // Coarse pointer = touch-primary device. Graph nodes use a Voronoi hit
+    // layer clipped to a per-node circle of this radius; touch gets a generous
+    // catchment so taps near a node still register, desktop stays tight so a
+    // click in empty space doesn't surprise-select a far-away node. Chord arcs
+    // get the radial pad on touch only.
+    const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
     return {
         mobile,
+        touch,
         graphHeight: mobile ? 380 : 460,
         nodeRadiusRange: mobile ? [5, 18] : [6, 22],
+        nodeHitClipRadius: touch ? 40 : 22,
         edgeWidthRange: mobile ? [0.5, 4] : [0.75, 6],
         labelFont: mobile ? 11 : 12,
         labelDx: mobile ? 8 : 10,
@@ -37,6 +45,7 @@ function sizing(width) {
         chordDiameter: mobile ? 340 : 500,
         chordLabelPad: mobile ? 40 : 60,
         chordArcThickness: mobile ? 9 : 12,
+        chordHitPad: touch ? 10 : 0,
         chordLabelFont: mobile ? 10 : 11,
         tabPad: mobile ? '7px 10px' : '6px 14px',
     };
@@ -353,6 +362,35 @@ export class MusicianNetworkComponent {
             .attr('viewBox', `0 0 ${width} ${height}`)
             .style('display', 'block');
 
+        // Voronoi hit layer (below everything) — each node's hit region is its
+        // Voronoi cell clipped to a circle around the node center. Non-
+        // overlapping by construction; gives tap-anywhere-near-the-node
+        // ergonomics on touch without distorting layout. Edges sit above so
+        // they can still catch their own tooltip clicks; node visuals have
+        // pointer-events:none and fall through to this layer.
+        const delaunay = d3.Delaunay.from(nodes, d => d.x, d => d.y);
+        const voronoi = delaunay.voronoi([0, 0, width, height]);
+        const clipIdFor = i => `network-hit-clip-${i}`;
+        const defsSel = svg.append('defs');
+        defsSel.selectAll('clipPath')
+            .data(nodes)
+            .join('clipPath')
+            .attr('id', (d, i) => clipIdFor(i))
+            .append('circle')
+            .attr('cx', d => d.x)
+            .attr('cy', d => d.y)
+            .attr('r', s.nodeHitClipRadius);
+        const hitSel = svg.append('g').attr('class', 'network-hit')
+            .selectAll('path')
+            .data(nodes)
+            .join('path')
+            .attr('d', (d, i) => voronoi.renderCell(i))
+            .attr('clip-path', (d, i) => `url(#${clipIdFor(i)})`)
+            .attr('fill', 'transparent')
+            .attr('pointer-events', 'all');
+        this._attachClickToggle(hitSel, d => d.name);
+        this._attachHoverTooltip(hitSel, (event, d) => this._nodeTooltipHtml(d));
+
         const linkSel = svg.append('g').attr('class', 'network-edges')
             .selectAll('line')
             .data(edges)
@@ -405,17 +443,7 @@ export class MusicianNetworkComponent {
                 .attr('stroke', d.name === selected ? selectedStroke : 'none')
                 .attr('stroke-width', d.name === selected ? 2 : 0)
                 .attr('pointer-events', 'none');
-            g.selectAll('circle.network-node-hit')
-                .data([d])
-                .join('circle')
-                .attr('class', 'network-node-hit')
-                .attr('r', r)
-                .attr('fill', 'transparent');
         });
-
-        const hitSel = nodeG.selectAll('circle.network-node-hit');
-        this._attachClickToggle(hitSel, d => d.name);
-        this._attachHoverTooltip(hitSel, (event, d) => this._nodeTooltipHtml(d));
 
         svg.append('g').attr('class', 'network-labels')
             .selectAll('text')
@@ -717,8 +745,22 @@ export class MusicianNetworkComponent {
             })
             .attr('stroke', d => ordered[d.index].name === selected ? selectedStroke : 'none')
             .attr('stroke-width', d => ordered[d.index].name === selected ? 2 : 0);
-        this._attachClickToggle(arcPathSel, d => ordered[d.index].name);
-        this._attachHoverTooltip(arcPathSel, (event, d) => this._nodeTooltipHtml(ordered[d.index]));
+
+        // Transparent hit arc, sized to the visible arc (chordHitPad = 0) on
+        // desktop and padded outward on touch. Sits on top of the visible arc
+        // so it captures pointer events; visible arc has pointer-events:none
+        // so it doesn't double-fire.
+        arcPathSel.attr('pointer-events', 'none');
+        const arcHitGen = d3.arc()
+            .innerRadius(Math.max(0, innerRadius - s.chordHitPad))
+            .outerRadius(outerRadius + s.chordHitPad);
+        const arcHitSel = arcG.append('path')
+            .attr('class', 'network-arc-hit')
+            .attr('d', arcHitGen)
+            .attr('fill', 'transparent')
+            .attr('pointer-events', 'all');
+        this._attachClickToggle(arcHitSel, d => ordered[d.index].name);
+        this._attachHoverTooltip(arcHitSel, (event, d) => this._nodeTooltipHtml(ordered[d.index]));
 
         // Radial labels just outside the arcs. The conditional rotate(180)
         // flips text on the left half of the circle so it always reads
