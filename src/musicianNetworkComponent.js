@@ -362,12 +362,10 @@ export class MusicianNetworkComponent {
             .attr('viewBox', `0 0 ${width} ${height}`)
             .style('display', 'block');
 
-        // Voronoi hit layer (below everything) — each node's hit region is its
-        // Voronoi cell clipped to a circle around the node center. Non-
-        // overlapping by construction; gives tap-anywhere-near-the-node
-        // ergonomics on touch without distorting layout. Edges sit above so
-        // they can still catch their own tooltip clicks; node visuals have
-        // pointer-events:none and fall through to this layer.
+        // Defs for the Voronoi hit layer's per-node clip circles. The hit
+        // group itself is appended below, AFTER the edges, so that taps
+        // inside a node's clip circle hit the node and not an edge passing
+        // through (edges can still catch taps outside any clip circle).
         const delaunay = d3.Delaunay.from(nodes, d => d.x, d => d.y);
         const voronoi = delaunay.voronoi([0, 0, width, height]);
         const clipIdFor = i => `network-hit-clip-${i}`;
@@ -380,16 +378,6 @@ export class MusicianNetworkComponent {
             .attr('cx', d => d.x)
             .attr('cy', d => d.y)
             .attr('r', s.nodeHitClipRadius);
-        const hitSel = svg.append('g').attr('class', 'network-hit')
-            .selectAll('path')
-            .data(nodes)
-            .join('path')
-            .attr('d', (d, i) => voronoi.renderCell(i))
-            .attr('clip-path', (d, i) => `url(#${clipIdFor(i)})`)
-            .attr('fill', 'transparent')
-            .attr('pointer-events', 'all');
-        this._attachClickToggle(hitSel, d => d.name);
-        this._attachHoverTooltip(hitSel, (event, d) => this._nodeTooltipHtml(d));
 
         const linkSel = svg.append('g').attr('class', 'network-edges')
             .selectAll('line')
@@ -408,6 +396,22 @@ export class MusicianNetworkComponent {
                 return isEdgeIncident(d) ? base : 0.08;
             });
         this._attachTooltip(linkSel, (event, d) => this._edgeTooltipHtml(d));
+
+        // Voronoi hit layer above the edges — each node's hit region is its
+        // Voronoi cell clipped to a circle around the node center, so taps
+        // anywhere in that circle hit the node, even when an edge passes
+        // through. Outside any clip circle this layer is transparent to
+        // events so edges below remain clickable for their tooltip.
+        const hitSel = svg.append('g').attr('class', 'network-hit')
+            .selectAll('path')
+            .data(nodes)
+            .join('path')
+            .attr('d', (d, i) => voronoi.renderCell(i))
+            .attr('clip-path', (d, i) => `url(#${clipIdFor(i)})`)
+            .attr('fill', 'transparent')
+            .attr('pointer-events', 'all');
+        this._attachClickToggle(hitSel, d => d.name);
+        this._attachHoverTooltip(hitSel, (event, d) => this._nodeTooltipHtml(d));
 
         // Each node is a <g> at (x, y) with pie slices + a selection-outline
         // circle + a transparent overlay that absorbs clicks/hovers (so a
