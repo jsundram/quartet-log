@@ -216,8 +216,17 @@ export class MusicianNetworkComponent {
             const rect = node?.getBoundingClientRect();
             const padding = 40;
             const containerWidth = (rect?.width ?? window.innerWidth) - padding;
-            // Reserve room for the controls row + caption (~120px).
-            const containerHeight = (rect?.height ?? window.innerHeight) - padding - 80;
+            // Measure the actual controls + caption heights so the chord/graph
+            // gets the real leftover space between them. The previous fixed
+            // 80px reserve was too tight when .network-controls wrapped to two
+            // lines, causing the bottom of the chord (and its labels) to slip
+            // under the caption row.
+            const controlsEl = node?.querySelector('.network-controls');
+            const captionEl = node?.querySelector('.network-caption-row');
+            const controlsH = controlsEl?.offsetHeight ?? 0;
+            const captionH = captionEl?.offsetHeight ?? 0;
+            const gapBuffer = 24; // margins / gaps between controls, view, caption
+            const containerHeight = (rect?.height ?? window.innerHeight) - padding - controlsH - captionH - gapBuffer;
             width = containerWidth;
             s = sizing(width);
             s.graphHeight = Math.max(s.graphHeight, containerHeight);
