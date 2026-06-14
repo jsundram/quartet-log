@@ -1,6 +1,24 @@
-import { getBegin, CALENDAR_CONFIG, getCssColor } from './config';
-import { peopleKeysFor, computeAggregateStats } from './dataProcessor';
-import { isCurrentlyDark } from './themeManager';
+import { getBegin, CALENDAR_CONFIG, getCssColor } from './config.js';
+import { peopleKeysFor, computeAggregateStats } from './dataProcessor.js';
+import { isCurrentlyDark } from './themeManager.js';
+
+// Year math for the per-year stat tooltips. UTC-based to match the way the
+// calendar groups days (d.date.getUTCFullYear()), so "what year" / "what day
+// of year" stays consistent with the bucket the data was assigned to.
+export function isLeapYear(year) {
+    return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+}
+
+export function daysInYear(year) {
+    return isLeapYear(year) ? 366 : 365;
+}
+
+// 1-based day of year: Jan 1 → 1, Dec 31 → 365 (or 366 in leap years).
+export function dayOfYearUTC(date) {
+    const start = Date.UTC(date.getUTCFullYear(), 0, 1);
+    const ms = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - start;
+    return Math.floor(ms / 86400000) + 1;
+}
 
 export class CalendarComponent {
     constructor() {
@@ -157,7 +175,15 @@ export class CalendarComponent {
                 .text(year => d3.sum(yearQ.get(year), d => d.value));
         this.attachStatTooltip(piecesText,
             year => `Pieces played in ${year}`,
-            () => "Total quartets logged this year. Partial-movement entries (titles containing ':', e.g. '44#1:I') don't count — only whole pieces."
+            year => {
+                const base = "Total quartets logged this year. Partial-movement entries (titles containing ':', e.g. '44#1:I') don't count — only whole pieces.";
+                const today = new Date();
+                if (year !== today.getUTCFullYear()) return base;
+                const pieces = d3.sum(yearQ.get(year), d => d.value);
+                const elapsed = Math.max(1, dayOfYearUTC(today));
+                const projected = Math.floor(pieces * daysInYear(year) / elapsed);
+                return `${base}<br><br>On track for: ${projected}`;
+            }
         );
 
         // Unique Pieces / Year
@@ -202,7 +228,16 @@ export class CalendarComponent {
                 .text(year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0));
         this.attachStatTooltip(daysText,
             year => `Playing days in ${year}`,
-            () => "Number of distinct days this year with at least one whole piece logged. Partial movements alone don't count as a playing day."
+            year => {
+                const base = "Number of distinct days this year with at least one whole piece logged. Partial movements alone don't count as a playing day.";
+                const playingDays = d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0);
+                const today = new Date();
+                const denom = year === today.getUTCFullYear()
+                    ? Math.max(1, dayOfYearUTC(today))
+                    : daysInYear(year);
+                const pct = (playingDays / denom * 100).toFixed(1);
+                return `${base}<br><br>${pct}% of days`;
+            }
         );
 
         // Calendar cells
