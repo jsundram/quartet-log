@@ -11,6 +11,14 @@ import { hasDataUrl, setDataUrl, getDataUrl, isValidGoogleSheetsUrl, consumeData
 import { initTheme, subscribe as subscribeTheme } from './themeManager';
 import { PullToRefresh } from './pullToRefresh';
 
+// Background-style auto refresh: while the app is visible we re-fetch the
+// sheet every FOREGROUND_POLL_MS, and we also re-fetch on visibilitychange
+// when the app comes back to the foreground if the cached data is older than
+// STALE_AFTER_MS. iOS standalone PWAs can't use Background Sync (unsupported)
+// so this is the best "data stays fresh on its own" we can do.
+const STALE_AFTER_MS = 5 * 60 * 1000;
+const FOREGROUND_POLL_MS = 5 * 60 * 1000;
+
 export class App {
     constructor() {
         this.dataService = new DataService();
@@ -25,6 +33,7 @@ export class App {
         this.dashboardComponent = new DashboardComponent();
         this.pullToRefresh = new PullToRefresh({ onRefresh: () => this.refresh() });
         this.data = null;
+        this._lastFetchAt = 0;
     }
 
     start() {
@@ -166,6 +175,7 @@ export class App {
         const result = await this.dataService.fetchCSV();
         this.data = this.dataService.processData(result.parsed);
         window.data = this.data;
+        this._lastFetchAt = result.timestamp;
 
         // Compute BEGIN from earliest data point
         const earliestDate = this.data[0].timestamp;
@@ -222,6 +232,10 @@ export class App {
             // Standalone-PWA pull-to-refresh (iOS Home Screen). No-op in
             // mobile Safari, which already has a native PTR.
             this.pullToRefresh.init();
+
+            // Auto-refresh on foreground / visibility resume. Runs in every
+            // environment (not just standalone) — useful in browser tabs too.
+            this._setupAutoRefresh();
         } catch (error) {
             console.error('Error initializing application:', error);
             this.handleError(error);
@@ -230,17 +244,41 @@ export class App {
 
     // Re-fetch the sheet and re-render every data-dependent view in place
     // (calendar, dashboard, tabs) without reloading the page. Triggered by
-    // pull-to-refresh in installed-PWA mode.
+    // pull-to-refresh, the visibility/foreground auto-refresh, or any other
+    // explicit caller.
     async refresh() {
         const result = await this.dataService.fetchCSV();
         this.data = this.dataService.processData(result.parsed);
         window.data = this.data;
+        this._lastFetchAt = result.timestamp;
         setBegin(this.data[0].timestamp);
         d3.select('#calendar').selectAll(':scope > *').remove();
         this.calendarComponent.createCalendar(this.data);
         this.dashboardComponent.setData(this.data);
         this.filterData('date');
         this.updateDataStatus(result.timestamp, result.source);
+    }
+
+    // Re-fetch only if the page is currently visible and the cached data
+    // exceeds the staleness threshold. Used by both the visibilitychange
+    // listener and the foreground poll so neither fires when the tab is
+    // hidden (timers are paused in background tabs anyway, but the gate
+    // keeps the logic explicit) or when the data is already fresh.
+    async _maybeRefresh() {
+        if (document.visibilityState !== 'visible') return;
+        if (Date.now() - this._lastFetchAt < STALE_AFTER_MS) return;
+        try {
+            await this.refresh();
+        } catch (e) {
+            console.error('Auto-refresh failed', e);
+        }
+    }
+
+    _setupAutoRefresh() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') this._maybeRefresh();
+        });
+        setInterval(() => this._maybeRefresh(), FOREGROUND_POLL_MS);
     }
 
     showLoadingState() {
