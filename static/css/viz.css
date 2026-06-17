@@ -147,6 +147,18 @@ body, html {
     color: var(--color-text-primary);
     background-color: var(--color-bg-primary);
 }
+
+/* iOS standalone safe-area handling. viewport-fit=cover (set in <head>) makes
+   env(safe-area-inset-*) report real values on notched/Dynamic Island devices,
+   so we have to lay out around the status bar, home indicator, and (in
+   landscape) the side notches. body padding handles bottom + sides for normal
+   in-flow content; absolute/fixed chrome (#menu, fullscreen overlay) handles
+   its own top inset since absolute positioning ignores body padding. */
+body {
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
 h1 {
     margin-top: 5px;
 
@@ -155,6 +167,11 @@ h1 {
 /* Container for the hamburger menu */
 #menu {
     position: absolute;
+    /* Keep the menu clear of the Dynamic Island / status bar (top inset) and
+       the landscape side notch (left inset) when running standalone with
+       viewport-fit=cover. Both fall back to 0 in normal mobile Safari. */
+    top: env(safe-area-inset-top);
+    left: env(safe-area-inset-left);
     padding: 10px;
     z-index: 1000;
 }
@@ -890,7 +907,13 @@ h1 {
     height: 100vh;
     z-index: 1000;
     background: var(--color-bg-primary);
-    padding: 20px;
+    /* 20px design padding, expanded on standalone iOS to clear the status bar
+       / home indicator / landscape notches. max() picks whichever is larger
+       per side so notched devices don't lose visual breathing room. */
+    padding-top: max(20px, env(safe-area-inset-top));
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    padding-left: max(20px, env(safe-area-inset-left));
     overflow: auto;
     box-sizing: border-box;
 }

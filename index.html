@@ -5,8 +5,19 @@
 
     <!-- Use `ngrok http http://0.0.0.0:8000` to test on mobile without deploying -->
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=.75">
+    <!-- viewport-fit=cover makes env(safe-area-inset-*) report non-zero values
+         on notched / Dynamic Island devices so CSS can lay out around them. -->
+    <meta name="viewport" content="width=device-width, initial-scale=.75, viewport-fit=cover">
 
+    <!-- PWA standalone hints. The site.webmanifest already declares
+         display:standalone for Android Chrome; these mirror it for iOS Safari,
+         which doesn't read the manifest for that flag. black-translucent lets
+         the page paint under the status bar; the theme-color metas below pick
+         the actual status bar shade per light/dark mode. -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Quartet Log">
 
     <!-- Use RealFaviconGenerator for the following-->
     <link rel="apple-touch-icon" sizes="152x152" href="./apple-touch-icon.png">
