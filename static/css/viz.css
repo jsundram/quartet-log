@@ -756,6 +756,49 @@ h1 {
     }
 }
 
+/* Pull-to-refresh indicator. Built by src/pullToRefresh.js and only
+   appended to the DOM when running as an installed PWA (standalone
+   display mode). The spinner sits just below the top safe-area inset,
+   translated up by its own height by default; --ptr-y (set in JS during
+   a pull) translates it back down so it appears to be pulled out of the
+   top of the screen. transitions are disabled via .pulling so it tracks
+   the finger 1:1, then re-enabled for the snap-to-refresh / release. */
+#ptr-indicator {
+    position: fixed;
+    top: env(safe-area-inset-top, 0);
+    left: 50%;
+    width: 36px;
+    height: 36px;
+    margin-left: -18px;
+    border-radius: 50%;
+    background: var(--color-bg-primary);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    pointer-events: none;
+    transform: translateY(calc(-100% + var(--ptr-y, 0px)));
+    opacity: var(--ptr-opacity, 0);
+    transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+}
+#ptr-indicator.pulling {
+    transition: none;
+}
+#ptr-indicator .ptr-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--color-border-strong);
+    border-top-color: var(--color-accent);
+    border-radius: 50%;
+}
+#ptr-indicator.refreshing .ptr-spinner {
+    animation: ptr-spin 0.8s linear infinite;
+}
+@keyframes ptr-spin {
+    to { transform: rotate(360deg); }
+}
+
 /* Reserve room for the tallest network view (chord on desktop, graph on
    mobile) so switching tabs doesn't shift the page. Inactive views are
    display:none so they don't double-count. Keep in sync with sizing() in

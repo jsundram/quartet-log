@@ -9,6 +9,7 @@ import { DashboardComponent } from './dashboardComponent';
 import { TableComponent } from './tableComponent';
 import { hasDataUrl, setDataUrl, getDataUrl, isValidGoogleSheetsUrl, consumeDataParam, buildMobileSetupLink } from './urlConfig';
 import { initTheme, subscribe as subscribeTheme } from './themeManager';
+import { PullToRefresh } from './pullToRefresh';
 
 export class App {
     constructor() {
@@ -22,6 +23,7 @@ export class App {
         this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();
         this.dashboardComponent = new DashboardComponent();
+        this.pullToRefresh = new PullToRefresh({ onRefresh: () => this.refresh() });
         this.data = null;
     }
 
@@ -216,10 +218,29 @@ export class App {
 
             // Update data status display
             this.updateDataStatus(timestamp, source);
+
+            // Standalone-PWA pull-to-refresh (iOS Home Screen). No-op in
+            // mobile Safari, which already has a native PTR.
+            this.pullToRefresh.init();
         } catch (error) {
             console.error('Error initializing application:', error);
             this.handleError(error);
         }
+    }
+
+    // Re-fetch the sheet and re-render every data-dependent view in place
+    // (calendar, dashboard, tabs) without reloading the page. Triggered by
+    // pull-to-refresh in installed-PWA mode.
+    async refresh() {
+        const result = await this.dataService.fetchCSV();
+        this.data = this.dataService.processData(result.parsed);
+        window.data = this.data;
+        setBegin(this.data[0].timestamp);
+        d3.select('#calendar').selectAll(':scope > *').remove();
+        this.calendarComponent.createCalendar(this.data);
+        this.dashboardComponent.setData(this.data);
+        this.filterData('date');
+        this.updateDataStatus(result.timestamp, result.source);
     }
 
     showLoadingState() {
