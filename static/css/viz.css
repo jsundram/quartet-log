@@ -266,11 +266,6 @@ h1 {
 }
 
 @media only screen and (max-width: 600px) {
-    .bar {
-        width: 32px;
-        height: 4px;
-        margin: 6px 0;
-    }
     .menu-items {
         min-width: 240px;
     }
