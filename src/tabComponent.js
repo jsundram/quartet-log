@@ -303,6 +303,20 @@ export class TabComponent {
         const uniqueWorks = Array.from(filteredPlays.values()).filter(plays => plays.length > 0).length;
         const percent = totalWorks > 0 ? Math.round((uniqueWorks / totalWorks) * 100) : 0;
         const rawData = Array.from(allPlays.values()).flat();
+
+        // Composer never played at all (allPlays empty across every catalog
+        // entry). Show a stripped-down line — there's no "latest piece" to
+        // anchor the days-since count. This is the common case for fresh
+        // users who only have entries from a handful of composers.
+        if (rawData.length === 0) {
+            composerDiv.selectAll("p")
+                .data([{ count, uniqueWorks, totalWorks }])
+                .join("p")
+                .text(d => `Total: ${d.count}; Unique: ${d.uniqueWorks} of ${d.totalWorks} (0%); never played.`)
+                .style("color", "var(--color-text-tertiary)");
+            return;
+        }
+
         const latest_ix = d3.maxIndex(rawData, d => d.timestamp);
         const latestEntry = rawData[latest_ix];
         const latest = latestEntry.timestamp;
