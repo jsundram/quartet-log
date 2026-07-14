@@ -1,14 +1,33 @@
 {
-    "name": "",
-    "short_name": "",
+    "name": "Quartet Log",
+    "short_name": "Quartet Log",
+    "description": "Record and behold your triumphs!",
+    "start_url": "./",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#ffffff",
     "icons": [
         {
-            "src": "/musiclog/android-chrome-144x144.png",
+            "src": "./android-chrome-144x144.png",
             "sizes": "144x144",
             "type": "image/png"
+        },
+        {
+            "src": "./android-chrome-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "./android-chrome-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "./maskable-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
         }
-    ],
-    "theme_color": "#ffffff",
-    "background_color": "#ffffff",
-    "display": "standalone"
+    ]
 }

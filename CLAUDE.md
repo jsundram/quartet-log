@@ -28,6 +28,9 @@ Uses Node's built-in `node:test` runner against `test/*.mjs`. No external test d
 **Deploy:**
 Push to `main` → GitHub Actions workflow (`.github/workflows/deploy.yml`) runs `npm test`, builds, deploys to GitHub Pages. Site lives at https://log.quartetroulette.com.
 
+**Offline / service worker:**
+`static/sw.js` is a template; `build.sh --prod` generates `$DEPLOY/sw.js` from it, substituting the content-hashed `bundle-<hash>.js` / `viz-<hash>.css` names and a cache version `V = ql-<bundlehash>-<csshash>`. Because those hashes move whenever code, CSS, or catalog data change (the catalog version is baked into the bundle via `--define`), `V` changes on every meaningful deploy and evicts the stale cache on `activate` — there's no hand-bumped constant to forget. The SW precaches the app shell (HTML/JS/CSS/JSON/icons); the cross-origin Google Sheet is never cached by the SW (the app keeps its own localStorage stale-while-revalidate). `src/app.js` registers it, skipping `localhost`/`127.0.0.1` so dev's esbuild live-reload server is never intercepted (dev builds don't emit `sw.js` anyway).
+
 **Dependencies (system):**
 - Node 20+ (for `node:test`)
 - esbuild 0.24.2
