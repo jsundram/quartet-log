@@ -259,6 +259,14 @@ h1 {
     color: var(--color-destructive);
 }
 
+/* Version row highlights in the accent color only when a newer deploy is
+   available; otherwise it reads as a plain "Up to date" status line. Toggled by
+   App._checkVersion(). */
+.menu-item--update {
+    color: var(--color-accent);
+    font-weight: 600;
+}
+
 @media (hover: hover) {
     .menu-item:hover {
         background-color: var(--color-bg-hover);

@@ -58,6 +58,13 @@ self.addEventListener("fetch", e => {
   // straight to network, never touch the cache.
   if (u.origin !== location.origin) return;
 
+  // Never intercept or cache the SW script itself. app.js's update check probes
+  // ./sw.js?_=<ts> (no-store) to read the live version off the server; because
+  // .js is otherwise cache-first with ignoreSearch below, a probe would get a
+  // previously-cached sw.js served back and the version check would never see a
+  // new deploy. Let it always go straight to network.
+  if (u.pathname.endsWith("/sw.js")) return;
+
   // HTML + JSON + navigations are network-first so a fresh deploy or a fresh
   // catalog shows up the moment you're online; they fall back to cache offline.
   // ignoreSearch lets the precached all_works.json satisfy the app's

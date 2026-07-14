@@ -86,6 +86,14 @@ export class NavigationComponent {
 
             menuItems.style("display", "none");
 
+            // Force a shell update: drop the SW caches and reload so the latest
+            // deploy reinstalls. The escape hatch for a wedged home-screen app;
+            // safe even when already current (just a hard refresh).
+            if (view === "update") {
+                if (this.onForceUpdate) this.onForceUpdate();
+                return;
+            }
+
             if (view === "download-csv") {
                 if (this.onDownloadCSV) this.onDownloadCSV();
                 return;

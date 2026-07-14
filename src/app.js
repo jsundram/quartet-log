@@ -19,6 +19,11 @@ import { PullToRefresh } from './pullToRefresh';
 const STALE_AFTER_MS = 5 * 60 * 1000;
 const FOREGROUND_POLL_MS = 5 * 60 * 1000;
 
+// Prefix of the service-worker cache name (sw.js: `const V = "ql-<hash>-<hash>"`,
+// and it opens caches.open(V)). The installed shell version is therefore just the
+// ql- cache key; App._checkVersion compares it to the version in the live sw.js.
+const VER_PREFIX = 'ql-';
+
 export class App {
     constructor() {
         this.dataService = new DataService();
@@ -275,10 +280,62 @@ export class App {
     }
 
     _setupAutoRefresh() {
+        this.navigationComponent.onForceUpdate = () => this.forceUpdate();
+        this._checkVersion();
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') this._maybeRefresh();
+            if (document.visibilityState === 'visible') {
+                this._maybeRefresh();
+                this._checkVersion();
+            }
         });
         setInterval(() => this._maybeRefresh(), FOREGROUND_POLL_MS);
+    }
+
+    // Compare the installed service-worker shell against the one on the server
+    // and surface a tappable "update available" row in the menu when they differ.
+    // The cache name IS the version, so the installed version is just the ql-
+    // cache key; the latest is read from the live sw.js (cache-busted + no-store,
+    // and sw.js excludes itself from the SW cache) so even a stale shell can tell
+    // it's behind. Runs on boot and on every foreground resume — the moment iOS
+    // wakes a pinned app is exactly when we want to check.
+    async _checkVersion() {
+        const tag = document.getElementById('ver');
+        if (!tag) return;
+
+        let installed = '';
+        try {
+            installed = (await caches.keys()).find(k => k.startsWith(VER_PREFIX)) || '';
+        } catch { /* caches unavailable */ }
+
+        // No SW cache yet (dev, or first load before install): keep the row hidden.
+        if (!installed) { tag.hidden = true; return; }
+
+        let latest = '';
+        try {
+            const src = await (await fetch('./sw.js?_=' + Date.now(), { cache: 'no-store' })).text();
+            latest = (src.match(/const V = "([^"]+)"/) || [])[1] || '';
+        } catch { /* offline: leave latest empty → never a false "behind" */ }
+
+        const behind = Boolean(latest) && latest !== installed;
+        const label = tag.querySelector('[data-ver-label]');
+        tag.hidden = false;
+        tag.classList.toggle('menu-item--update', behind);
+        if (label) label.textContent = behind ? 'Update available' : 'Up to date';
+        tag.title = behind
+            ? `New version available (${latest}) — tap to update`
+            : `Up to date (${installed}) — tap to force refresh`;
+    }
+
+    // The hammer for a wedged home-screen app: drop every cache and reload so the
+    // service worker reinstalls the current shell from the network. Wired to the
+    // menu's version row; safe to tap even when already current (just a hard
+    // refresh that repopulates from the network).
+    async forceUpdate() {
+        try {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        } catch { /* nothing to clear */ }
+        window.location.reload();
     }
 
     showLoadingState() {
