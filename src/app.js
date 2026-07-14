@@ -462,6 +462,18 @@ export class App {
     }
 }
 
+// Register the service worker for the offline app shell. Prod-only by design:
+// dev builds don't emit sw.js and esbuild's live-reload server shouldn't be
+// intercepted, so we skip localhost. Registered off the deploy root so its
+// scope covers the whole app; failures (e.g. a dev build with no sw.js) are
+// swallowed so they never block boot.
+if ('serviceWorker' in navigator &&
+    location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+    });
+}
+
 // Initialize the application
 const app = new App();
 document.addEventListener('DOMContentLoaded', () => app.start());

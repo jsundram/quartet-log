@@ -118,6 +118,22 @@ if [[ "$PROD" == true ]]; then
         "$DEPLOY/index.html"
     rm "$DEPLOY/index.html.bak"
     echo "Content-hashed: $NEW_BUNDLE, $NEW_CSS"
+
+    # Generate the service worker from static/sw.js, injecting the hashed shell
+    # filenames + a cache version derived from those hashes. Because the hashes
+    # move whenever code / CSS / catalog data change, the SW cache name (V)
+    # changes on every meaningful deploy and evicts the stale cache on activate
+    # — no hand-bumped version constant to forget. Prod-only: dev serves the
+    # unhashed files off esbuild's live server and registers no SW.
+    BHASH="${NEW_BUNDLE#bundle-}"; BHASH="${BHASH%.js}"
+    CHASH="${NEW_CSS#viz-}"; CHASH="${CHASH%.css}"
+    SW_VERSION="ql-${BHASH}-${CHASH}"
+    sed \
+        -e "s|__SW_VERSION__|$SW_VERSION|g" \
+        -e "s|__BUNDLE_JS__|$NEW_BUNDLE|g" \
+        -e "s|__CSS_FILE__|$NEW_CSS|g" \
+        static/sw.js > "$DEPLOY/sw.js"
+    echo "Service worker: $DEPLOY/sw.js ($SW_VERSION)"
 else
     echo "Building for development..."
 
