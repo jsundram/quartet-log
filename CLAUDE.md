@@ -60,7 +60,7 @@ Hash routing lives in `NavigationComponent`: menu clicks set `window.location.ha
 - `App` (`src/app.js`) — owns data, instantiates and wires components, runs `filterData()`.
 
 **Data layer:**
-- `DataService` (`src/dataService.js`) — CSV fetch + localStorage cache. Calls `fillForward` then `normalizePlayerNames`, then filters out partial-movement entries (titles containing `:`).
+- `DataService` (`src/dataService.js`) — CSV fetch + localStorage cache. `processData` calls `fillForward` then `normalizePlayerNames`, then filters out partial-movement entries (titles containing `:`). Three fetch entry points: `fetchCSV()` (network races a 5s timeout, falls back to cached copy — used only for the first-ever launch with no cache); `readCache()` (synchronous localStorage read, returns `null` if empty — drives the cache-first boot paint); `fetchFresh()` (network-only, no fallback; writes the cache and returns a `changed` flag by diffing the new serialization against the stored one, so the caller can skip a re-render when the sheet is byte-identical).
 - `dataProcessor` (`src/dataProcessor.js`) — pure functions only. Highlights:
   - `parseWork`, `processRow`, `fillForward`, `createEmptyRow`
   - `normalizePlayerNames` (applies `PLAYER_ALIASES` per slot class)
@@ -80,11 +80,15 @@ Hash routing lives in `NavigationComponent`: menu clicks set `window.location.ha
 
 ### Initialization sequence
 
-1. `loadWorkCatalog()` loads `all_works.json` + `haydn_peters.json` in parallel — required before any data filtering.
-2. `DataService.fetchCSV()` → `processData()` runs `fillForward` → `normalizePlayerNames` → filter incompletes.
-3. UI components mount (menu, part buttons, date filter, tabs, calendar, dashboard).
+Boot is **cache-first** so a returning visitor (especially an installed PWA against the slow, cross-origin published Sheet) sees real data on first paint instead of an empty shell:
+
+1. `loadWorkCatalog()` loads `all_works.json` + `haydn_peters.json` in parallel — required before any data processing/filtering.
+2. `DataService.readCache()`: if last-known data is in localStorage, `renderInitial()` paints the whole UI from it immediately, `finishBoot()` wires pull-to-refresh + the keep-fresh loop, and `revalidate()` fetches the sheet in the background — re-rendering in place **only if `fetchFresh()` reports the data changed** (guards against a needless flash). If there's no cache (first-ever launch), it shows the loading indicator and awaits `fetchCSV()` instead.
+3. `renderInitial()` → `processData()` (`fillForward` → `normalizePlayerNames` → filter incompletes) → `setBegin()` → `initializeUI()` mounts components (menu, part buttons, date filter, tabs, calendar, dashboard).
 4. `filterData("date")` populates the Player dropdown and renders the initial view.
 5. `NavigationComponent.applyInitialView()` honors any `#<view>` hash in the landing URL (e.g. `/index.html#dashboard`).
+
+`revalidate()` is the single re-fetch path for background refreshes too (foreground-resume, the 5-min poll, and pull-to-refresh all call it). Its change-guard means an unchanged sheet updates only the status line; `_rerenderData()` (the in-place calendar/dashboard/tabs rebuild) runs only when the data actually moved, and it preserves the current view/tab/filters.
 
 ### Filter change notifications
 

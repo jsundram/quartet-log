@@ -36,9 +36,10 @@ export class App {
         this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();
         this.dashboardComponent = new DashboardComponent();
-        this.pullToRefresh = new PullToRefresh({ onRefresh: () => this.refresh() });
+        this.pullToRefresh = new PullToRefresh({ onRefresh: () => this.revalidate() });
         this.data = null;
         this._lastFetchAt = 0;
+        this._booted = false;
     }
 
     start() {
@@ -175,18 +176,26 @@ export class App {
         d3.select('#update').style('display', 'block');
     }
 
-    async initializeData() {
-        // Fetch and process data
-        const result = await this.dataService.fetchCSV();
+    // Build state + the full UI for the first time from a fetched-or-cached
+    // result. Everything downstream (calendar, dashboard, tabs) is populated
+    // synchronously here so the first paint shows real data, not an empty shell.
+    renderInitial(result) {
         this.data = this.dataService.processData(result.parsed);
         window.data = this.data;
         this._lastFetchAt = result.timestamp;
+        setBegin(this.data[0].timestamp);  // BEGIN = earliest data point
+        this.initializeUI();
+    }
 
-        // Compute BEGIN from earliest data point
-        const earliestDate = this.data[0].timestamp;
-        setBegin(earliestDate);
-
-        return result;
+    // One-time wiring that must run after the first render: pull-to-refresh and
+    // the foreground/version keep-fresh loop. Guarded so the cache-first path
+    // (which paints, then revalidates) doesn't double-wire when fresh data
+    // later lands.
+    finishBoot() {
+        if (this._booted) return;
+        this._booted = true;
+        this.pullToRefresh.init();
+        this._setupAutoRefresh();
     }
 
     handleViewChange(view) {
@@ -220,48 +229,75 @@ export class App {
 
     async initialize() {
         try {
-            this.showLoadingState();
-
-            // Wait for catalog to load first
+            // The work catalog must load before any data can be processed.
+            // Offline this resolves instantly from the SW precache; online it's
+            // a quick same-origin fetch.
             await loadWorkCatalog();
 
-            // Then load data
-            const { timestamp, source } = await this.initializeData();
-
-            // Initialize UI components
-            await this.initializeUI();
-
-            // Update data status display
-            this.updateDataStatus(timestamp, source);
-
-            // Standalone-PWA pull-to-refresh (iOS Home Screen). No-op in
-            // mobile Safari, which already has a native PTR.
-            this.pullToRefresh.init();
-
-            // Auto-refresh on foreground / visibility resume. Runs in every
-            // environment (not just standalone) — useful in browser tabs too.
-            this._setupAutoRefresh();
+            // Cache-first boot: if last-known data is sitting in localStorage,
+            // paint the full UI from it *immediately* rather than blocking the
+            // first render on a network round-trip to the (cross-origin, often
+            // slow) published Google Sheet. We then revalidate in the
+            // background and re-render in place only if the sheet actually
+            // changed — see revalidate(). This is the whole fix for "nothing
+            // shows until server data arrives".
+            const cached = this.dataService.readCache();
+            if (cached) {
+                this.renderInitial(cached);
+                this.updateDataStatus(cached.timestamp, cached.source);
+                this.finishBoot();
+                this.revalidate();  // background; may re-render if data moved
+            } else {
+                // First-ever launch (or cleared storage): nothing to paint yet,
+                // so show the loading indicator and wait on the network, as
+                // before. fetchCSV still races a 5s timeout, but with no cache
+                // to fall back to it simply surfaces an error if the net fails.
+                this.showLoadingState();
+                const result = await this.dataService.fetchCSV();
+                this.renderInitial(result);
+                this.updateDataStatus(result.timestamp, result.source);
+                this.finishBoot();
+            }
         } catch (error) {
             console.error('Error initializing application:', error);
             this.handleError(error);
         }
     }
 
-    // Re-fetch the sheet and re-render every data-dependent view in place
-    // (calendar, dashboard, tabs) without reloading the page. Triggered by
-    // pull-to-refresh, the visibility/foreground auto-refresh, or any other
-    // explicit caller.
-    async refresh() {
-        const result = await this.dataService.fetchCSV();
-        this.data = this.dataService.processData(result.parsed);
-        window.data = this.data;
+    // Re-fetch the sheet and, only if the raw data actually changed, re-render
+    // every data-dependent view in place (calendar, dashboard, tabs) without
+    // reloading the page. The change guard is what makes this safe to run right
+    // after a cache-first boot and on every foreground resume / poll /
+    // pull-to-refresh: an unchanged sheet (the common case) updates only the
+    // status line, never flashing the UI. A network failure leaves whatever's
+    // on screen untouched — no fallback to re-rendering the same stale copy.
+    async revalidate() {
+        let result;
+        try {
+            result = await this.dataService.fetchFresh();
+        } catch (e) {
+            console.error('Revalidate failed', e);
+            return;
+        }
         this._lastFetchAt = result.timestamp;
+        if (result.changed) {
+            this.data = this.dataService.processData(result.parsed);
+            window.data = this.data;
+            this._rerenderData();
+        }
+        this.updateDataStatus(result.timestamp, result.source);
+    }
+
+    // In-place re-render of every data-dependent view from the current
+    // this.data. Preserves the active view, tab, and filters (it doesn't touch
+    // the hash or re-run showTab), so a background data update slots in without
+    // yanking the user around.
+    _rerenderData() {
         setBegin(this.data[0].timestamp);
         d3.select('#calendar').selectAll(':scope > *').remove();
         this.calendarComponent.createCalendar(this.data);
         this.dashboardComponent.setData(this.data);
         this.filterData('date');
-        this.updateDataStatus(result.timestamp, result.source);
     }
 
     // Re-fetch only if the page is currently visible and the cached data
@@ -273,7 +309,7 @@ export class App {
         if (document.visibilityState !== 'visible') return;
         if (Date.now() - this._lastFetchAt < STALE_AFTER_MS) return;
         try {
-            await this.refresh();
+            await this.revalidate();
         } catch (e) {
             console.error('Auto-refresh failed', e);
         }
