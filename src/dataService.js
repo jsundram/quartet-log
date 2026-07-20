@@ -38,6 +38,14 @@ export class DataService {
             d3.csv(dataUrl, processRow)
                 .then(d => {
                     clearTimeout(timeoutId);
+                    // A valid-but-empty response (0 rows) is never real data for
+                    // an active log; treat it like a fetch error and fall back to
+                    // cache rather than overwriting the cache with []. (See
+                    // fetchFresh for the cache-poisoning rationale.)
+                    if (!d.length) {
+                        useCached();
+                        return;
+                    }
                     const timestamp = Date.now();
                     localStorage.setItem(dataUrl, JSON.stringify(d));
                     localStorage.setItem(`${dataUrl}_timestamp`, timestamp.toString());
@@ -94,6 +102,15 @@ export class DataService {
         }
 
         const d = await d3.csv(dataUrl, processRow);
+        // Reject a valid-but-empty response instead of caching it. Persisting []
+        // would poison the cache-first boot: readCache() would serve [] and
+        // processData()/fillForward() would throw on every subsequent launch
+        // until localStorage is cleared. Throwing here (before the setItem below)
+        // leaves the last-good cache intact; revalidate()'s catch keeps the
+        // already-painted UI on screen.
+        if (!d.length) {
+            throw new Error('Empty data response');
+        }
         const serialized = JSON.stringify(d);
         // Compare against the still-stored previous serialization before we
         // overwrite it. Both sides are JSON.stringify of d3.csv(processRow)
