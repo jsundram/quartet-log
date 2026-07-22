@@ -214,5 +214,34 @@
     </div>
 
 <script src="./bundle.js"></script>
+
+<!-- GoatCounter analytics. Loaded last + async: the app never depends on it,
+     and offline it fails silently (the SW passes cross-origin requests
+     straight to network, uncached — see static/sw.js). count.js skips
+     localhost automatically, so dev traffic isn't counted.
+
+     The path callback tags each pageview with an anonymous per-user id
+     derived from the configured Sheet URL (?u=<hash>), so the GoatCounter
+     dashboard can split visits by user. Only an 8-char FNV-1a hash is sent;
+     the raw Sheet URL (which grants read access to that user's data) never
+     leaves the device. -->
+<script>
+    window.goatcounter = {
+        path: function (p) {
+            try {
+                var url = localStorage.getItem('quartetlog_data_url');
+                if (!url) return p;
+                var h = 0x811c9dc5; // FNV-1a 32-bit
+                for (var i = 0; i < url.length; i++) {
+                    h ^= url.charCodeAt(i);
+                    h = Math.imul(h, 0x01000193);
+                }
+                return p + (p.indexOf('?') === -1 ? '?' : '&') + 'u=' + (h >>> 0).toString(36);
+            } catch (e) { return p; } // localStorage blocked: count untagged
+        }
+    };
+</script>
+<script data-goatcounter="https://musiclog.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>

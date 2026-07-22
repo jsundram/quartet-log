@@ -372,5 +372,12 @@ $endfor$
     }
 })();
 </script>
+
+<!-- GoatCounter analytics — same tag as index.html (see comments there).
+     Plain pageview counting only on these static pages. data-external="1"
+     stops pandoc's --embed-resources from inlining count.js into the page
+     (which would vendor it — it must stay a live cross-origin fetch). -->
+<script data-goatcounter="https://musiclog.goatcounter.com/count"
+        data-external="1" async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>
