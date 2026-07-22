@@ -119,6 +119,10 @@ export class MusicianNetworkComponent {
         this._isFullscreen = !this._isFullscreen;
         const root = d3.select(this.mountSelector);
         root.classed('fullscreen', this._isFullscreen);
+        // Freeze the page behind the lightbox (matters on touch devices,
+        // where scrolling inside the overlay would otherwise rubber-band
+        // the dashboard underneath).
+        document.body.classList.toggle('network-fullscreen-open', this._isFullscreen);
         d3.select('#networkFullscreenBtn')
             .attr('aria-label', this._isFullscreen ? 'Exit full screen' : 'Expand to full screen')
             .attr('title', this._isFullscreen ? 'Exit full screen' : 'Expand to full screen');

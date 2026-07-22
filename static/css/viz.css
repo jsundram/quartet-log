@@ -958,21 +958,21 @@ h1 {
     pointer-events: none;
 }
 
-/* Mobile breakpoint mirrors MOBILE_BREAKPOINT in musicianNetworkComponent.js.
-   A lightbox on phones isn't useful when the viewport is already small. */
-@media only screen and (max-width: 599px) {
-    .network-fullscreen-btn { display: none; }
-}
-
 /* Lightbox mode: the section fills the viewport. The tabs / slider / caption
    stay in place; the active view's SVG grows because render() re-measures
-   the container and re-runs the force layout at the new size. */
+   the container and re-runs the force layout at the new size. On phones the
+   win is smaller than on desktop but still real (landscape rotation, no
+   surrounding page chrome), so the button shows at every viewport width. */
 #dashboardMusicianNetwork.fullscreen {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
+    /* Mobile Safari/Chrome: 100vh includes the collapsed URL-bar area; dvh
+       tracks the actual visible viewport so the caption row isn't pushed
+       under the browser chrome. Older engines keep the 100vh fallback. */
+    height: 100dvh;
     z-index: 1000;
     background: var(--color-bg-primary);
     /* 20px design padding, expanded on standalone iOS to clear the status bar
@@ -984,6 +984,13 @@ h1 {
     padding-left: max(20px, env(safe-area-inset-left));
     overflow: auto;
     box-sizing: border-box;
+}
+
+/* While the lightbox is open, freeze the page behind it so touch scrolling
+   inside the overlay (matrix pan, overflow) doesn't drag the dashboard
+   around underneath. Toggled by _toggleFullscreen(). */
+body.network-fullscreen-open {
+    overflow: hidden;
 }
 
 .network-tabs {
