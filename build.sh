@@ -140,6 +140,12 @@ else
     echo "Running tests (initial)..."
     npm test || echo "[WARNING] Tests are failing — fix before deploying."
 
+    # Background helpers (proxy, fswatch) die with this script (Ctrl-C, etc).
+    # $BG_PIDS expands at signal time, so PIDs appended after the trap is set
+    # are still covered.
+    BG_PIDS=""
+    trap 'kill $BG_PIDS 2>/dev/null' EXIT INT TERM
+
     # Watch static assets in the background so that CSS / HTML / markdown /
     # data / favicon edits get re-copied into $DEPLOY without restarting the
     # build. esbuild --watch only re-bundles JS, so we need a separate watcher.
@@ -149,8 +155,8 @@ else
         fswatch -o --latency 0.3 $WATCH_PATHS | while read _; do
             copy_assets
         done &
-        FSWATCH_STATIC_PID=$!
-        echo "Watching static assets with fswatch (PID $FSWATCH_STATIC_PID)..."
+        BG_PIDS="$BG_PIDS $!"
+        echo "Watching static assets with fswatch (PID $!)..."
 
         # Re-run tests on any change under src/ or test/. Dot reporter so each
         # rerun is one compact line instead of 31 ✔'s.
@@ -158,15 +164,25 @@ else
             echo "[$(date +%H:%M:%S)] JS change — re-running tests..."
             node --test --test-reporter=dot test/*.mjs || true
         done &
-        FSWATCH_TEST_PID=$!
-        echo "Watching src/ + test/ for tests (PID $FSWATCH_TEST_PID)..."
-
-        # Make sure background watchers die when this script exits (Ctrl-C, etc).
-        trap 'kill $FSWATCH_STATIC_PID $FSWATCH_TEST_PID 2>/dev/null' EXIT INT TERM
+        BG_PIDS="$BG_PIDS $!"
+        echo "Watching src/ + test/ for tests (PID $!)..."
     else
         echo "Note: install fswatch (\`brew install fswatch\`) to auto-copy static"
         echo "      assets and re-run tests on save during watch mode."
     fi
+
+    # esbuild's dev server can't set response headers and sends no
+    # Cache-Control / ETag / Last-Modified, so the browser can silently keep
+    # serving a stale bundle.js after a rebuild. esbuild's own docs say to
+    # put a proxy in front for header customization, so dev traffic goes
+    # through scripts/dev_proxy.mjs on $PORT, which forwards to esbuild on
+    # an internal port and stamps Cache-Control: no-store on every response.
+    ESBUILD_PORT=$((PORT + 1))
+    node scripts/dev_proxy.mjs "$ESBUILD_PORT" "$PORT" &
+    BG_PIDS="$BG_PIDS $!"
+
+    echo ""
+    echo " > Dev server: http://127.0.0.1:$PORT  (use this, not esbuild's :$ESBUILD_PORT URLs below — only the proxy disables caching)"
 
     # If a .dev-data-url file exists, print a clickable URL that pre-seeds
     # the Google Sheets source via ?data=<encoded>. urlConfig.consumeDataParam()
@@ -175,7 +191,6 @@ else
         DEV_URL=$(head -n 1 .dev-data-url | tr -d '[:space:]')
         if [[ -n "$DEV_URL" ]]; then
             ENCODED=$(node -e "process.stdout.write(encodeURIComponent(process.argv[1]))" "$DEV_URL")
-            echo ""
             echo " > Preconfigured: http://127.0.0.1:$PORT/?data=$ENCODED"
         fi
     fi
@@ -183,7 +198,7 @@ else
     eval "$BASE_ESBUILD_CMD \
         --sourcemap \
         --watch \
-        --serve=$PORT \
+        --serve=$ESBUILD_PORT \
         --servedir=$DEPLOY"
 fi
 

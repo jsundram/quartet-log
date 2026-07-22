@@ -11,6 +11,8 @@ Guidance for Claude Code (claude.ai/code) when working with this repository.
 ```
 Outputs to `./last_deploy/` with sourcemaps. Uses `fswatch` (`brew install fswatch`) to re-copy static assets when `index.html` / `CNAME` / `static/` / `md/` change, and to re-run tests on `src/` / `test/` changes (compact dot-reporter output).
 
+Dev traffic is served through `scripts/dev_proxy.mjs` on `$PORT`, a tiny `node:http` reverse proxy that forwards to esbuild's server on `$PORT+1` and stamps `Cache-Control: no-store` on every response. esbuild's server can't set headers and sends none, so browsers could otherwise reuse a stale `bundle.js` across same-session navigations (prod doesn't need this — assets there are content-hashed). Use the proxy's URL, not the `:$PORT+1` URLs esbuild prints.
+
 If `.dev-data-url` exists (gitignored, one line), the dev build prints a clickable `Preconfigured: http://127.0.0.1:$PORT/?data=<encoded>` line above esbuild's `Local:` URLs. The app's `consumeDataParam()` (`src/urlConfig.js`) reads `?data=…` on first load and persists it to localStorage, so you skip the setup prompt.
 
 **Production build:**
