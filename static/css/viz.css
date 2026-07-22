@@ -566,6 +566,13 @@ h1 {
     /* Above the network's fullscreen overlay (z-index 1000) so tooltips
        stay visible when interacting with the lightbox. */
     z-index: 1001;
+    /* Never wider or taller than the viewport (matters on phones — the
+       calendar day tooltip holds a full session table). positionTooltip()
+       clamps placement; these clamp the box itself, scrolling if needed. */
+    max-width: min(480px, calc(100vw - 20px));
+    max-height: min(70vh, 520px);
+    overflow-y: auto;
+    box-sizing: border-box;
 }
 
 .tooltip h4 {
@@ -601,9 +608,12 @@ h1 {
 }
 
 .tooltip-close {
-    position: absolute;
+    /* Sticky (not absolute) so it stays reachable when a long tooltip
+       scrolls (max-height + overflow-y above). float keeps it top-right. */
+    position: sticky;
+    float: right;
     top: 2px;
-    right: 5px;
+    margin-left: 8px;
     font-size: 20px;
     font-weight: bold;
     color: var(--color-text-chart);
@@ -623,6 +633,66 @@ h1 {
     gap: 20px;
     max-width: 1000px;
     margin: 0 auto 6px;
+}
+
+/* Calendar fullscreen (vertical) mode — same lightbox pattern as the
+   musician network. The button element carries .network-fullscreen-btn for
+   its look; .calendar-fullscreen-btn only positions it. */
+#calendar {
+    position: relative;
+}
+
+.calendar-fullscreen-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    margin-left: 0;
+    z-index: 10;
+}
+
+#calendar.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    /* dvh tracks the actual visible viewport under mobile browser chrome;
+       older engines keep the 100vh fallback. */
+    height: 100dvh;
+    z-index: 1000;
+    background: var(--color-bg-primary);
+    /* Slim padding to maximize grid height; expanded on standalone iOS to
+       clear the status bar / home indicator / notches. */
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
+    /* The year columns pan horizontally; vertical scroll is a fallback for
+       very short viewports where the min cell size doesn't quite fit. */
+    overflow: auto;
+    box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
+}
+
+#calendar.fullscreen h1 {
+    display: none;
+}
+
+#calendar.fullscreen .calendar-fullscreen-btn {
+    /* Pin to the viewport corner so it doesn't pan away with the years. */
+    position: fixed;
+    top: max(8px, env(safe-area-inset-top));
+    right: max(8px, env(safe-area-inset-right));
+}
+
+/* The vertical SVG pans; don't center it like the normal grid. */
+#calendar.fullscreen > svg {
+    margin: 0;
+}
+
+/* Freeze the page behind the lightbox (same as network-fullscreen-open). */
+body.calendar-fullscreen-open {
+    overflow: hidden;
 }
 
 /* Center the calendar grid SVG under the "Quartet Days" title.

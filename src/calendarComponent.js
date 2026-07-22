@@ -30,15 +30,24 @@ export class CalendarComponent {
         this.tooltipDiv = d3.select("body").append("div")
             .attr("class", "tooltip")
             .style("display", "none");
+
+        // Lightbox / fullscreen mode (same pattern as MusicianNetworkComponent).
+        // When on, #calendar fills the viewport via the .fullscreen CSS class
+        // and the grid renders in the transposed vertical layout, sized so a
+        // whole year fits the viewport height.
+        this._isFullscreen = false;
+        this._escHandler = null;
+        this._resizeHandler = null;
     }
 
     // Called on theme change. Clears the existing calendar DOM and rebuilds
     // with whatever color values the CSS now resolves to (the d3 SVG fills
     // and the canvas-rendered legend gradient are both baked at build time
-    // so they need a fresh pass).
+    // so they need a fresh pass). Only removes nodes this component created
+    // (.calendar-gen) — the static <h1> and #daytooltip in index.html stay.
     rerender() {
         if (!this.data) return;
-        d3.select("#calendar").selectAll(":scope > *").remove();
+        d3.select("#calendar").selectAll(":scope > .calendar-gen").remove();
         this.createCalendar(this.data);
     }
 
@@ -85,9 +94,38 @@ export class CalendarComponent {
             });
         });
 
+        const container = d3.select("#calendar");
+
+        // Expand / exit-fullscreen button. Rebuilt on every render pass so
+        // its icon + label always match the current mode.
+        this._appendFullscreenButton(container);
+
+        const config = {
+            timeWeek,
+            formatDay,
+            formatMonth,
+            formatDate,
+            countDay,
+            color,
+            sessions,
+            yearUnique,
+            yearPeople
+        };
+
+        // Fullscreen: transposed layout — weeks run down, days across, one
+        // narrow column per year, panning horizontally across years
+        // (chronological, oldest leftmost; opens scrolled to the current
+        // year at the right edge). Sized so a full year fits the viewport
+        // height. Legend + recent stats are omitted to give the grid every
+        // pixel.
+        if (this._isFullscreen) {
+            this.renderYearGroupsVertical(container, years, config);
+            return;
+        }
+
         // Top row: legend + last-365-days summary side by side.
-        const top = d3.select("#calendar").append("div")
-            .attr("class", "calendar-top");
+        const top = container.append("div")
+            .attr("class", "calendar-top calendar-gen");
 
         this.createLegend({
             parent: top,
@@ -103,23 +141,95 @@ export class CalendarComponent {
         this.renderRecentStats(top, data, 365);
 
         // Create calendar SVG
-        const svg = d3.select("#calendar").append("svg")
+        const svg = container.append("svg")
+            .attr("class", "calendar-gen")
             .attr("width", this.width)
             .attr("height", this.height * years.length)
             .attr("viewBox", [0, 0, this.width, this.height * years.length])
             .attr("style", "max-width: 100%; height: auto; font: 10px sans-serif;");
 
-        this.renderYearGroups(svg, years, {
-            timeWeek,
-            formatDay,
-            formatMonth,
-            formatDate,
-            countDay,
-            color,
-            sessions,
-            yearUnique,
-            yearPeople
-        });
+        this.renderYearGroups(svg, years, config);
+    }
+
+    // Expand/collapse control shared with the network graph's look
+    // (.network-fullscreen-btn); .calendar-fullscreen-btn only positions it.
+    _appendFullscreenButton(container) {
+        const label = this._isFullscreen ? 'Exit full screen' : 'Expand to full screen';
+        const iconAttrs = 'width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+        const icon = this._isFullscreen
+            ? `<svg ${iconAttrs}><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`
+            : `<svg ${iconAttrs}><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>`;
+        container.append("button")
+            .attr("type", "button")
+            .attr("class", "calendar-gen network-fullscreen-btn calendar-fullscreen-btn")
+            .attr("title", label)
+            .attr("aria-label", label)
+            .html(icon)
+            .on("click", () => this._toggleFullscreen());
+    }
+
+    // Mirrors MusicianNetworkComponent._toggleFullscreen: #calendar becomes a
+    // fixed overlay via the .fullscreen class, the page behind is frozen, and
+    // the calendar re-renders in the vertical layout fitted to the viewport.
+    _toggleFullscreen() {
+        this._isFullscreen = !this._isFullscreen;
+        d3.select("#calendar").classed("fullscreen", this._isFullscreen);
+        document.body.classList.toggle("calendar-fullscreen-open", this._isFullscreen);
+        this.hideTooltip();
+
+        if (this._isFullscreen) {
+            this._escHandler = (e) => {
+                if (e.key === "Escape") this._toggleFullscreen();
+            };
+            document.addEventListener("keydown", this._escHandler);
+            // Re-fit on rotation / mobile browser-chrome show-hide / native
+            // fullscreen entry+exit (both fire a resize). Note: a gesture
+            // exit from *native* fullscreen deliberately leaves the lightbox
+            // open — the 100dvh overlay still covers the visible viewport,
+            // and the collapse button / Esc remain the explicit way out.
+            this._resizeHandler = () => this.rerender();
+            window.addEventListener("resize", this._resizeHandler);
+            this._requestNativeFullscreen();
+        } else {
+            if (this._escHandler) {
+                document.removeEventListener("keydown", this._escHandler);
+                this._escHandler = null;
+            }
+            if (this._resizeHandler) {
+                window.removeEventListener("resize", this._resizeHandler);
+                this._resizeHandler = null;
+            }
+            this._exitNativeFullscreen();
+        }
+        this.rerender();
+    }
+
+    // Native fullscreen (progressive enhancement): hides the browser chrome
+    // entirely so the grid gets the whole physical screen. Where the API is
+    // unavailable or refused, the fixed-overlay + 100dvh CSS still covers
+    // the visible viewport, so every failure path is silently ignored.
+    //
+    // Fullscreen is requested on <html>, NOT on #calendar: browsers render
+    // only the fullscreen element's subtree, and the tooltip div is a child
+    // of <body>, so fullscreening #calendar would make tooltips invisible.
+    _fullscreenElement() {
+        return document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
+    }
+
+    _requestNativeFullscreen() {
+        const el = document.documentElement;
+        const request = el.requestFullscreen || el.webkitRequestFullscreen;
+        try {
+            request?.call(el, { navigationUI: "hide" })?.catch?.(() => {});
+        } catch { /* older engines throw synchronously — fall back to CSS overlay */ }
+    }
+
+    _exitNativeFullscreen() {
+        if (!this._fullscreenElement()) return;
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        try {
+            exit?.call(document)?.catch?.(() => {});
+        } catch { /* ignore */ }
     }
 
     renderYearGroups(svg, years, config) {
@@ -162,83 +272,21 @@ export class CalendarComponent {
             .attr("font-size", "9px")
             .text(d => d > 0 ? d : "");
 
-        // Pieces / Year (shifted right to make room for day-of-week totals)
+        // Per-year stats (shifted right to make room for day-of-week totals).
+        // One stacked bare number per stat; the tooltip explains which is which.
         const yearQ = new Map(years);
-        const piecesText = year.append("g")
-            .attr("text-anchor", "start")
-            .selectAll()
-            .data(([year, values]) => [year])
-            .join("text")
-                .attr("x", d => this.cellSize*54 + 10)
-                .attr("y", d => this.cellSize*2)
-                .attr("dy", ".31em")
-                .text(year => d3.sum(yearQ.get(year), d => d.value));
-        this.attachStatTooltip(piecesText,
-            year => `Pieces played in ${year}`,
-            year => {
-                const base = "Total quartets logged this year. Partial-movement entries (titles containing ':', e.g. '44#1:I') don't count — only whole pieces.";
-                const today = new Date();
-                if (year !== today.getUTCFullYear()) return base;
-                const pieces = d3.sum(yearQ.get(year), d => d.value);
-                const elapsed = Math.max(1, dayOfYearUTC(today));
-                const projected = Math.floor(pieces * daysInYear(year) / elapsed);
-                return `${base}<br><br>On track for: ${projected}`;
-            }
-        );
-
-        // Unique Pieces / Year
-        const uniqueText = year.append("g")
-            .attr("text-anchor", "start")
-            .selectAll()
-            .data(([year, values]) => [year])
-            .join("text")
-                .attr("x", d => this.cellSize*54 + 10)
-                .attr("y", d => this.cellSize*3)
-                .attr("dy", ".31em")
-                .text(year => yearUnique.get(year)?.size ?? 0);
-        this.attachStatTooltip(uniqueText,
-            year => `Unique pieces played in ${year}`,
-            () => "Distinct works (composer + title) logged this year. Partial-movement entries don't count, so repeats of the same piece collapse to one."
-        );
-
-        // People played with / Year
-        const peopleText = year.append("g")
-            .attr("text-anchor", "start")
-            .selectAll()
-            .data(([year, values]) => [year])
-            .join("text")
-                .attr("x", d => this.cellSize*54 + 10)
-                .attr("y", d => this.cellSize*4)
-                .attr("dy", ".31em")
-                .text(year => yearPeople.get(year)?.size ?? 0);
-        this.attachStatTooltip(peopleText,
-            year => `People played with in ${year}`,
-            () => "Distinct people logged in Player 1/2/3 and the Others? column this year, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES, so 'Jen' on violin and 'Jen' on cello can map to different people."
-        );
-
-        // Playing Days / Year
-        const daysText = year.append("g")
-            .attr("text-anchor", "start")
-            .selectAll()
-            .data(([year, values]) => [year])
-            .join("text")
-                .attr("x", d => this.cellSize*54 + 10)
-                .attr("y", d => this.cellSize*5)
-                .attr("dy", ".31em")
-                .text(year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0));
-        this.attachStatTooltip(daysText,
-            year => `Playing days in ${year}`,
-            year => {
-                const base = "Number of distinct days this year with at least one whole piece logged. Partial movements alone don't count as a playing day.";
-                const playingDays = d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0);
-                const today = new Date();
-                const denom = year === today.getUTCFullYear()
-                    ? Math.max(1, dayOfYearUTC(today))
-                    : daysInYear(year);
-                const pct = (playingDays / denom * 100).toFixed(1);
-                return `${base}<br><br>${pct}% of days`;
-            }
-        );
+        this._yearStatDefs(yearQ, yearUnique, yearPeople).forEach((def, i) => {
+            const statText = year.append("g")
+                .attr("text-anchor", "start")
+                .selectAll()
+                .data(([year, values]) => [year])
+                .join("text")
+                    .attr("x", d => this.cellSize*54 + 10)
+                    .attr("y", d => this.cellSize*(2 + i))
+                    .attr("dy", ".31em")
+                    .text(year => def.value(year));
+            this.attachStatTooltip(statText, def.title, def.desc);
+        });
 
         // Calendar cells
         this.renderCalendarCells(year, timeWeek, countDay, color, formatDate, sessions);
@@ -259,11 +307,229 @@ export class CalendarComponent {
             .text(d => d > 0 ? d : "");
     }
 
+    // The four per-year stats (value + tooltip content), shared by the
+    // horizontal layout's right-hand column and the vertical layout's
+    // below-grid rows so the numbers and explanations can't drift apart.
+    _yearStatDefs(yearQ, yearUnique, yearPeople) {
+        return [
+            {
+                label: "pieces",
+                value: year => d3.sum(yearQ.get(year), d => d.value),
+                title: year => `Pieces played in ${year}`,
+                desc: year => {
+                    const base = "Total quartets logged this year. Partial-movement entries (titles containing ':', e.g. '44#1:I') don't count — only whole pieces.";
+                    const today = new Date();
+                    if (year !== today.getUTCFullYear()) return base;
+                    const pieces = d3.sum(yearQ.get(year), d => d.value);
+                    const elapsed = Math.max(1, dayOfYearUTC(today));
+                    const projected = Math.floor(pieces * daysInYear(year) / elapsed);
+                    return `${base}<br><br>On track for: ${projected}`;
+                }
+            },
+            {
+                label: "unique",
+                value: year => yearUnique.get(year)?.size ?? 0,
+                title: year => `Unique pieces played in ${year}`,
+                desc: () => "Distinct works (composer + title) logged this year. Partial-movement entries don't count, so repeats of the same piece collapse to one."
+            },
+            {
+                label: "people",
+                value: year => yearPeople.get(year)?.size ?? 0,
+                title: year => `People played with in ${year}`,
+                desc: () => "Distinct people logged in Player 1/2/3 and the Others? column this year, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES, so 'Jen' on violin and 'Jen' on cello can map to different people."
+            },
+            {
+                label: "days",
+                value: year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0),
+                title: year => `Playing days in ${year}`,
+                desc: year => {
+                    const base = "Number of distinct days this year with at least one whole piece logged. Partial movements alone don't count as a playing day.";
+                    const playingDays = d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0);
+                    const today = new Date();
+                    const denom = year === today.getUTCFullYear()
+                        ? Math.max(1, dayOfYearUTC(today))
+                        : daysInYear(year);
+                    const pct = (playingDays / denom * 100).toFixed(1);
+                    return `${base}<br><br>${pct}% of days`;
+                }
+            }
+        ];
+    }
+
+    // Fullscreen layout: the calendar transposed — days of week across the
+    // top (7 columns), weeks running down (up to 54 rows), so a whole year
+    // fits the viewport height on a portrait phone. One column per year,
+    // most recent leftmost; the container pans horizontally across years.
+    renderYearGroupsVertical(container, years, config) {
+        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions, yearUnique, yearPeople } = config;
+        const yearQ = new Map(years);
+        const statDefs = this._yearStatDefs(yearQ, yearUnique, yearPeople);
+
+        // Chronological left-to-right (the shared `years` array is newest-
+        // first for the horizontal layout's top-down stacking). The container
+        // is scrolled to its right edge below, so the newest year is what's
+        // on screen when the lightbox opens.
+        const yearsAsc = years.slice().reverse();
+
+        // Fit the cell size to the viewport height. 54 week rows (a leap
+        // year starting on Saturday spans 54 Sunday-weeks, e.g. 2000).
+        const ROWS = 54;
+        const node = container.node();
+        const cs = getComputedStyle(node);
+        const padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+        const availH = (node.clientHeight || window.innerHeight) - padV;
+        const topMargin = 42;   // year label + day-of-week header
+        const statRowH = 14;
+        const bottomMargin = 16 + statDefs.length * statRowH + 8; // dow totals + stat rows
+        const cell = Math.max(7, Math.min(20, Math.floor((availH - topMargin - bottomMargin) / ROWS)));
+        const leftMargin = 30;  // month labels + monthly totals
+        const rightPad = 22;    // weekly totals
+        const stride = leftMargin + 7 * cell + rightPad + 14;
+
+        const svgH = topMargin + ROWS * cell + bottomMargin;
+        const svgW = yearsAsc.length * stride;
+        const svg = container.append("svg")
+            .attr("class", "calendar-gen")
+            .attr("width", svgW)
+            .attr("height", svgH)
+            .attr("viewBox", [0, 0, svgW, svgH])
+            .attr("style", "font: 10px sans-serif;");
+
+        const year = svg.selectAll("g")
+            .data(yearsAsc)
+            .join("g")
+            .attr("transform", (d, i) => `translate(${i * stride + leftMargin},${topMargin})`);
+
+        // Year label centered over the 7-day grid
+        year.append("text")
+            .attr("x", 3.5 * cell)
+            .attr("y", -26)
+            .attr("text-anchor", "middle")
+            .attr("font-weight", "bold")
+            .attr("font-size", "13px")
+            .text(([key]) => key);
+
+        // Day of week labels across the top
+        year.append("g")
+            .attr("text-anchor", "middle")
+            .selectAll()
+            .data(d3.range(7))
+            .join("text")
+            .attr("x", i => (countDay(i) + 0.5) * cell)
+            .attr("y", -8)
+            .text(formatDay);
+
+        // Calendar cells (transposed: x = day of week, y = week)
+        this.renderCalendarCells(year, timeWeek, countDay, color, formatDate, sessions, { cellSize: cell, vertical: true });
+
+        // Month dividers, labels and totals down the left side
+        this.renderMonthLabelsVertical(year, timeWeek, formatMonth, cell);
+
+        // Weekly totals to the right of each week row
+        year.append("g")
+            .attr("text-anchor", "start")
+            .selectAll()
+            .data(([, values]) => this.calculateWeekTotals(values, timeWeek))
+            .join("text")
+            .attr("x", 7 * cell + 4)
+            .attr("y", (d, i) => (i + 0.5) * cell)
+            .attr("dy", "0.31em")
+            .attr("fill", getCssColor('--color-text-chart'))
+            .attr("font-size", "8px")
+            .text(d => d > 0 ? d : "");
+
+        // Day-of-week totals below the grid
+        year.append("g")
+            .attr("text-anchor", "middle")
+            .selectAll()
+            .data(([, values]) => this.calculateDayOfWeekTotals(values))
+            .join("text")
+            .attr("x", (d, i) => (countDay(i) + 0.5) * cell)
+            .attr("y", ROWS * cell + 12)
+            .attr("fill", getCssColor('--color-text-chart'))
+            .attr("font-size", "9px")
+            .text(d => d > 0 ? d : "");
+
+        // Per-year stats below the day-of-week totals. Unlike the horizontal
+        // layout's bare-number column, there's room for a short label here.
+        const statY = ROWS * cell + 30;
+        statDefs.forEach((def, i) => {
+            const statText = year.append("g")
+                .attr("text-anchor", "start")
+                .selectAll()
+                .data(([year, values]) => [year])
+                .join("text")
+                    .attr("x", 0)
+                    .attr("y", statY + i * statRowH);
+            statText.append("tspan")
+                .attr("font-weight", "bold")
+                .text(year => def.value(year));
+            statText.append("tspan")
+                .attr("fill", getCssColor('--color-text-chart'))
+                .text(` ${def.label}`);
+            this.attachStatTooltip(statText, def.title, def.desc);
+        });
+
+        // Open at the right edge: the newest (current) year is in view first,
+        // and panning left walks back through time. Runs after the SVG is in
+        // the DOM so scrollWidth is final (browser clamps to the max).
+        node.scrollLeft = node.scrollWidth;
+    }
+
+    renderMonthLabelsVertical(year, timeWeek, formatMonth, cell) {
+        const month = year.append("g")
+            .selectAll()
+            .data(([, values]) => {
+                const months = d3.utcMonths(d3.utcMonth(values[0].date), values.at(-1).date);
+                return months.map(m => ({ month: m, yearValues: values }));
+            })
+            .join("g");
+
+        month.filter((d, i) => i).append("path")
+            .attr("fill", "none")
+            .attr("stroke", getCssColor('--color-border-month-divider'))
+            .attr("stroke-width", 3)
+            .attr("d", d => this.pathMonthVertical(d.month, cell));
+
+        const labelY = d => timeWeek.count(d3.utcYear(d.month), timeWeek.ceil(d.month)) * cell;
+
+        month.append("text")
+            .attr("x", -4)
+            .attr("y", d => labelY(d) + 9)
+            .attr("text-anchor", "end")
+            .text(d => formatMonth(d.month));
+
+        // Monthly totals (days.pieces) under the month label
+        month.append("text")
+            .attr("x", -4)
+            .attr("y", d => labelY(d) + 19)
+            .attr("text-anchor", "end")
+            .attr("fill", getCssColor('--color-text-chart'))
+            .attr("font-size", "8px")
+            .text(d => {
+                const monthStart = d.month;
+                const monthEnd = d3.utcMonth.offset(d.month, 1);
+                const monthData = d.yearValues.filter(v => v.date >= monthStart && v.date < monthEnd);
+                const days = monthData.filter(v => v.value > 0).length;
+                const pieces = d3.sum(monthData, v => v.value);
+                return `${days}.${pieces}`;
+            });
+    }
+
+    // pathMonth with x/y swapped: the boundary line drawn above each month.
+    pathMonthVertical(t, cell) {
+        const d = t.getUTCDay();
+        const w = d3.utcSunday.count(d3.utcYear(t), t);
+        return `${d === 0 ? `M0,${w * cell}`
+            : `M0,${(w + 1) * cell}H${d * cell}V${w * cell}`}H${7 * cell}`;
+    }
+
     calculateWeekTotals(values, timeWeek) {
-        const weekTotals = new Array(53).fill(0);
+        // 54 slots: a leap year starting on Saturday spans 54 Sunday-weeks.
+        const weekTotals = new Array(54).fill(0);
         values.forEach(d => {
             const weekNum = timeWeek.count(d3.utcYear(d.date), d.date);
-            if (weekNum < 53) {
+            if (weekNum < 54) {
                 weekTotals[weekNum] += d.value;
             }
         });
@@ -282,15 +548,17 @@ export class CalendarComponent {
         return dayTotals;
     }
 
-    renderCalendarCells(year, timeWeek, countDay, color, formatDate, sessions) {
+    renderCalendarCells(year, timeWeek, countDay, color, formatDate, sessions, { cellSize = this.cellSize, vertical = false } = {}) {
+        const week = d => timeWeek.count(d3.utcYear(d.date), d.date);
+        const dow = d => countDay(d.date.getUTCDay());
         year.append("g")
             .selectAll()
             .data(([, values]) => values)
             .join("rect")
-            .attr("width", this.cellSize - 1)
-            .attr("height", this.cellSize - 1)
-            .attr("x", d => timeWeek.count(d3.utcYear(d.date), d.date) * this.cellSize + 0.5)
-            .attr("y", d => countDay(d.date.getUTCDay()) * this.cellSize + 0.5)
+            .attr("width", cellSize - 1)
+            .attr("height", cellSize - 1)
+            .attr("x", d => (vertical ? dow(d) : week(d)) * cellSize + 0.5)
+            .attr("y", d => (vertical ? week(d) : dow(d)) * cellSize + 0.5)
             .attr("fill", d => d.value == 0 ? getCssColor('--color-bg-empty-cell') : color(d.value))
             .style("cursor", "pointer")
             .on("mouseenter", (event, d) => this.showTooltip(event, d, formatDate, sessions))
@@ -479,21 +747,28 @@ export class CalendarComponent {
         const tooltip = this.tooltipDiv.node();
         const tRect = tooltip.getBoundingClientRect();
         const margin = 10;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
 
-        let left = event.pageX + margin;
-        let top = event.pageY + margin;
-
-        // Adjust position to keep tooltip within viewport
-        if (left + tRect.width > window.innerWidth) {
-            left = Math.max(margin, event.pageX - tRect.width - margin);
+        // Work in viewport (client) coordinates so the clamping is correct
+        // even when the page is scrolled or the fullscreen overlay is up,
+        // then convert back to page coordinates for the absolute placement.
+        let left = event.clientX + margin;
+        let top = event.clientY + margin;
+        if (left + tRect.width > vw) {
+            left = event.clientX - tRect.width - margin;
         }
-        if (top + tRect.height > window.innerHeight) {
-            top = Math.max(margin, event.pageY - tRect.height - margin);
+        if (top + tRect.height > vh) {
+            top = event.clientY - tRect.height - margin;
         }
+        // Final clamp: never off-screen (CSS max-width/max-height keep the
+        // tooltip itself smaller than the viewport).
+        left = Math.max(margin, Math.min(left, vw - tRect.width - margin));
+        top = Math.max(margin, Math.min(top, vh - tRect.height - margin));
 
         this.tooltipDiv
-            .style("left", left + "px")
-            .style("top", top + "px");
+            .style("left", (left + window.scrollX) + "px")
+            .style("top", (top + window.scrollY) + "px");
     }
 
     hideTooltip() {

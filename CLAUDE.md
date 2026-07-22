@@ -126,7 +126,13 @@ Classes: `upper` (V1, V2, VA, VLA — violin/viola alias as one person) and `cel
 
 ### Calendar specifics
 
-Per-year stats column shows four numbers (Pieces, Unique Pieces, People played with, Playing Days) at `cellSize*2` through `cellSize*5`, with tooltips wired via `attachStatTooltip` (works on hover and tap). The legend SVG is sized to exactly `10 * cellSize` wide and uses CSS `width: min(170px, 17%)` + `margin-left: min(40.5px, 4.05%)` so it tracks the calendar grid's first 10 cells across all viewport widths.
+Per-year stats column shows four numbers (Pieces, Unique Pieces, People played with, Playing Days) at `cellSize*2` through `cellSize*5`, with tooltips wired via `attachStatTooltip` (works on hover and tap). The stat values + tooltip copy live in `_yearStatDefs`, shared by both layouts (horizontal right-hand column and fullscreen below-grid rows) so they can't drift. The legend SVG is sized to exactly `10 * cellSize` wide and uses CSS `width: min(170px, 17%)` + `margin-left: min(40.5px, 4.05%)` so it tracks the calendar grid's first 10 cells across all viewport widths.
+
+**Fullscreen (vertical) mode**: an expand button (network-graph style: `.network-fullscreen-btn` for looks + `.calendar-fullscreen-btn` for placement) toggles a lightbox where the grid renders transposed (`renderYearGroupsVertical`) — weeks run down, days across — with the cell size fitted so a whole year fills the viewport height (54 week rows: a leap year starting Saturday spans 54 Sunday-weeks). Year columns run chronologically left→right and the container opens scrolled to its right edge, so the current year is in view and panning left walks back in time. Legend + recent stats are omitted to give the grid every pixel. Entering also calls `requestFullscreen()` on `<html>` — NOT on `#calendar`, because browsers render only the fullscreen element's subtree and the tooltip div is a `<body>` child — with every failure path silently falling back to the fixed `100dvh` overlay CSS (older iOS, installed PWAs). Esc or the collapse button exits both native fullscreen and the lightbox; a gesture-exit from *native* fullscreen deliberately leaves the lightbox open (auto-closing on `fullscreenchange` closed everything whenever a browser bounced the request). A window `resize` listener re-fits the grid on rotation / chrome show-hide.
+
+**Re-render contract**: calendar rebuilds (`rerender()`, App's `_rerenderData`) remove only `.calendar-gen`-tagged nodes from `#calendar`, so the static `<h1>` in index.html survives. Anything `createCalendar` appends must carry the `calendar-gen` class.
+
+**Tooltips**: the shared `.tooltip` CSS clamps to the viewport (`max-width`/`max-height` + scroll; sticky close button so it can't scroll away), and `positionTooltip` computes in client coordinates before converting to page coordinates, so day tooltips stay fully on-screen on phones and inside the fullscreen overlay.
 
 ### Configuration files
 

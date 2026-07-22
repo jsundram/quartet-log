@@ -294,7 +294,9 @@ export class App {
     // yanking the user around.
     _rerenderData() {
         setBegin(this.data[0].timestamp);
-        d3.select('#calendar').selectAll(':scope > *').remove();
+        // Only remove component-generated nodes — the static <h1> and
+        // #daytooltip in index.html stay (matches CalendarComponent.rerender).
+        d3.select('#calendar').selectAll(':scope > .calendar-gen').remove();
         this.calendarComponent.createCalendar(this.data);
         this.dashboardComponent.setData(this.data);
         this.filterData('date');
