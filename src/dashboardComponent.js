@@ -1,5 +1,5 @@
 import { getPartColor, getCssColor } from './config';
-import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician } from './dataProcessor';
+import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computeAggregateStats } from './dataProcessor';
 import { DateFilterWidget } from './dateFilterWidget';
 import { MusicianNetworkComponent } from './musicianNetworkComponent';
 
@@ -125,10 +125,111 @@ export class DashboardComponent {
 
     render() {
         if (!this.data) return;
+        this.renderStats();
         this.renderPartBar();
         this.renderComposerChart();
         this.renderMusicianChart();
         this.networkComponent.render();
+    }
+
+    // ---------------- Aggregate stats ----------------
+
+    // KPI tile row over the rows matching EVERY active filter (date range
+    // plus any part/composer/musician selection), so the numbers describe
+    // exactly what the charts below are showing. Same four metrics as the
+    // calendar's "Last 365 days" block, presented as stat tiles (label over
+    // large value) instead of the calendar's inline label: value row.
+    renderStats() {
+        // `short` is the mobile label — the one-line tile row is tight on
+        // phones, and the tap tooltip (title/desc) spells out the full name.
+        const agg = computeAggregateStats(this.filteredRows(null));
+        const stats = [
+            {
+                label: 'Pieces',
+                short: 'Pieces',
+                value: agg.pieces,
+                title: 'Pieces in the current filter',
+                desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
+            },
+            {
+                label: 'Unique pieces',
+                short: 'Unique',
+                value: agg.uniquePieces,
+                title: 'Unique pieces in the current filter',
+                desc: 'Distinct works (composer + title). Repeats of the same piece collapse to one.',
+            },
+            {
+                label: 'Unique people',
+                short: 'People',
+                value: agg.uniquePeople,
+                title: 'People played with in the current filter',
+                desc: 'Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.',
+            },
+            {
+                label: 'Days played',
+                short: 'Days',
+                value: agg.daysPlayed,
+                title: 'Playing days in the current filter',
+                desc: 'Distinct days with at least one whole piece logged.',
+            },
+        ];
+
+        // Desktop: align the row's left edge with the ranked charts' plot
+        // area (where the bars start), not the screen edge — same
+        // measurement the charts themselves use, re-applied on the
+        // resize-driven re-render. Mobile: no indent; the four tiles share
+        // one full-width line (CSS flex: 1 1 0), since the ~270px right of
+        // the chart margin can't fit them.
+        const width = Math.min(MAX_DESIGN_WIDTH, this.measureWidth());
+        const s = sizing(width);
+        const row = d3.select('#dashboardStats').selectAll('.stat-tiles')
+            .data([1])
+            .join('div')
+            .attr('class', 'stat-tiles')
+            .style('margin-left', s.mobile ? null : `${s.rankedMargin.left}px`);
+        const cells = row.selectAll('.stat-tile')
+            .data(stats, d => d.label)
+            .join(enter => {
+                const cell = enter.append('div').attr('class', 'stat-tile');
+                cell.append('span').attr('class', 'stat-tile-label');
+                cell.append('span').attr('class', 'stat-tile-value');
+                return cell;
+            });
+        cells.select('.stat-tile-label').text(d => s.mobile ? d.short : d.label);
+        cells.select('.stat-tile-value').text(d => d.value);
+        cells
+            .style('cursor', 'pointer')
+            .on('mouseenter', (event, d) => this.showStatTooltip(event, d))
+            .on('mouseleave', () => this.hideStatTooltip())
+            .on('click', (event, d) => this.showStatTooltip(event, d));
+    }
+
+    // Tooltip plumbing for the stats row, using the body-level #tooltip div
+    // (shared with the network component; the two never show simultaneously).
+    showStatTooltip(event, stat) {
+        const tooltip = d3.select('#tooltip');
+        tooltip
+            .html(`<span class="tooltip-close">&times;</span><h4>${stat.title}</h4><p>${stat.desc}</p>`)
+            .style('display', 'block')
+            .style('max-width', '320px');
+        tooltip.select('.tooltip-close').on('click', () => this.hideStatTooltip());
+
+        const node = tooltip.node();
+        const rect = node.getBoundingClientRect();
+        const margin = 10;
+        let left = event.pageX + margin;
+        let top = event.pageY + margin;
+        if (left + rect.width > window.innerWidth) {
+            left = Math.max(margin, event.pageX - rect.width - margin);
+        }
+        if (top + rect.height > window.innerHeight) {
+            top = Math.max(margin, event.pageY - rect.height - margin);
+        }
+        tooltip.style('left', left + 'px').style('top', top + 'px');
+    }
+
+    hideStatTooltip() {
+        d3.select('#tooltip').style('display', 'none');
     }
 
     // ---------------- Part stacked bar ----------------

@@ -22,6 +22,9 @@ export class TabComponent {
             if (cls?.contains('network-node') || cls?.contains('network-edge')
                 || cls?.contains('matrix-cell') || cls?.contains('matrix-label')
                 || cls?.contains('network-arc') || cls?.contains('network-chord')) return;
+            // Dashboard stat tiles show their explainer tooltip on click; the
+            // click target is a child span, so match via closest().
+            if (e.target.closest?.('#dashboardStats .stat-tile')) return;
             this.hideTooltip();
         });
     }
