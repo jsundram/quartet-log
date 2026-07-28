@@ -166,12 +166,20 @@ export class App {
         );
     }
 
-    // Briefly swap a selection's text, then restore it.
+    // Briefly swap a selection's text, then restore it. Re-entrancy-safe:
+    // rapid re-clicks keep the true original (not the flashed text) and reset
+    // the timer, so the label never gets stuck on "Copied!".
     _flashLabel(sel, msg) {
         if (sel.empty()) return;
-        const original = sel.text();
+        const node = sel.node();
+        if (node._flashOriginal === undefined) node._flashOriginal = sel.text();
+        clearTimeout(node._flashTimer);
         sel.text(msg);
-        setTimeout(() => sel.text(original), 1500);
+        node._flashTimer = setTimeout(() => {
+            sel.text(node._flashOriginal);
+            node._flashOriginal = undefined;
+            node._flashTimer = undefined;
+        }, 1500);
     }
 
     handleUrlSubmit() {
