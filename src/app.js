@@ -32,6 +32,7 @@ export class App {
             () => this.downloadCSV(),
             (view) => this.handleViewChange(view),
         );
+        this.navigationComponent.onCopyConfig = () => this.handleCopyConfigLink();
         this.tableComponent = new TableComponent();
         this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();
@@ -145,6 +146,32 @@ export class App {
                     .style('display', 'block');
             },
         );
+    }
+
+    // Menu "Copy setup link": same as the setup-screen button, but the URL
+    // comes from localStorage (the user is already logged in) instead of the
+    // input field. Flashes feedback on the menu item's label span (flashing
+    // the whole <a> would clobber its icon).
+    handleCopyConfigLink() {
+        const label = d3.select('.menu-item[data-view="copy-config"] span');
+        const url = getDataUrl();
+        if (!url) {
+            this._flashLabel(label, 'No URL set');
+            return;
+        }
+        const link = buildMobileSetupLink(url);
+        navigator.clipboard.writeText(link).then(
+            () => this._flashLabel(label, 'Copied!'),
+            () => this._flashLabel(label, 'Copy failed'),
+        );
+    }
+
+    // Briefly swap a selection's text, then restore it.
+    _flashLabel(sel, msg) {
+        if (sel.empty()) return;
+        const original = sel.text();
+        sel.text(msg);
+        setTimeout(() => sel.text(original), 1500);
     }
 
     handleUrlSubmit() {

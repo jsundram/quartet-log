@@ -38,13 +38,15 @@ Paste the URL into the Quartet Log setup page and click "Load Data".
 
 ### 6. Set Up Another Device (Optional)
 
-You don't have to retype the CSV URL on your phone or another computer. On the setup page where you just pasted your URL, click **Copy mobile setup link** (the outlined button below "Load Data"). This copies a link like:
+You don't have to retype the CSV URL on your phone or another computer. On the setup page where you just pasted your URL, click **Copy setup link** (the outlined button below "Load Data"). This copies a link like:
 
 ```
 https://log.quartetroulette.com/?data=...
 ```
 
 Send that link to yourself via AirDrop, iMessage, email, etc. Opening it on the other device configures Quartet Log automatically — no setup screen.
+
+Already logged in? You can grab the same link any time from the hamburger menu &rarr; **Copy setup link**.
 
 ## Important Notes
 

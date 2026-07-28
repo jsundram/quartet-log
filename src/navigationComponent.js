@@ -84,6 +84,14 @@ export class NavigationComponent {
                 return;
             }
 
+            // Copy setup link: keep the menu open (like Theme) so the
+            // "Copied!" flash on the item is visible. The app fills in the
+            // handler; it reads the saved URL and copies a ?data=… link.
+            if (view === "copy-config") {
+                if (this.onCopyConfig) this.onCopyConfig();
+                return;
+            }
+
             menuItems.style("display", "none");
 
             // Force a shell update: drop the SW caches and reload so the latest
