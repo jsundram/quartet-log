@@ -39,8 +39,10 @@ async function tick(ms) {
 const BASE = "https://viz.runningwithdata.com/musiclog/";
 const b = (p) => BASE + p;
 
-let fetchMode = "ok";        // "ok" | "slow" | "offline" | "redirect"
+let fetchMode = "ok";        // "ok" | "slow" | "offline" | "redirect" | "late"
 let fetchStatus = 200;
+let fetchProps = {};         // extra response props for "ok" mode (redirected, type, …)
+let lateResolve = null;      // "late" mode: settles the pending fetch on demand
 let fetchCalls = 0;
 const CACHE = new Map();     // url (search stripped) -> response; models ignoreSearch matching
 
@@ -50,7 +52,20 @@ const makeResponse = (body, { status = 200, redirected = false, type = "basic" }
 });
 const keyOf = (r) => {
   const u = new URL(typeof r === "string" ? r : r.url, self.location);
-  return u.origin + u.pathname;                       // ignoreSearch semantics
+  return u.origin + u.pathname + u.search;            // full URL; ignoreSearch is an OPTION, below
+};
+const stripSearch = (k) => k.split("?")[0];
+// Honors the options argument the way the real Cache API does, so the suite genuinely pins that
+// the source passes { ignoreSearch: true } — a mock that always ignored the query would stay
+// green if that option were dropped from cacheMatch().
+const matchIn = (store, r, opts) => {
+  const k = keyOf(r);
+  if (store.has(k)) return store.get(k);
+  if (opts && opts.ignoreSearch) {
+    const base = stripSearch(k);
+    for (const [key, v] of store) if (stripSearch(key) === base) return v;
+  }
+  return undefined;
 };
 const req = (url, mode = "no-cors") => ({ url, method: "GET", mode });
 
@@ -66,12 +81,12 @@ const location = self.location;
 const ResponseCtor = function (body, init = {}) { return makeResponse(body, { status: init.status || 200 }); };
 
 const cacheApi = {
-  async match(r) { return CACHE.get(keyOf(r)); },
+  async match(r, opts) { return matchIn(CACHE, r, opts); },
   async put(r, resp) { CACHE.set(keyOf(r), resp); },
 };
 const caches = {
   async open() { return cacheApi; },
-  async match(r) { return CACHE.get(keyOf(r)); },
+  async match(r, opts) { return matchIn(CACHE, r, opts); },
   async keys() { return ["ql-testhash-testcss"]; },
   async delete() { return true; },
 };
@@ -79,8 +94,9 @@ const fetchImpl = async (r) => {
   fetchCalls++;
   if (fetchMode === "offline") throw new Error("offline");
   if (fetchMode === "slow") return new Promise(() => {});   // never settles → only a timeout ends it
+  if (fetchMode === "late") return new Promise((res) => { lateResolve = res; });   // settles when the test says so
   if (fetchMode === "redirect") return makeResponse("", { status: 0, type: "opaqueredirect" });
-  return makeResponse("NET:" + keyOf(r), { status: fetchStatus });
+  return makeResponse("NET:" + keyOf(r), { status: fetchStatus, ...fetchProps });
 };
 
 // ---- load the template under those globals ---------------------------------
@@ -105,7 +121,7 @@ async function intercepts(request) {
 const bodyOf = (r) => (r ? (r._body ?? "(generated page)") : "(undefined!)");
 const isPending = async (p) => (await Promise.race([p.then(() => false), flush().then(() => true)]));
 
-beforeEach(() => { CACHE.clear(); fetchMode = "ok"; fetchStatus = 200; fetchCalls = 0; now = 0; timers.clear(); });
+beforeEach(() => { CACHE.clear(); fetchMode = "ok"; fetchStatus = 200; fetchProps = {}; lateResolve = null; fetchCalls = 0; now = 0; timers.clear(); });
 
 // ---- the network-first happy path ------------------------------------------
 test("online nav → network response (network-first kept on purpose)", async () => {
@@ -195,6 +211,45 @@ test("uncached asset offline → real 504", async () => {
   fetchMode = "offline";
   const r = await start(req(b("favicon-32x32.png")));
   assert.equal(r.status, 504);
+});
+
+// The cache-miss fetch in this branch is bounded too: content-hashed bundles live here, so a
+// fresh index.html referencing a not-yet-cached bundle-<hash>.js on lie-fi must fail visibly
+// (blank-app-with-painted-HTML was the one remaining unbounded path).
+test("uncached bundle + lie-fi → bounded 504 at 15s, not a hang", async () => {
+  fetchMode = "slow";
+  const p = start(req(b("bundle-new.js")));
+  await tick(14999);
+  assert.equal(await isPending(p), true, "cold bound applies — no cached copy to serve earlier");
+  await tick(2);
+  assert.equal((await p).status, 504);
+});
+
+// ---- the remaining cachePut gates + the parked-fetch claim ------------------
+test("redirected response is served but not cached", async () => {
+  fetchProps = { redirected: true };
+  const r = await start(req(b("photo.png")));
+  assert.equal(r.redirected, true);
+  await flush();
+  assert.equal(CACHE.has(keyOf(b("photo.png"))), false);
+});
+
+test("206 partial is served but not cached (resp.ok is true for a 206)", async () => {
+  fetchStatus = 206;
+  const r = await start(req(b("photo.png")));
+  assert.equal(r.status, 206);
+  await flush();
+  assert.equal(CACHE.has(keyOf(b("photo.png"))), false);
+});
+
+test("late lie-fi success still lands in the cache (the parked fetch)", async () => {
+  fetchMode = "late";
+  const p = start(req(b("some-view"), "navigate"));
+  await tick(15001);
+  assert.equal((await p).status, 503);                       // timed out to the offline page...
+  lateResolve(makeResponse("LATE_BODY", { status: 200 }));   // ...then the network finally answers
+  await flush();
+  assert.equal(bodyOf(CACHE.get(keyOf(b("some-view")))), "LATE_BODY");
 });
 
 // ---- pass-throughs ----------------------------------------------------------

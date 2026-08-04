@@ -51,7 +51,7 @@ self.addEventListener("activate", e => {
   );
 });
 
-// Bound every live-branch network wait: fetch() only rejects on a REAL network
+// Bound every network wait: fetch() only rejects on a REAL network
 // failure, so on "lie-fi" (a slow-but-alive link — weak cell signal, a
 // half-answering captive portal) it just hangs, and an unbounded network-first
 // respondWith() hangs with it — WebKit paints a blank page, no error, while
@@ -163,10 +163,18 @@ self.addEventListener("fetch", e => {
     })());
   } else {
     e.respondWith(
-      cacheMatch(e.request).then(r => r || fetch(e.request).then(resp => {
-        cachePut(e.request, resp);
-        return resp;
-      }).catch(() => offlineFallback(e.request)))
+      cacheMatch(e.request).then(r => {
+        if (r) return r;
+        const net = fetch(e.request).then(resp => { cachePut(e.request, resp); return resp; });
+        // Bounded like the live branch's cold path: a cache miss means the network is the only
+        // real answer, but the hang matters MORE here than for the skeleton this is ported
+        // from — content-hashed bundles route through this branch, so a fresh index.html can
+        // reference a new bundle-<hash>.js that isn't cached yet, and on lie-fi that script
+        // fetch hanging is a blank app with the HTML already painted. Fail visibly (504) so
+        // the page's own error handling gets a turn; a late success still lands in the cache.
+        return withTimeout(net, NET_TIMEOUT_COLD_MS)
+          .catch(() => { e.waitUntil(net.catch(() => {})); return offlineFallback(e.request); });
+      })
     );
   }
 });
