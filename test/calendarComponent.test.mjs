@@ -5,7 +5,9 @@ import {
     isLeapYear,
     daysInYear,
     dayOfYearUTC,
+    longestPlayingStreak,
 } from '../src/calendarComponent.js';
+import { computeAggregateStats } from '../src/dataProcessor.js';
 
 describe('isLeapYear', () => {
     it('flags years divisible by 4 but not 100', () => {
@@ -51,5 +53,79 @@ describe('dayOfYearUTC', () => {
         assert.equal(dayOfYearUTC(new Date(Date.UTC(2024, 1, 29))), 60); // Feb 29 2024
         assert.equal(dayOfYearUTC(new Date(Date.UTC(2024, 2, 1))), 61);  // Mar 1 2024
         assert.equal(dayOfYearUTC(new Date(Date.UTC(2025, 2, 1))), 60);  // Mar 1 2025 (non-leap)
+    });
+});
+
+describe('longestPlayingStreak', () => {
+    // Dense day-value array for consecutive days starting Jan 1: exactly the
+    // shape createCalendar builds via d3.timeDay.range, one entry per calendar
+    // day whether or not anything was played. Index i is day i+1 of the month.
+    const denseDays = (counts) =>
+        counts.map((value, i) => ({ date: new Date(2026, 0, i + 1), value }));
+
+    it('returns 0 for an empty array', () => {
+        assert.equal(longestPlayingStreak([]), 0);
+    });
+
+    it('returns 0 for a missing year rather than throwing', () => {
+        // yearQ.get(year) is undefined for a year with no days; the sibling
+        // stat defs degrade to 0 via `?? 0`, so this one must not throw either.
+        assert.equal(longestPlayingStreak(undefined), 0);
+    });
+
+    it('returns 0 when no day was played', () => {
+        assert.equal(longestPlayingStreak(denseDays([0, 0, 0, 0])), 0);
+    });
+
+    it('counts a single playing day as a streak of 1', () => {
+        assert.equal(longestPlayingStreak(denseDays([0, 1, 0])), 1);
+    });
+
+    it('breaks the run on an unplayed day and keeps the longest', () => {
+        //                                     1  2  3     5        8  9
+        assert.equal(longestPlayingStreak(denseDays([1, 1, 1, 0, 2, 0, 0, 1, 1])), 3);
+    });
+
+    it('counts a run that ends on the last day', () => {
+        // Regression guard: an implementation that only flushes `run` into
+        // `best` when it hits a zero would report 1 here, never seeing the
+        // trailing run close.
+        assert.equal(longestPlayingStreak(denseDays([1, 0, 1, 1, 1, 1])), 4);
+    });
+
+    it('counts a run that starts on the first day', () => {
+        assert.equal(longestPlayingStreak(denseDays([1, 1, 0, 1])), 2);
+    });
+
+    it('counts every day when the whole span was played', () => {
+        assert.equal(longestPlayingStreak(denseDays([3, 1, 4, 1, 5])), 5);
+    });
+
+    it('ignores how many pieces were played, only whether any were', () => {
+        assert.equal(
+            longestPlayingStreak(denseDays([9, 1, 7])),
+            longestPlayingStreak(denseDays([1, 1, 1])),
+        );
+    });
+
+    // The calendar reads adjacency positionally off a dense array; dataProcessor
+    // infers it arithmetically from a sparse set of day ordinals. Two algorithms,
+    // one definition of "streak" — this pins them together so a change to either
+    // side's notion of a playing day can't drift past the other unnoticed.
+    it('agrees with computeAggregateStats over the same days', () => {
+        const counts = [1, 1, 0, 2, 1, 1, 1, 0, 1, 0, 0, 3, 3];
+        const days = denseDays(counts);
+
+        // One row per piece on each played day — the sparse view of the same span.
+        const rows = days.flatMap(d => Array.from({ length: d.value }, () => ({
+            timestamp: d.date,
+            composer: 'Haydn',
+            work: { title: '17#1' },
+            player1: 'Alice', player2: 'Bob', player3: 'Carol',
+            others: '',
+        })));
+
+        assert.equal(longestPlayingStreak(days), 4);          // Jan 4-7
+        assert.equal(computeAggregateStats(rows).maxStreak, longestPlayingStreak(days));
     });
 });

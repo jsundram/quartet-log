@@ -20,6 +20,25 @@ export function dayOfYearUTC(date) {
     return Math.floor(ms / 86400000) + 1;
 }
 
+// Longest run of consecutive playing days in a year's day-value array.
+//
+// PRECONDITION: `days` is gap-free and ascending — every calendar day in the
+// range, in order, which is what d3.timeDay.range produces and d3.groups
+// preserves per year. Adjacency is read positionally (days[i+1] IS the next
+// calendar day), so a sparse array would silently overstate streaks by closing
+// gaps that are real. dataProcessor's longestConsecutiveRun is the sparse-input
+// equivalent, inferring adjacency from day ordinals instead; the two are pinned
+// to the same definition of a streak by a cross-check in the tests.
+export function longestPlayingStreak(days) {
+    let best = 0;
+    let run = 0;
+    for (const d of days ?? []) {
+        run = d.value > 0 ? run + 1 : 0;
+        if (run > best) best = run;
+    }
+    return best;
+}
+
 export class CalendarComponent {
     constructor() {
         this.width = CALENDAR_CONFIG.width;
@@ -355,17 +374,7 @@ export class CalendarComponent {
             },
             {
                 label: "streak",
-                // The year's day-values array (yearQ) is a gap-free, ascending
-                // run of every calendar day, so the longest streak is just the
-                // longest run of value > 0 walked in order.
-                value: year => {
-                    let best = 0, run = 0;
-                    for (const d of yearQ.get(year)) {
-                        run = d.value > 0 ? run + 1 : 0;
-                        if (run > best) best = run;
-                    }
-                    return best;
-                },
+                value: year => longestPlayingStreak(yearQ.get(year)),
                 title: year => `Longest streak in ${year}`,
                 desc: () => "Longest run of consecutive days this year with at least one whole piece logged. A streak that spans New Year's is split at the year boundary."
             }
