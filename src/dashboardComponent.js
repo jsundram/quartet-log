@@ -1,5 +1,5 @@
 import { getPartColor, getCssColor } from './config';
-import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computeAggregateStats } from './dataProcessor';
+import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computePartBreakdownPerComposer, computeAggregateStats } from './dataProcessor';
 import { DateFilterWidget } from './dateFilterWidget';
 import { MusicianNetworkComponent } from './musicianNetworkComponent';
 
@@ -327,7 +327,14 @@ export class DashboardComponent {
     renderComposerChart() {
         const rows = this.filteredRows('composer');
         const counts = d3.rollup(rows, v => v.length, d => d.composer);
-        const data = Array.from(counts, ([name, count]) => ({ name, count }));
+        // Per-composer parts breakdown so the bar stacks by the user's own
+        // part (V1/V2/VA) for that composer, mirroring the musician chart.
+        const breakdown = computePartBreakdownPerComposer(rows);
+        const data = Array.from(counts, ([name, count]) => ({
+            name,
+            count,
+            parts: breakdown.get(name),
+        }));
         this.renderRankedBars('#dashboardComposerChart', 'composer', data);
     }
 
@@ -416,10 +423,12 @@ export class DashboardComponent {
         const textSecondary = getCssColor('--color-text-secondary');
         const otherFill = getCssColor('--color-part-fallback');
 
-        // Build the segment array for a row. When d.parts is present (the
-        // Top Musicians chart), the bar stacks by instrument left-to-right
-        // in V1 → V2 → VA → VC → OTHER order. Without d.parts (composer
-        // chart), there's a single accent-colored segment.
+        // Build the segment array for a row. Both ranked charts pass d.parts:
+        // Top Musicians breaks down by the musician's instrument, Top Composers
+        // by the user's own part. The bar stacks left-to-right in
+        // V1 → V2 → VA → VC → OTHER order. The `!d.parts` branch is a defensive
+        // fallback (single accent-colored segment) for any future caller that
+        // omits the breakdown.
         const PART_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
         const segmentsOf = (d) => {
             if (!d.parts) return [{ part: null, count: d.count, x0: 0 }];

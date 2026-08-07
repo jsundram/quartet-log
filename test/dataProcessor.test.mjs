@@ -17,6 +17,7 @@ import {
     disambiguateLabels,
     partFromInstrument,
     computePartBreakdownPerMusician,
+    computePartBreakdownPerComposer,
     predominantPart,
 } from '../src/dataProcessor.js';
 
@@ -740,6 +741,44 @@ describe('computePartBreakdownPerMusician', () => {
         assert.equal(sum(breakdown.get('Carol')), 2);
         assert.equal(sum(breakdown.get('Dave')), 1);
         assert.equal(sum(breakdown.get('Eve')), 1);
+    });
+});
+
+describe('computePartBreakdownPerComposer', () => {
+    const r = (composer, part) => ({ composer, part });
+
+    it('buckets each composer piece by the user part', () => {
+        const rows = [
+            r('Haydn', 'V1'),
+            r('Haydn', 'V1'),
+            r('Haydn', 'V2'),
+            r('Beethoven', 'VA'),
+        ];
+        const breakdown = computePartBreakdownPerComposer(rows);
+        assert.deepEqual(breakdown.get('Haydn'),     { V1: 2, V2: 1, VA: 0, OTHER: 0 });
+        assert.deepEqual(breakdown.get('Beethoven'), { V1: 0, V2: 0, VA: 1, OTHER: 0 });
+    });
+
+    it('folds VA1/VA2 into VA and non-canonical parts into OTHER', () => {
+        const rows = [
+            r('Mozart', 'VA1'),
+            r('Mozart', 'VA2'),
+            r('Mozart', 'VC'),  // not an upper part → OTHER
+            r('Mozart', ''),    // missing → OTHER
+        ];
+        const breakdown = computePartBreakdownPerComposer(rows);
+        assert.deepEqual(breakdown.get('Mozart'), { V1: 0, V2: 0, VA: 2, OTHER: 2 });
+    });
+
+    it('sums to the composer piece count', () => {
+        const rows = [
+            r('Haydn', 'V1'),
+            r('Haydn', 'V2'),
+            r('Haydn', 'VA'),
+            r('Haydn', 'VC'),
+        ];
+        const b = breakdown => breakdown.V1 + breakdown.V2 + breakdown.VA + breakdown.OTHER;
+        assert.equal(b(computePartBreakdownPerComposer(rows).get('Haydn')), 4);
     });
 });
 
