@@ -3,6 +3,6 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "test": "node --test test/*.mjs"
+        "test": "TZ=America/New_York node --test test/*.mjs"
     }
 }

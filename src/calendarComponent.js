@@ -797,36 +797,42 @@ export class CalendarComponent {
         const recent = data.filter(d => d.timestamp >= cutoff && d.timestamp <= now);
         const agg = computeAggregateStats(recent);
 
-        // Short labels (mirroring the dashboard's mobile tile labels) so all
-        // five metrics fit on one line; the tap/hover tooltip spells out the
-        // full name and definition.
+        // Full labels on desktop, dashboard-style short labels on mobile (the
+        // two are toggled by a CSS media query, mirroring the dashboard tiles)
+        // so five metrics stay clear where there's room and still fit one line
+        // on a phone. The tap/hover tooltip spells out the full name either way.
         const stats = [
             {
                 label: 'Pieces',
+                short: 'Pieces',
                 value: agg.pieces,
                 title: `Pieces in the last ${days} days`,
                 desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
             },
             {
-                label: 'Unique',
+                label: 'Unique pieces',
+                short: 'Unique',
                 value: agg.uniquePieces,
                 title: `Unique pieces in the last ${days} days`,
                 desc: "Distinct works (composer + title). Repeats of the same piece collapse to one.",
             },
             {
-                label: 'People',
+                label: 'Unique people',
+                short: 'People',
                 value: agg.uniquePeople,
                 title: `People played with in the last ${days} days`,
                 desc: "Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.",
             },
             {
-                label: 'Days',
+                label: 'Days played',
+                short: 'Days',
                 value: agg.daysPlayed,
                 title: `Playing days in the last ${days} days`,
                 desc: 'Distinct days with at least one whole piece logged.',
             },
             {
-                label: 'Streak',
+                label: 'Max streak',
+                short: 'Streak',
                 value: agg.maxStreak,
                 title: `Longest streak in the last ${days} days`,
                 desc: 'Longest run of consecutive days with at least one whole piece logged, within this window.',
@@ -838,7 +844,9 @@ export class CalendarComponent {
         const row = container.append('div').attr('class', 'recent-stats-row');
         stats.forEach(s => {
             const cell = row.append('div').attr('class', 'recent-stat');
-            cell.append('span').attr('class', 'recent-stat-label').text(`${s.label}:`);
+            // Both labels are rendered; CSS shows exactly one per viewport.
+            cell.append('span').attr('class', 'recent-stat-label recent-stat-label--long').text(`${s.label}:`);
+            cell.append('span').attr('class', 'recent-stat-label recent-stat-label--short').text(`${s.short}:`);
             cell.append('span').attr('class', 'recent-stat-value').text(s.value);
             this.attachStatTooltip(cell, () => s.title, () => s.desc);
         });
