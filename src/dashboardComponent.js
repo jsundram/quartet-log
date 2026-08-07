@@ -136,9 +136,10 @@ export class DashboardComponent {
 
     // KPI tile row over the rows matching EVERY active filter (date range
     // plus any part/composer/musician selection), so the numbers describe
-    // exactly what the charts below are showing. Same four metrics as the
-    // calendar's "Last 365 days" block, presented as stat tiles (label over
-    // large value) instead of the calendar's inline label: value row.
+    // exactly what the charts below are showing. The same metrics as the
+    // calendar's "Last 365 days" block (Pieces / Unique / People / Days /
+    // Streak), presented as stat tiles (label over large value) instead of
+    // the calendar's inline label: value row.
     renderStats() {
         // `short` is the mobile label — the one-line tile row is tight on
         // phones, and the tap tooltip (title/desc) spells out the full name.
@@ -172,12 +173,19 @@ export class DashboardComponent {
                 title: 'Playing days in the current filter',
                 desc: 'Distinct days with at least one whole piece logged.',
             },
+            {
+                label: 'Max streak',
+                short: 'Streak',
+                value: agg.maxStreak,
+                title: 'Longest streak in the current filter',
+                desc: 'Longest run of consecutive days with at least one whole piece logged, within the current filter.',
+            },
         ];
 
         // Desktop: align the row's left edge with the ranked charts' plot
         // area (where the bars start), not the screen edge — same
         // measurement the charts themselves use, re-applied on the
-        // resize-driven re-render. Mobile: no indent; the four tiles share
+        // resize-driven re-render. Mobile: no indent; the five tiles share
         // one full-width line (CSS flex: 1 1 0), since the ~270px right of
         // the chart margin can't fit them.
         const width = Math.min(MAX_DESIGN_WIDTH, this.measureWidth());

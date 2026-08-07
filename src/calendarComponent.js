@@ -307,7 +307,7 @@ export class CalendarComponent {
             .text(d => d > 0 ? d : "");
     }
 
-    // The four per-year stats (value + tooltip content), shared by the
+    // The five per-year stats (value + tooltip content), shared by the
     // horizontal layout's right-hand column and the vertical layout's
     // below-grid rows so the numbers and explanations can't drift apart.
     _yearStatDefs(yearQ, yearUnique, yearPeople) {
@@ -352,6 +352,22 @@ export class CalendarComponent {
                     const pct = (playingDays / denom * 100).toFixed(1);
                     return `${base}<br><br>${pct}% of days`;
                 }
+            },
+            {
+                label: "streak",
+                // The year's day-values array (yearQ) is a gap-free, ascending
+                // run of every calendar day, so the longest streak is just the
+                // longest run of value > 0 walked in order.
+                value: year => {
+                    let best = 0, run = 0;
+                    for (const d of yearQ.get(year)) {
+                        run = d.value > 0 ? run + 1 : 0;
+                        if (run > best) best = run;
+                    }
+                    return best;
+                },
+                title: year => `Longest streak in ${year}`,
+                desc: () => "Longest run of consecutive days this year with at least one whole piece logged. A streak that spans New Year's is split at the year boundary."
             }
         ];
     }
@@ -781,30 +797,46 @@ export class CalendarComponent {
         const recent = data.filter(d => d.timestamp >= cutoff && d.timestamp <= now);
         const agg = computeAggregateStats(recent);
 
+        // Full labels on desktop, dashboard-style short labels on mobile (the
+        // two are toggled by a CSS media query, mirroring the dashboard tiles)
+        // so five metrics stay clear where there's room and stay compact on a
+        // phone, where the row wraps (.recent-stats-row is flex-wrap: wrap).
+        // The tap/hover tooltip spells out the full name either way.
         const stats = [
             {
                 label: 'Pieces',
+                short: 'Pieces',
                 value: agg.pieces,
                 title: `Pieces in the last ${days} days`,
                 desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
             },
             {
                 label: 'Unique pieces',
+                short: 'Unique',
                 value: agg.uniquePieces,
                 title: `Unique pieces in the last ${days} days`,
                 desc: "Distinct works (composer + title). Repeats of the same piece collapse to one.",
             },
             {
                 label: 'Unique people',
+                short: 'People',
                 value: agg.uniquePeople,
                 title: `People played with in the last ${days} days`,
                 desc: "Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.",
             },
             {
                 label: 'Days played',
+                short: 'Days',
                 value: agg.daysPlayed,
                 title: `Playing days in the last ${days} days`,
                 desc: 'Distinct days with at least one whole piece logged.',
+            },
+            {
+                label: 'Max streak',
+                short: 'Streak',
+                value: agg.maxStreak,
+                title: `Longest streak in the last ${days} days`,
+                desc: 'Longest run of consecutive days with at least one whole piece logged, within this window.',
             },
         ];
 
@@ -813,7 +845,9 @@ export class CalendarComponent {
         const row = container.append('div').attr('class', 'recent-stats-row');
         stats.forEach(s => {
             const cell = row.append('div').attr('class', 'recent-stat');
-            cell.append('span').attr('class', 'recent-stat-label').text(`${s.label}:`);
+            // Both labels are rendered; CSS shows exactly one per viewport.
+            cell.append('span').attr('class', 'recent-stat-label recent-stat-label--long').text(`${s.label}:`);
+            cell.append('span').attr('class', 'recent-stat-label recent-stat-label--short').text(`${s.short}:`);
             cell.append('span').attr('class', 'recent-stat-value').text(s.value);
             this.attachStatTooltip(cell, () => s.title, () => s.desc);
         });

@@ -9,6 +9,7 @@ import {
     normalizePlayerNames,
     peopleKeysFor,
     computeAggregateStats,
+    longestConsecutiveRun,
     normalizeDashboardPart,
     computeNodeCounts,
     computeEdgeCounts,
@@ -336,7 +337,7 @@ describe('computeAggregateStats', () => {
 
     it('returns zeroed stats for an empty array', () => {
         assert.deepEqual(computeAggregateStats([]), {
-            pieces: 0, uniquePieces: 0, uniquePeople: 0, daysPlayed: 0,
+            pieces: 0, uniquePieces: 0, uniquePeople: 0, daysPlayed: 0, maxStreak: 0,
         });
     });
 
@@ -385,6 +386,61 @@ describe('computeAggregateStats', () => {
         assert.equal(s.pieces, 3);
         assert.equal(s.uniquePieces, 1);  // only the third row contributes
         assert.equal(s.daysPlayed, 1);    // only rows with timestamps
+    });
+
+    it('maxStreak counts the longest run of consecutive playing days', () => {
+        const rows = [
+            mkRow({ timestamp: new Date(2026, 0, 1, 10, 0) }),  // Jan 1
+            mkRow({ timestamp: new Date(2026, 0, 2, 10, 0) }),  // Jan 2
+            mkRow({ timestamp: new Date(2026, 0, 3, 10, 0) }),  // Jan 3  (run of 3)
+            // gap on Jan 4
+            mkRow({ timestamp: new Date(2026, 0, 5, 10, 0) }),  // Jan 5  (run of 1)
+        ];
+        assert.equal(computeAggregateStats(rows).maxStreak, 3);
+    });
+
+    it('maxStreak treats multiple pieces on the same day as one day', () => {
+        const rows = [
+            mkRow({ timestamp: new Date(2026, 0, 1, 8, 0) }),
+            mkRow({ timestamp: new Date(2026, 0, 1, 20, 0) }),
+            mkRow({ timestamp: new Date(2026, 0, 2, 10, 0) }),
+        ];
+        assert.equal(computeAggregateStats(rows).maxStreak, 2);
+    });
+
+    it('maxStreak is 1 when every playing day is isolated', () => {
+        const rows = [
+            mkRow({ timestamp: new Date(2026, 0, 1, 10, 0) }),
+            mkRow({ timestamp: new Date(2026, 0, 3, 10, 0) }),
+            mkRow({ timestamp: new Date(2026, 0, 6, 10, 0) }),
+        ];
+        assert.equal(computeAggregateStats(rows).maxStreak, 1);
+    });
+
+    it('maxStreak stays contiguous across a spring-forward DST boundary', () => {
+        // US DST 2026: clocks jump forward on Mar 8. Mar 7→8→9 are still three
+        // consecutive calendar days even though Mar 8 is only 23h long, so the
+        // ordinal-based adjacency check must count them as a run of 3.
+        const rows = [
+            mkRow({ timestamp: new Date(2026, 2, 7, 10, 0) }),
+            mkRow({ timestamp: new Date(2026, 2, 8, 10, 0) }),
+            mkRow({ timestamp: new Date(2026, 2, 9, 10, 0) }),
+        ];
+        assert.equal(computeAggregateStats(rows).maxStreak, 3);
+    });
+});
+
+describe('longestConsecutiveRun', () => {
+    it('returns 0 for empty input', () => {
+        assert.equal(longestConsecutiveRun([]), 0);
+    });
+
+    it('finds the longest run and ignores order and duplicates', () => {
+        assert.equal(longestConsecutiveRun([5, 1, 2, 9, 3, 2, 10, 11]), 3); // 1,2,3
+    });
+
+    it('treats a single day as a run of 1', () => {
+        assert.equal(longestConsecutiveRun([42]), 1);
     });
 });
 
