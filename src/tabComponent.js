@@ -88,6 +88,7 @@ export class TabComponent {
             { label: 'Unique pieces', value: agg.uniquePieces },
             { label: 'Unique people', value: agg.uniquePeople },
             { label: 'Days played', value: agg.daysPlayed },
+            { label: 'Max streak', value: agg.maxStreak },
         ];
 
         const wrap = composerDiv.selectAll('.all-stats')

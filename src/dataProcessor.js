@@ -104,14 +104,36 @@ export function normalizeDashboardPart(part) {
     return null;
 }
 
-// Floor a timestamp to its local-time day. Avoids pulling d3 in here so
-// computeAggregateStats stays unit-testable under node:test.
-function dayKey(ts) {
-    return new Date(ts.getFullYear(), ts.getMonth(), ts.getDate()).getTime();
+// Days since the Unix epoch for the local calendar day containing `ts`.
+// Feeding the local Y/M/D through Date.UTC makes consecutive calendar days
+// differ by exactly 1 regardless of DST — differencing local-midnight
+// timestamps would make a spring-forward day only 23h and misjudge adjacency.
+// Lets computeAggregateStats measure both distinct playing days and the
+// longest consecutive run. Avoids pulling d3 in here so the function stays
+// unit-testable under node:test.
+function dayOrdinal(ts) {
+    return Math.floor(Date.UTC(ts.getFullYear(), ts.getMonth(), ts.getDate()) / 86400000);
 }
 
-// Aggregate stats over an arbitrary slice of piece rows. Used by both
-// the calendar header ("Last 365 days") and the ALL tab.
+// Longest run of consecutive day ordinals in `days` (a Set or array of
+// integer day numbers, as produced by dayOrdinal). Returns 0 for empty input.
+export function longestConsecutiveRun(days) {
+    const sorted = Array.from(new Set(days)).sort((a, b) => a - b);
+    let best = 0;
+    let run = 0;
+    let prev = null;
+    for (const d of sorted) {
+        run = (prev !== null && d === prev + 1) ? run + 1 : 1;
+        if (run > best) best = run;
+        prev = d;
+    }
+    return best;
+}
+
+// Aggregate stats over an arbitrary slice of piece rows. Used by the calendar
+// header ("Last 365 days"), the dashboard KPI tiles, and the ALL tab. The
+// streak is scoped to whatever slice is passed in — a run is only counted
+// within the window/filter these rows represent.
 export function computeAggregateStats(rows) {
     const works = new Set();
     const people = new Set();
@@ -119,13 +141,14 @@ export function computeAggregateStats(rows) {
     rows.forEach(d => {
         if (d.work?.title) works.add(`${d.composer}|${d.work.title}`);
         peopleKeysFor(d).forEach(k => people.add(k));
-        if (d.timestamp) days.add(dayKey(d.timestamp));
+        if (d.timestamp) days.add(dayOrdinal(d.timestamp));
     });
     return {
         pieces: rows.length,
         uniquePieces: works.size,
         uniquePeople: people.size,
         daysPlayed: days.size,
+        maxStreak: longestConsecutiveRun(days),
     };
 }
 
