@@ -423,10 +423,12 @@ export class DashboardComponent {
         const textSecondary = getCssColor('--color-text-secondary');
         const otherFill = getCssColor('--color-part-fallback');
 
-        // Build the segment array for a row. When d.parts is present (the
-        // Top Musicians chart), the bar stacks by instrument left-to-right
-        // in V1 → V2 → VA → VC → OTHER order. Without d.parts (composer
-        // chart), there's a single accent-colored segment.
+        // Build the segment array for a row. Both ranked charts pass d.parts:
+        // Top Musicians breaks down by the musician's instrument, Top Composers
+        // by the user's own part. The bar stacks left-to-right in
+        // V1 → V2 → VA → VC → OTHER order. The `!d.parts` branch is a defensive
+        // fallback (single accent-colored segment) for any future caller that
+        // omits the breakdown.
         const PART_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
         const segmentsOf = (d) => {
             if (!d.parts) return [{ part: null, count: d.count, x0: 0 }];
