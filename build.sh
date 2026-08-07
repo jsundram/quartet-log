@@ -159,10 +159,12 @@ else
         echo "Watching static assets with fswatch (PID $!)..."
 
         # Re-run tests on any change under src/ or test/. Dot reporter so each
-        # rerun is one compact line instead of 31 ✔'s.
+        # rerun is one compact line instead of 31 ✔'s. TZ matches the npm test
+        # script (and thus CI) so timezone-sensitive tests can't pass on save
+        # but fail in CI.
         fswatch -o --latency 0.5 src test | while read _; do
             echo "[$(date +%H:%M:%S)] JS change — re-running tests..."
-            node --test --test-reporter=dot test/*.mjs || true
+            TZ=America/New_York node --test --test-reporter=dot test/*.mjs || true
         done &
         BG_PIDS="$BG_PIDS $!"
         echo "Watching src/ + test/ for tests (PID $!)..."

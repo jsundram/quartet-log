@@ -799,8 +799,9 @@ export class CalendarComponent {
 
         // Full labels on desktop, dashboard-style short labels on mobile (the
         // two are toggled by a CSS media query, mirroring the dashboard tiles)
-        // so five metrics stay clear where there's room and still fit one line
-        // on a phone. The tap/hover tooltip spells out the full name either way.
+        // so five metrics stay clear where there's room and stay compact on a
+        // phone, where the row wraps (.recent-stats-row is flex-wrap: wrap).
+        // The tap/hover tooltip spells out the full name either way.
         const stats = [
             {
                 label: 'Pieces',
