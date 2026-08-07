@@ -266,6 +266,24 @@ export function computePartBreakdownPerMusician(rows) {
     return result;
 }
 
+// For every composer, count how many pieces the user played in each part
+// (V1/V2/VA via normalizeDashboardPart; anything else buckets to OTHER).
+// The returned breakdown vectors sum to the composer's total piece count,
+// so the dashboard's Top Composers bar can stack by the user's own part.
+export function computePartBreakdownPerComposer(rows) {
+    const result = new Map();
+    rows.forEach(d => {
+        let parts = result.get(d.composer);
+        if (!parts) {
+            parts = { V1: 0, V2: 0, VA: 0, OTHER: 0 };
+            result.set(d.composer, parts);
+        }
+        const part = normalizeDashboardPart(d.part);
+        parts[part ?? 'OTHER']++;
+    });
+    return result;
+}
+
 // Build short display labels from canonical names. Group by first token: if
 // the first token is unique, that's the label; if two share, fall back to
 // "First L." (first-token + last-name's initial); if those still collide,
