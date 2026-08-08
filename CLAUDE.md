@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-Guidance for Claude Code (claude.ai/code) when working with this repository.
-
 ## Build, Test, Deploy
 
 **Development** (watch mode + local server + on-save test reruns):
@@ -30,56 +28,29 @@ Uses Node's built-in `node:test` runner against `test/*.mjs`. No external test d
 **Deploy:**
 Push to `main` → GitHub Actions workflow (`.github/workflows/deploy.yml`) runs `npm test`, builds, deploys to GitHub Pages. Site lives at https://log.quartetroulette.com.
 
-**Offline / service worker:**
-`static/sw.js` is a template; `build.sh --prod` generates `$DEPLOY/sw.js` from it, substituting the content-hashed `bundle-<hash>.js` / `viz-<hash>.css` names and a cache version `V = ql-<bundlehash>-<csshash>`. Because those hashes move whenever code, CSS, or catalog data change (the catalog version is baked into the bundle via `--define`), `V` changes on every meaningful deploy and evicts the stale cache on `activate` — there's no hand-bumped constant to forget. The SW precaches the app shell (HTML/JS/CSS/JSON/icons); the cross-origin Google Sheet is never cached by the SW (the app keeps its own localStorage stale-while-revalidate). `src/app.js` registers it, skipping `localhost`/`127.0.0.1` so dev's esbuild live-reload server is never intercepted (dev builds don't emit `sw.js` anyway).
+**Offline / service worker:** see `static/CLAUDE.md` (loads when you work under `static/`).
 
-The SW's `fetch` handler early-returns for its own `/sw.js` (never intercept/cache it) so the version check below can always read the live copy off the server. The hamburger menu has a hidden `#ver` row that `App._checkVersion()` (run on boot and every foreground resume) reveals: it reads the installed version from the `ql-` cache key and the latest from `./sw.js?_=<ts>` (`no-store`), and when they differ shows an accented "Update available" (`.menu-item--update`) that taps through to `App.forceUpdate()` — drop all caches + reload, forcing a clean shell reinstall. This is the one-tap escape hatch for a wedged iOS home-screen install (network-first already auto-updates the happy path). Adapted from the [pwa-starter](https://github.com/jsundram/pwa-starter) update tag; unlike that repo's monotonic `app-vN`, ours compares content-hash `V` strings for equality.
+## Upstream: pwa-starter
 
-**Dependencies (system):**
-- Node 20+ (for `node:test`)
-- esbuild 0.24.2
-- pandoc 3.6.2 (with `gfm+attributes+implicit_figures` extensions)
-- fswatch (optional, for dev mode)
+This repo shares patterns with [pwa-starter](https://github.com/jsundram/pwa-starter) (local: `~/Dropbox/Code/pwa-starter`), which vendors files **by copy**, not by dependency. Provenance is tracked by a one-line stamp comment near the top of a copied file (`// pwa-starter: <file> @ <sha>`), audited by `python3 scripts/check-downstream.py ~/Dropbox/Code` run from that repo. There is no git remote, submodule, or shared history between the two.
+
+- **Never add a `pwa-starter:` stamp to a file here.** `src/app.js`, `src/pullToRefresh.js`, and `static/sw.js` are *independent implementations*, not vendored copies — a file-level stamp would report them behind every upstream commit regardless of relevance. The checker listing them under "unstamped copies" is expected and correct; leave them there. This is recorded in pwa-starter's `PROPAGATE.md`.
+- **`src/pullToRefresh.js` is the ancestor** — pwa-starter's version was written *from* it.
+- **Flow is two-way.** This repo originated the cache-first paint and the empty-payload guard that later became upstream's `ddd9ab8`. When something here turns out to be general, **port it up to pwa-starter first** rather than leaving it downstream and relying on memory.
+- Adopting an upstream fix is a **hand-port**, reviewed by eye — the layouts differ (its `sw.js` is at repo root, ours is `static/sw.js`).
 
 ## Architecture Overview
 
-Vanilla JavaScript + D3.js v7 SPA. No framework. Each user configures their own published Google Sheet URL (stored in localStorage). The site fetches that CSV on each visit, with a localStorage cache fallback (5s timeout) so it works on flaky networks.
+Vanilla JavaScript + D3.js v7 SPA. No framework. Each user configures their own published Google Sheet URL (stored in localStorage). The site fetches that CSV on each visit, with a localStorage cache fallback (5s timeout) so it works on flaky networks. Three hash-routed in-page views (`#main`, `#calendar`, `#dashboard`) plus the static `about.html`; hash routing lives in `NavigationComponent`, and `App.initializeUI` calls `applyInitialView()` so a landing `#<view>` hash is honored.
 
-### Views (hash-routed)
+### Gotchas
 
-The SPA has three in-page views and one external page, all reachable from the hamburger menu:
-
-- **`#main`** (Home) — composer tabs, filterable lists, sortable per-composer data tables, ALL tab with aggregate stats + flat table.
-- **`#calendar`** — GitHub-contributions-style year grid; per-year stats column; "Last 365 days" header; per-day tooltips.
-- **`#dashboard`** — cross-filter charts: stacked part bar (V1/V2/VA) + horizontal top-composers bar chart. Clicking one filters the other.
-- **`about.html`** — static markdown page (linked from menu; renders as a separate page).
-
-Hash routing lives in `NavigationComponent`: menu clicks set `window.location.hash`, a `hashchange` listener calls `applyView()`. The initial hash on page load is honored via `applyInitialView()` called from `App.initializeUI`.
-
-### Component map
-
-**Orchestration:**
-- `App` (`src/app.js`) — owns data, instantiates and wires components, runs `filterData()`.
-
-**Data layer:**
-- `DataService` (`src/dataService.js`) — CSV fetch + localStorage cache. `processData` calls `fillForward` then `normalizePlayerNames`, then filters out partial-movement entries (titles containing `:`). Three fetch entry points: `fetchCSV()` (network races a 5s timeout, falls back to cached copy — used only for the first-ever launch with no cache); `readCache()` (synchronous localStorage read, returns `null` if empty — drives the cache-first boot paint); `fetchFresh()` (network-only, no fallback; writes the cache and returns a `changed` flag by diffing the new serialization against the stored one, so the caller can skip a re-render when the sheet is byte-identical). Both network paths reject a valid-but-empty (0-row) response instead of caching it — persisting `[]` would poison the cache-first boot (`readCache()` would serve `[]` and `fillForward()` would throw on every subsequent launch); `fetchCSV` falls back to cache, `fetchFresh` throws so `revalidate()` keeps the painted UI.
-- `dataProcessor` (`src/dataProcessor.js`) — pure functions only. Highlights:
-  - `parseWork`, `processRow`, `fillForward`, `createEmptyRow`
-  - `normalizePlayerNames` (applies `PLAYER_ALIASES` per slot class)
-  - `peopleKeysFor(d)` — canonical-name keys for unique-people counting
-  - `computeAggregateStats(rows)` — `{ pieces, uniquePieces, uniquePeople, daysPlayed, maxStreak }`; used by Calendar's "Last 365 days", the Dashboard KPI tiles, and the ALL tab. `maxStreak` is the longest run of consecutive playing days (via `longestConsecutiveRun` over DST-safe day ordinals), scoped to the passed-in slice
-  - `longestConsecutiveRun(days)` — longest run of consecutive integer day ordinals in a Set/array; returns 0 for empty
-  - `normalizeDashboardPart(part)` — folds `VA1`/`VA2`/`VA…` → `VA` for the Dashboard pie/bar
-  - `parseOthers`, `stripParens`, `classOf`, `canonicalize` (helpers)
-  - `extractUniquePlayers` — for the Player dropdown
-- `tableComponent` (`src/tableComponent.js`) — sortable HTML data tables. `getColumnsForComposer` includes the composer column for `MISC` and `ALL` only.
-
-**UI:**
-- `NavigationComponent` (`src/navigationComponent.js`) — hamburger menu (native dismiss: outside-click + Escape), segmented Part buttons (V1/V2/VA/ANY), Player multiselect dropdown, view switching + hash routing. Delegates the date range to `DateFilterWidget`.
-- `DateFilterWidget` (`src/dateFilterWidget.js`) — reusable segmented date range picker (`All` / `YTD` / `1Y` / `6M` / `Custom`). Class-based selectors scoped to mount point so multiple instances can coexist; Home and Dashboard each have their own.
-- `TabComponent` (`src/tabComponent.js`) — per-composer tab content + ALL tab. `updateTabContent` early-returns to `updateAllTabContent` for the special ALL tab. Random-button suggestion respects current filters (uses `filteredPlays`).
-- `CalendarComponent` (`src/calendarComponent.js`) — calendar grid, legend, per-year stats column, "Last 365 days" header (uses `renderRecentStats` → `computeAggregateStats`). Legend SVG and grid are width-coupled via CSS.
-- `DashboardComponent` (`src/dashboardComponent.js`) — owns `{ selectedPart, selectedComposer }` plus its own `DateFilterWidget`. Re-renders both charts on any mutation (cheap at this data size). Cross-filter rule: each chart applies every filter except its own dimension. Charts measure live container width and render at 1:1 pixel scale (viewBox = pixel dims) so mobile gets bigger fonts/bars instead of scaled-down ones; re-renders on window resize and on `notifyShown()` (fires when the view first becomes visible after init while hidden).
+- **Never cache an empty response.** Both network paths in `DataService` reject a valid-but-empty (0-row) result instead of caching it — persisting `[]` would poison the cache-first boot (`readCache()` would serve `[]` and `fillForward()` would throw on every subsequent launch). `fetchCSV` falls back to cache; `fetchFresh` throws so `revalidate()` keeps the painted UI.
+- **Dashboard charts render at 1:1 pixel scale** (viewBox = measured pixel dims), deliberately, so mobile gets bigger fonts/bars instead of scaled-down ones. They re-render on window resize and on `notifyShown()` (fires when the view first becomes visible after init while hidden).
+- **Cross-filter rule**: each dashboard chart applies every filter *except* its own dimension.
+- **`DateFilterWidget` uses class-based selectors scoped to its mount point**, not IDs, so the Home and Dashboard instances can coexist.
+- **`static/css/viz.css` is the canonical source for the V1/V2/VA part colors** (`--color-part-{v1|v2|va}`); `src/config.js` reads them through `getCssColor`, never hardcodes them.
+- **Theme init is deliberately split**: a synchronous inline `<script>` in `index.html` / `md/_pandoc_template.html` sets `data-theme` before first paint to avoid FOUC, then `initTheme()` re-applies it and attaches the matchMedia watcher after the bundle loads.
 
 ### Initialization sequence
 
@@ -95,15 +66,7 @@ Boot is **cache-first** so a returning visitor (especially an installed PWA agai
 
 ### Filter change notifications
 
-`NavigationComponent` calls `onFilterChange(filterType)` with one of:
-- `"part"` — part buttons changed
-- `"date"` — date range changed
-- `"player"` — player selection changed
-
-App's `filterData(filterType)` reads all three filters, computes `filteredData`, and pushes it to every composer tab (plus the ALL tab):
-```js
-[...COMPOSERS, ALL_TAB].forEach(c => tabComponent.updateTabContent(c, part, filteredData, this.data));
-```
+`NavigationComponent` calls `onFilterChange(filterType)` with one of `"part"` / `"date"` / `"player"`. App's `filterData(filterType)` reads all three filters, computes `filteredData`, and pushes it to every composer tab plus the ALL tab.
 
 The Player dropdown refreshes only on `"date"` / `"part"` changes (not `"player"`), shows players with ≥20 entries in the filtered dataset, and preserves the current selection even if it would drop below 20.
 
@@ -135,13 +98,6 @@ Per-year stats column shows five numbers (Pieces, Unique Pieces, People played w
 
 **Tooltips**: the shared `.tooltip` CSS clamps to the viewport (`max-width`/`max-height` + scroll; sticky close button so it can't scroll away), and `positionTooltip` computes in client coordinates before converting to page coordinates, so day tooltips stay fully on-screen on phones and inside the fullscreen overlay.
 
-### Configuration files
-
-- **`src/urlConfig.js`** — `getDataUrl` / `setDataUrl` / `hasDataUrl` / `isValidGoogleSheetsUrl` / `clearDataUrl`. URL persists in localStorage.
-- **`src/config.js`** — `getBegin` / `setBegin`, `getCssColor(token)` / `getPartColor(part)` (read colors from CSS custom properties on `:root`; the canonical source for V1/V2/VA part colors lives in `static/css/viz.css` as `--color-part-{v1|v2|va}`), `invalidateColorCache()` (clear the memo, called by the theme manager on toggle), `PLAYER_ABBREVIATIONS` (single-letter expansion: I→Isaac, E→Elaine, S→Shay, J→Josh), `PLAYER_ALIASES` (instrument-class-keyed), `CALENDAR_CONFIG`.
-- **`src/catalog.js`** — `ALL_WORKS` and `HAYDN_PETERS` (loaded in parallel from `all_works.json` and `haydn_peters.json`), `COMPOSERS` set, `ALL_TAB` / `isAllTab` / `isMiscTab` helpers, `getPetersVolume(work)` for Haydn tooltip suffix, `generateQuartetRouletteUrl(d)` per-composer URL builder.
-- **`src/themeManager.js`** — three-state theme: `auto` (default, follows `prefers-color-scheme`) / `light` / `dark`. Persists to `localStorage.theme`, applies via `<html data-theme="…">` (no attribute for auto). API: `getTheme()`, `setTheme(t)`, `cycleTheme()`, `isCurrentlyDark()` (resolved boolean), `subscribe(fn)` (listener for changes; fires on user toggle AND on system theme flip when in auto). Initial application is split: a synchronous inline `<script>` in `index.html` / `_pandoc_template.html` sets `data-theme` before first paint to avoid FOUC; `initTheme()` re-applies and attaches the matchMedia watcher after the bundle loads.
-
 ### Theme system contract
 
 When adding a new component that bakes color values at render time (e.g. d3 `.attr('fill', getCssColor('--…'))`), it MUST re-render on theme change. The pattern is:
@@ -154,18 +110,15 @@ The dashboard and the per-tab work-square renders already pick up new colors bec
 
 ### Browser compatibility
 
-Bundle targets: Chrome 92+, Firefox 90+, Safari 15.4+, Edge 92+. Driven by `Array.at()` usage. CSS uses `min()` and `:has()` which need Safari 15.4+.
+Bundle targets live in `build.sh` (`--target=`). They're driven by `Array.at()` usage, plus CSS `min()` and `:has()`, which need Safari 15.4+.
 
 ## Markdown pages (pandoc)
 
-`md/about.md` and `md/howto.md` are rendered to `about.html` and `howto.html` by pandoc, using `md/_pandoc_template.html`. The template includes inline CSS + a small JS snippet that gives the markdown pages the same hamburger menu + site title chrome as the SPA. Menu items on the static pages link back to `index.html#main` / `#calendar` / `#dashboard` / `about.html` (the `Download Data` and `Log Out` items are omitted since they need SPA context).
-
-Pandoc reads `gfm+attributes+implicit_figures` so `![alt](path){width=600px}` syntax works and images-alone-in-a-paragraph auto-wrap as `<figure>` with the alt text as the caption. The build runs pandoc with output written **directly** to `$DEPLOY/` (not via `md/`) so fswatch on `md/` doesn't see write events and spin in a rebuild loop.
+See `md/CLAUDE.md` (loads when you work under `md/`).
 
 ## Conventions and preferences
 
 - **Python**: use `uv run --with <pkg> python ...` for one-off scripts/tools. Don't try `pip install`. The user keeps Python environments isolated via `uv`.
-- **`cd`**: don't prepend `cd <current-dir>` to commands that need permission — it triggers redundant prompts. Use absolute paths for files outside the cwd, or `(cd path && cmd)` in a subshell only when the tool genuinely requires a different cwd (e.g. pandoc resolving relative image paths).
 - **Don't destructively overwrite user-supplied assets**: when transforming images/data/etc. the user shared, write the result to a NEW path (e.g. `*-redacted.png`) so the source can be re-used for iteration. Only overwrite the source when the user explicitly asks for in-place editing.
 - **Verify before claiming done**: for behaviour changes, run `npm test` and (where applicable) sanity-check via `node --check <file>` and/or rebuild and inspect. For markdown changes, run pandoc and grep the output to confirm.
 - **Commit scope**: prefer focused commits with clear messages over kitchen-sink commits. Recent history has examples like "add player-name normalization and unique-people yearly stat" — feature-scoped, present-tense imperative.
