@@ -760,7 +760,10 @@ export class CalendarComponent {
 
         this.tooltipDiv
             .html(html)
-            .style("display", "block");
+            .style("display", "block")
+            // Clear the stat tooltip's inline 320px cap; the CSS viewport
+            // clamp governs day tooltips (widest in the app — full plays table).
+            .style("max-width", null);
 
         // Add click handler to close button
         this.tooltipDiv.select(".tooltip-close")
