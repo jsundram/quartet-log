@@ -82,7 +82,8 @@ describe('longestPlayingStreak', () => {
     });
 
     it('breaks the run on an unplayed day and keeps the longest', () => {
-        //                                     1  2  3     5        8  9
+        // Played Jan 1-3, off Jan 4, played Jan 5, off Jan 6-7, played Jan 8-9:
+        // three runs of 3, 1 and 2, so the answer is the first one.
         assert.equal(longestPlayingStreak(denseDays([1, 1, 1, 0, 2, 0, 0, 1, 1])), 3);
     });
 
