@@ -904,7 +904,10 @@ export class MusicianNetworkComponent {
     _showTooltip(event, html) {
         this.tooltipDiv
             .html(`<span class="tooltip-close">&times;</span>${html}`)
-            .style('display', 'block');
+            .style('display', 'block')
+            // Clear the inline 320px cap the dashboard/ALL-tab stat tooltips
+            // set on the shared #tooltip div.
+            .style('max-width', null);
         this.tooltipDiv.select('.tooltip-close')
             .on('click', () => this._hideTooltip());
         this._positionTooltip(event);
