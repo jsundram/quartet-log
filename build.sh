@@ -26,6 +26,8 @@ copy_assets() {
     deploy_abs="$(cd "$DEPLOY" && pwd)"
     pushd md/ > /dev/null
     for md in *.md; do
+        # CLAUDE.md is agent guidance scoped to this directory, not a site page.
+        [ "$md" = "CLAUDE.md" ] && continue
         f=$(basename "$md" .md)
         pandoc -f gfm+attributes+implicit_figures -t html5 -o "$deploy_abs/$f.html" "$md" \
             --css github-markdown.css \
