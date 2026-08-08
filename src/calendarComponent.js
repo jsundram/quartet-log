@@ -26,9 +26,12 @@ export function dayOfYearUTC(date) {
 // range, in order, which is what d3.timeDay.range produces and d3.groups
 // preserves per year. Adjacency is read positionally (days[i+1] IS the next
 // calendar day), so a sparse array would silently overstate streaks by closing
-// gaps that are real. dataProcessor's longestConsecutiveRun is the sparse-input
-// equivalent, inferring adjacency from day ordinals instead; the two are pinned
-// to the same definition of a streak by a cross-check in the tests.
+// gaps that are real. Only `.value` is read — the `.date` alongside it is never
+// inspected, so this cannot detect a violation and does not sort; honoring the
+// precondition is the caller's job. dataProcessor's longestConsecutiveRun is
+// the sparse-input equivalent, inferring adjacency from day ordinals instead;
+// the two are pinned to the same definition of a streak by a cross-check in
+// the tests.
 export function longestPlayingStreak(days) {
     let best = 0;
     let run = 0;
