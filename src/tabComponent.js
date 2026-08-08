@@ -1,6 +1,6 @@
 import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog';
 import { getBegin, getPartColor, getCssColor } from './config';
-import { createEmptyRow, computeAggregateStats } from './dataProcessor';
+import { createEmptyRow, computeAggregateStats, formatStreakStart } from './dataProcessor';
 
 export class TabComponent {
     constructor(tableComponent) {
@@ -22,9 +22,11 @@ export class TabComponent {
             if (cls?.contains('network-node') || cls?.contains('network-edge')
                 || cls?.contains('matrix-cell') || cls?.contains('matrix-label')
                 || cls?.contains('network-arc') || cls?.contains('network-chord')) return;
-            // Dashboard stat tiles show their explainer tooltip on click; the
-            // click target is a child span, so match via closest().
+            // Dashboard stat tiles and the ALL tab's stat cells show their
+            // explainer tooltip on click; the click target is a child span,
+            // so match via closest().
             if (e.target.closest?.('#dashboardStats .stat-tile')) return;
+            if (e.target.closest?.('.all-stat')) return;
             this.hideTooltip();
         });
     }
@@ -83,12 +85,41 @@ export class TabComponent {
 
     updateAllTabContent(composerDiv, filteredData) {
         const agg = computeAggregateStats(filteredData);
+        const streakStart = formatStreakStart(agg.maxStreakInfo);
+        // Same explainer copy as the dashboard's KPI tiles — both describe
+        // the slice matching the current filters.
         const stats = [
-            { label: 'Pieces', value: agg.pieces },
-            { label: 'Unique pieces', value: agg.uniquePieces },
-            { label: 'Unique people', value: agg.uniquePeople },
-            { label: 'Days played', value: agg.daysPlayed },
-            { label: 'Max streak', value: agg.maxStreak },
+            {
+                label: 'Pieces',
+                value: agg.pieces,
+                title: 'Pieces in the current filter',
+                desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
+            },
+            {
+                label: 'Unique pieces',
+                value: agg.uniquePieces,
+                title: 'Unique pieces in the current filter',
+                desc: 'Distinct works (composer + title). Repeats of the same piece collapse to one.',
+            },
+            {
+                label: 'Unique people',
+                value: agg.uniquePeople,
+                title: 'People played with in the current filter',
+                desc: 'Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.',
+            },
+            {
+                label: 'Days played',
+                value: agg.daysPlayed,
+                title: 'Playing days in the current filter',
+                desc: 'Distinct days with at least one whole piece logged.',
+            },
+            {
+                label: 'Max streak',
+                value: agg.maxStreak,
+                title: 'Longest streak in the current filter',
+                desc: 'Longest run of consecutive days with at least one whole piece logged, within the current filter.'
+                    + (streakStart ? `<br><br>Started: ${streakStart}` : ''),
+            },
         ];
 
         const wrap = composerDiv.selectAll('.all-stats')
@@ -111,6 +142,11 @@ export class TabComponent {
             });
         cells.select('.all-stat-label').text(d => `${d.label}:`);
         cells.select('.all-stat-value').text(d => d.value);
+        cells
+            .style('cursor', 'pointer')
+            .on('mouseenter', (event, d) => this.showStatTooltip(event, d))
+            .on('mouseleave', () => this.hideTooltip())
+            .on('click', (event, d) => this.showStatTooltip(event, d));
 
         // Reuse the existing data table by wrapping the flat array in the
         // shape updateDataTable expects.
@@ -360,6 +396,17 @@ export class TabComponent {
         return getPartColor(part);
     }
 
+    // Explainer tooltip for the ALL tab's stat cells (same title/desc shape
+    // as the dashboard's KPI tiles).
+    showStatTooltip(event, stat) {
+        this.tooltipDiv
+            .html(`<span class="tooltip-close">&times;</span><h4>${stat.title}</h4><p>${stat.desc}</p>`)
+            .style('display', 'block')
+            .style('max-width', '320px');
+        this.tooltipDiv.select('.tooltip-close').on('click', () => this.hideTooltip());
+        this.positionTooltip(event);
+    }
+
     showTooltip(event, d) {
         if (!d) return;
 
@@ -382,7 +429,10 @@ export class TabComponent {
 
         this.tooltipDiv
             .html(html)
-            .style("display", "block");
+            .style("display", "block")
+            // Clear the stat tooltip's inline 320px cap; the CSS viewport
+            // clamp governs work tooltips.
+            .style("max-width", null);
 
         // Add click handler to close button
         this.tooltipDiv.select(".tooltip-close")

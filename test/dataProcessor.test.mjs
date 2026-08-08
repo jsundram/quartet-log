@@ -10,6 +10,8 @@ import {
     peopleKeysFor,
     computeAggregateStats,
     longestConsecutiveRun,
+    longestRunInfo,
+    formatStreakStart,
     normalizeDashboardPart,
     computeNodeCounts,
     computeEdgeCounts,
@@ -338,6 +340,7 @@ describe('computeAggregateStats', () => {
     it('returns zeroed stats for an empty array', () => {
         assert.deepEqual(computeAggregateStats([]), {
             pieces: 0, uniquePieces: 0, uniquePeople: 0, daysPlayed: 0, maxStreak: 0,
+            maxStreakInfo: { count: 0, start: null },
         });
     });
 
@@ -417,6 +420,21 @@ describe('computeAggregateStats', () => {
         assert.equal(computeAggregateStats(rows).maxStreak, 1);
     });
 
+    it('maxStreakInfo reports the most recent start and the tie count', () => {
+        const rows = [
+            mkRow({ timestamp: new Date(2026, 0, 1, 10, 0) }),  // Jan 1-2
+            mkRow({ timestamp: new Date(2026, 0, 2, 10, 0) }),
+            mkRow({ timestamp: new Date(2026, 1, 10, 10, 0) }), // Feb 10-11
+            mkRow({ timestamp: new Date(2026, 1, 11, 10, 0) }),
+        ];
+        const info = computeAggregateStats(rows).maxStreakInfo;
+        assert.equal(info.count, 2);
+        // Local calendar day lands in the Date's UTC fields (dayOrdinal inverse).
+        assert.equal(info.start.getUTCFullYear(), 2026);
+        assert.equal(info.start.getUTCMonth(), 1);
+        assert.equal(info.start.getUTCDate(), 10);
+    });
+
     it('maxStreak stays contiguous across a spring-forward DST boundary', () => {
         // US DST 2026: clocks jump forward on Mar 8. Mar 7→8→9 are still three
         // consecutive calendar days even though Mar 8 is only 23h long, so the
@@ -441,6 +459,49 @@ describe('longestConsecutiveRun', () => {
 
     it('treats a single day as a run of 1', () => {
         assert.equal(longestConsecutiveRun([42]), 1);
+    });
+});
+
+describe('longestRunInfo', () => {
+    it('returns a zeroed record for empty input', () => {
+        assert.deepEqual(longestRunInfo([]), { length: 0, count: 0, start: null });
+    });
+
+    it('reports length, count 1, and start for a single longest run', () => {
+        // 1,2,3 is the unique longest run; 10,11 is shorter.
+        assert.deepEqual(longestRunInfo([10, 11, 1, 2, 3]), { length: 3, count: 1, start: 1 });
+    });
+
+    it('counts ties and reports the most recent start', () => {
+        // Two runs of length 2 (1-2 and 7-8): count both, start at the later one.
+        assert.deepEqual(longestRunInfo([1, 2, 7, 8]), { length: 2, count: 2, start: 7 });
+    });
+
+    it('does not double-count a run that grows past an earlier tie', () => {
+        // 1-2 ties at length 2 as 7-8-9 passes through it, but 7-8-9 then
+        // beats the record — one run of 3, starting at 7.
+        assert.deepEqual(longestRunInfo([1, 2, 7, 8, 9]), { length: 3, count: 1, start: 7 });
+    });
+
+    it('ignores order and duplicates', () => {
+        assert.deepEqual(longestRunInfo([8, 2, 1, 7, 2, 8]), { length: 2, count: 2, start: 7 });
+    });
+});
+
+describe('formatStreakStart', () => {
+    // UTC-noon avoids any ambiguity about which UTC calendar day the fields read.
+    const utc = (y, m, d) => new Date(Date.UTC(y, m, d, 12));
+
+    it('returns empty string when there is no streak', () => {
+        assert.equal(formatStreakStart({ count: 0, start: null }), '');
+    });
+
+    it('formats a lone longest streak as M/D/YYYY', () => {
+        assert.equal(formatStreakStart({ count: 1, start: utc(2026, 6, 10) }), '7/10/2026');
+    });
+
+    it('appends the tie count when multiple streaks share the length', () => {
+        assert.equal(formatStreakStart({ count: 3, start: utc(2026, 6, 10) }), '7/10/2026 (3)');
     });
 });
 

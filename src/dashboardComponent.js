@@ -1,5 +1,5 @@
 import { getPartColor, getCssColor } from './config';
-import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computePartBreakdownPerComposer, computeAggregateStats } from './dataProcessor';
+import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computePartBreakdownPerComposer, computeAggregateStats, formatStreakStart } from './dataProcessor';
 import { DateFilterWidget } from './dateFilterWidget';
 import { MusicianNetworkComponent } from './musicianNetworkComponent';
 
@@ -144,6 +144,7 @@ export class DashboardComponent {
         // `short` is the mobile label — the one-line tile row is tight on
         // phones, and the tap tooltip (title/desc) spells out the full name.
         const agg = computeAggregateStats(this.filteredRows(null));
+        const streakStart = formatStreakStart(agg.maxStreakInfo);
         const stats = [
             {
                 label: 'Pieces',
@@ -178,7 +179,8 @@ export class DashboardComponent {
                 short: 'Streak',
                 value: agg.maxStreak,
                 title: 'Longest streak in the current filter',
-                desc: 'Longest run of consecutive days with at least one whole piece logged, within the current filter.',
+                desc: 'Longest run of consecutive days with at least one whole piece logged, within the current filter.'
+                    + (streakStart ? `<br><br>Started: ${streakStart}` : ''),
             },
         ];
 

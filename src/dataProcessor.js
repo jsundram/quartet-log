@@ -118,16 +118,46 @@ function dayOrdinal(ts) {
 // Longest run of consecutive day ordinals in `days` (a Set or array of
 // integer day numbers, as produced by dayOrdinal). Returns 0 for empty input.
 export function longestConsecutiveRun(days) {
+    return longestRunInfo(days).length;
+}
+
+// Like longestConsecutiveRun, but also reports how many distinct runs tie
+// for the longest and where the most recent of them begins. Returns
+// { length, count, start } with `start` in the same units as the input
+// (null for empty input). Feeds the streak tooltips.
+export function longestRunInfo(days) {
     const sorted = Array.from(new Set(days)).sort((a, b) => a - b);
-    let best = 0;
-    let run = 0;
-    let prev = null;
+    let best = 0, count = 0, bestStart = null;
+    let run = 0, runStart = null, prev = null;
     for (const d of sorted) {
-        run = (prev !== null && d === prev + 1) ? run + 1 : 1;
-        if (run > best) best = run;
+        if (prev !== null && d === prev + 1) {
+            run += 1;
+        } else {
+            run = 1;
+            runStart = d;
+        }
+        // A run passes through each length exactly once, so `run === best`
+        // fires at most once per run: a later run tying the record bumps the
+        // count and takes over `start` (most recent wins); beating the
+        // record resets both.
+        if (run > best) {
+            best = run; count = 1; bestStart = runStart;
+        } else if (run === best) {
+            count += 1; bestStart = runStart;
+        }
         prev = d;
     }
-    return best;
+    return { length: best, count, start: bestStart };
+}
+
+// "M/D/YYYY" start date of the most recent longest streak, with the number
+// of equal-length streaks appended when there's a tie — e.g. "7/10/2026 (3)".
+// Empty string when there's no streak. `start` must be a Date whose UTC
+// fields hold the local calendar day (the maxStreakInfo convention below).
+export function formatStreakStart({ count, start }) {
+    if (!start) return '';
+    const date = `${start.getUTCMonth() + 1}/${start.getUTCDate()}/${start.getUTCFullYear()}`;
+    return count > 1 ? `${date} (${count})` : date;
 }
 
 // Aggregate stats over an arbitrary slice of piece rows. Used by the calendar
@@ -143,12 +173,20 @@ export function computeAggregateStats(rows) {
         peopleKeysFor(d).forEach(k => people.add(k));
         if (d.timestamp) days.add(dayOrdinal(d.timestamp));
     });
+    const streak = longestRunInfo(days);
     return {
         pieces: rows.length,
         uniquePieces: works.size,
         uniquePeople: people.size,
         daysPlayed: days.size,
-        maxStreak: longestConsecutiveRun(days),
+        maxStreak: streak.length,
+        // Start of the most recent longest run as a Date at UTC midnight of
+        // the local calendar day (read it with getUTC* accessors — inverse
+        // of dayOrdinal), plus how many runs tie for that length.
+        maxStreakInfo: {
+            count: streak.count,
+            start: streak.start === null ? null : new Date(streak.start * 86400000),
+        },
     };
 }
 

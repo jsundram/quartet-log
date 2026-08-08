@@ -1,5 +1,5 @@
 import { getBegin, CALENDAR_CONFIG, getCssColor } from './config.js';
-import { peopleKeysFor, computeAggregateStats } from './dataProcessor.js';
+import { peopleKeysFor, computeAggregateStats, longestRunInfo, formatStreakStart } from './dataProcessor.js';
 import { isCurrentlyDark } from './themeManager.js';
 
 // Year math for the per-year stat tooltips. UTC-based to match the way the
@@ -356,20 +356,30 @@ export class CalendarComponent {
             {
                 label: "streak",
                 // The year's day-values array (yearQ) is a gap-free, ascending
-                // run of every calendar day, so the longest streak is just the
-                // longest run of value > 0 walked in order.
-                value: year => {
-                    let best = 0, run = 0;
-                    for (const d of yearQ.get(year)) {
-                        run = d.value > 0 ? run + 1 : 0;
-                        if (run > best) best = run;
-                    }
-                    return best;
-                },
+                // run of every calendar day, so streaks are runs of consecutive
+                // indices among the value > 0 days — longestRunInfo on those
+                // indices gives the length, tie count, and start date at once.
+                value: year => this._yearStreak(yearQ, year).length,
                 title: year => `Longest streak in ${year}`,
-                desc: () => "Longest run of consecutive days this year with at least one whole piece logged. A streak that spans New Year's is split at the year boundary."
+                desc: year => {
+                    const base = "Longest run of consecutive days this year with at least one whole piece logged. A streak that spans New Year's is split at the year boundary.";
+                    const started = formatStreakStart(this._yearStreak(yearQ, year));
+                    return started ? `${base}<br><br>Started: ${started}` : base;
+                }
             }
         ];
+    }
+
+    // Streak info for one year: longestRunInfo over the indices of played
+    // days in the year's gap-free day array, with the start index translated
+    // back to that day's date. The dates are read via getUTC* accessors
+    // downstream, matching how the calendar assigns days everywhere else.
+    _yearStreak(yearQ, year) {
+        const days = yearQ.get(year);
+        const played = [];
+        days.forEach((d, i) => { if (d.value > 0) played.push(i); });
+        const info = longestRunInfo(played);
+        return { ...info, start: info.start === null ? null : days[info.start].date };
     }
 
     // Fullscreen layout: the calendar transposed — days of week across the
@@ -796,6 +806,7 @@ export class CalendarComponent {
         const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
         const recent = data.filter(d => d.timestamp >= cutoff && d.timestamp <= now);
         const agg = computeAggregateStats(recent);
+        const streakStart = formatStreakStart(agg.maxStreakInfo);
 
         // Full labels on desktop, dashboard-style short labels on mobile (the
         // two are toggled by a CSS media query, mirroring the dashboard tiles)
@@ -836,7 +847,8 @@ export class CalendarComponent {
                 short: 'Streak',
                 value: agg.maxStreak,
                 title: `Longest streak in the last ${days} days`,
-                desc: 'Longest run of consecutive days with at least one whole piece logged, within this window.',
+                desc: 'Longest run of consecutive days with at least one whole piece logged, within this window.'
+                    + (streakStart ? `<br><br>Started: ${streakStart}` : ''),
             },
         ];
 
