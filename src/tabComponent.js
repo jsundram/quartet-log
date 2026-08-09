@@ -3,6 +3,34 @@ import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVol
 import { getBegin, getPartColor, getCssColor } from './config.js';
 import { createEmptyRow, computeAggregateStats, formatStreakStart } from './dataProcessor.js';
 
+// Weighted random suggestion over a tab's works: weight = days since the
+// work's last play in the current filtered view (never-played falls back to
+// `begin`, i.e. the maximum weight), so the pick leans toward what's
+// least-recently played. Pure — `random` in [0, 1) is injected so tests are
+// deterministic. Returns { title, daysAgo, display } or null for an empty pool.
+export function pickRandomWork(filteredPlays, now, begin, random) {
+    const maxDays = d3.timeDay.count(begin, now);
+    const weighted = Array.from(filteredPlays)
+        .map(([t, ps]) => [t, ps.at(-1)?.timestamp || begin])
+        .map(([t, ts]) => [t, d3.timeDay.count(ts, now)]);
+
+    const total = d3.sum(weighted, d => d[1]);
+    const r = random * total;
+
+    let cumulative = 0;
+    const selected = weighted.find(([, weight]) => {
+        cumulative += weight;
+        return r <= cumulative;
+    });
+    if (!selected) return null;
+
+    const [title, daysAgo] = selected;
+    const display = daysAgo < maxDays
+        ? `${title} - (last played ${daysAgo} days ago)`
+        : `${title} - not played in this view!`;
+    return { title, daysAgo, display };
+}
+
 export class TabComponent {
     constructor(tableComponent) {
         this.tooltipDiv = d3.select("#tooltip");
@@ -197,13 +225,20 @@ export class TabComponent {
         if (!randomButtonContainer.select("button").size()) {
             randomButtonContainer.append("button")
                 .attr("class", "random-button")
-                .text("Random")
-                .on("click", () => this.handleRandomSelection(composerDiv, composerData));
+                .text("Random");
 
             randomButtonContainer.append("span")
                 .attr("class", "random-work-display")
                 .style("margin-left", "10px");
         }
+
+        // (Re)bind on EVERY update, not just at creation — d3's .on replaces
+        // the previous listener, so the handler always reads the composerData
+        // from the latest updateTabContent call. Binding only at creation
+        // froze the first render's data in the closure, so the suggestion
+        // ignored every later filter change.
+        randomButtonContainer.select("button")
+            .on("click", () => this.handleRandomSelection(composerDiv, composerData));
     }
 
     handleRandomSelection(composerDiv, composerData) {
@@ -211,32 +246,9 @@ export class TabComponent {
         // filters: works never played under those filters fall back to getBegin()
         // (maxDays weight), nudging the pick toward what's least-recently played
         // in the current context.
-        const { filteredPlays } = composerData;
-        const now = new Date();
-        const maxDays = d3.timeDay.count(getBegin(), now);
-
-        const weighted = Array.from(filteredPlays)
-            .map(([t, ps]) => [t, ps.at(-1)?.timestamp || getBegin()])
-            .map(([t, ts]) => [t, d3.timeDay.count(ts, now)])
-
-        // Select work using weighted random selection
-        const total = d3.sum(weighted, d => d[1]);
-        const random = Math.random() * total;
-
-        let cumulative = 0;
-        const selected = weighted.find(([t, weight]) => {
-            cumulative += weight;
-            return random <= cumulative;
-        });
-
-        // Update display
+        const selected = pickRandomWork(composerData.filteredPlays, new Date(), getBegin(), Math.random());
         if (selected) {
-            const [title, daysAgo] = selected;
-            const display = daysAgo < maxDays ?
-                `${title} - (last played ${daysAgo} days ago)` :
-                `${title} - not played in this view!`;
-
-            composerDiv.select(".random-work-display").text(display);
+            composerDiv.select(".random-work-display").text(selected.display);
         }
     }
 
