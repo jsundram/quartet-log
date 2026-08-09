@@ -1,7 +1,7 @@
 import * as d3 from "d3";
 import { getDataUrl } from './urlConfig.js';
 import { ALL_WORKS} from './catalog.js';
-import { processRow, fillForward, normalizePlayerNames } from './dataProcessor.js';
+import { processRow, prepareRows, fillForward, normalizePlayerNames } from './dataProcessor.js';
 
 export class DataService {
     constructor() {
@@ -129,7 +129,15 @@ export class DataService {
             throw new Error('Work catalog not initialized');
         }
 
-        let processedData = fillForward(rawData);
+        // Sort by timestamp and drop invalid-date rows before anything else —
+        // fillForward's session-window math and the row-0-is-earliest
+        // assumption (setBegin) both require chronological order.
+        const { rows, dropped } = prepareRows(rawData);
+        if (dropped) {
+            console.warn(`Dropped ${dropped} row(s) with unparseable timestamps`);
+        }
+
+        let processedData = fillForward(rows);
         processedData = normalizePlayerNames(processedData);
 
         // Filter out incomplete works

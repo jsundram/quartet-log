@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { processRow, fillForward, normalizePlayerNames } from '../src/dataProcessor.js';
+import { processRow, prepareRows, fillForward, normalizePlayerNames } from '../src/dataProcessor.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const URL_FILE = resolve(REPO_ROOT, '.dev-data-url');
@@ -62,7 +62,10 @@ if (!response.ok) {
     process.exit(1);
 }
 const rawRows = parseCSV(await response.text());
-const processed = rawRows.map(processRow);
+// Same pipeline as DataService.processData: sort + drop invalid timestamps,
+// fillForward, normalize names, drop partial-movement rows.
+const { rows: processed, dropped } = prepareRows(rawRows.map(processRow));
+if (dropped) console.error(`Warning: dropped ${dropped} row(s) with unparseable timestamps`);
 fillForward(processed);
 normalizePlayerNames(processed);
 const data = processed.filter(d => !d.work.incomplete);

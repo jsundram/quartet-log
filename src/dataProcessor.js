@@ -406,6 +406,23 @@ export function parseWork(title) {
     };
 }
 
+// Prepare freshly-parsed rows for the processing pipeline: drop rows whose
+// Timestamp failed to parse (an Invalid Date's value is NaN, which passes
+// truthiness checks and silently corrupts fillForward's session-window math
+// and the streak calculations) and sort the survivors by timestamp
+// ascending. Nothing upstream guarantees sheet order — one backdated row at
+// the top of the sheet would otherwise mis-anchor BEGIN (`data[0]`) and
+// produce negative time deltas in fillForward. Sort is stable, so rows
+// sharing a timestamp keep their sheet order. Does not mutate the input
+// array. Returns { rows, dropped } where `dropped` counts the removed
+// invalid-timestamp rows (callers may want to log it).
+export function prepareRows(rows) {
+    const kept = rows.filter(r =>
+        r.timestamp instanceof Date && !Number.isNaN(r.timestamp.getTime()));
+    kept.sort((a, b) => a.timestamp - b.timestamp);
+    return { rows: kept, dropped: rows.length - kept.length };
+}
+
 export function processRow(d) {
     return {
         "timestamp": new Date(d.Timestamp),
@@ -422,6 +439,7 @@ export function processRow(d) {
 }
 
 export function fillForward(data) {
+    if (!data.length) return data;
     ["player1", "player2", "player3", "location"].forEach(column => {
         let prev = data[0];
         let prevEntry = prev[column];

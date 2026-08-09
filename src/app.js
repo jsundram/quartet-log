@@ -43,6 +43,7 @@ export class App {
         this.data = null;
         this._lastFetchAt = 0;
         this._booted = false;
+        this._uiReady = false;  // set once initializeUI has run against non-empty data
     }
 
     start() {
@@ -220,7 +221,14 @@ export class App {
         this.data = this.dataService.processData(result.parsed);
         window.data = this.data;
         this._lastFetchAt = result.timestamp;
+        // Every row can get filtered out (all partial movements and/or invalid
+        // timestamps): don't build the UI off data[0] / data.at(-1) — say so.
+        if (!this.data.length) {
+            this.showNoDataState();
+            return;
+        }
         setBegin(this.data[0].timestamp);  // BEGIN = earliest data point
+        this._uiReady = true;
         this.initializeUI();
     }
 
@@ -318,9 +326,16 @@ export class App {
         }
         this._lastFetchAt = result.timestamp;
         if (result.changed) {
-            this.data = this.dataService.processData(result.parsed);
-            window.data = this.data;
-            this._rerenderData();
+            if (!this._uiReady) {
+                // The previous load yielded zero usable rows, so no UI is
+                // mounted — this needs the full initial render, not the
+                // in-place rerender.
+                this.renderInitial(result);
+            } else {
+                this.data = this.dataService.processData(result.parsed);
+                window.data = this.data;
+                this._rerenderData();
+            }
         }
         this.updateDataStatus(result.timestamp, result.source);
     }
@@ -330,6 +345,13 @@ export class App {
     // the hash or re-run showTab), so a background data update slots in without
     // yanking the user around.
     _rerenderData() {
+        // A refresh can turn a previously non-empty dataset empty (e.g. the
+        // sheet now holds only partial movements). Keep the painted UI and
+        // flag the situation rather than throwing on data[0].
+        if (!this.data.length) {
+            this.showNoDataState();
+            return;
+        }
         setBegin(this.data[0].timestamp);
         // Only remove component-generated nodes — the static <h1> and
         // #daytooltip in index.html stay (matches CalendarComponent.rerender).
@@ -420,7 +442,20 @@ export class App {
             .style("color", "var(--color-text-tertiary)");
     }
 
+    // Shown when the sheet loaded but zero rows survived processing (all
+    // partial movements / unparseable timestamps). Leaves whatever UI exists
+    // in place; just surfaces the state on the status line.
+    showNoDataState() {
+        d3.select('#update')
+            .text('No usable data found in the sheet (every row was filtered out).')
+            .style("margin-left", "10px")
+            .style("color", "var(--color-text-error)");
+    }
+
     updateDataStatus(timestamp, source) {
+        // Empty dataset: showNoDataState already owns the status line, and
+        // data.at(-1) below would throw.
+        if (!this.data?.length) return;
         const lastSession = this.dataService.formatTimeSince(
             this.data[this.data.length-1].timestamp
         );

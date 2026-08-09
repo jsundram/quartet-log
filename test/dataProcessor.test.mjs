@@ -22,6 +22,9 @@ import {
     computePartBreakdownPerMusician,
     computePartBreakdownPerComposer,
     predominantPart,
+    prepareRows,
+    fillForward,
+    processRow,
 } from '../src/dataProcessor.js';
 
 // Hand-built rows for the network helpers. Reflects the real data model:
@@ -917,5 +920,89 @@ describe('predominantPart', () => {
         assert.equal(predominantPart(null), null);
         assert.equal(predominantPart(undefined), null);
         assert.equal(predominantPart({ V1: 0, V2: 0, VA: 0, VC: 0, OTHER: 0 }), null);
+    });
+});
+
+// Raw sheet row in the shape d3.csv / parseCSV hands to processRow. Fixture
+// names are placeholders (Alice/Bob/Carol/...) — never real names from
+// PLAYER_ALIASES, which would canonicalize and break assertions.
+function rawRow(overrides = {}) {
+    return {
+        'Timestamp': '1/15/2024 10:00:00',
+        'Composer': 'Haydn',
+        'Work Title': '76#2',
+        'Which Part': 'V1',
+        'Player 1': 'Alice',
+        'Player 2': 'Bob',
+        'Player 3': 'Carol',
+        'Others?': '',
+        'Location': 'Home',
+        'Comments': '',
+        ...overrides,
+    };
+}
+
+describe('prepareRows', () => {
+    const at = iso => ({ timestamp: new Date(iso), id: iso });
+
+    it('sorts out-of-order rows by timestamp ascending', () => {
+        const rows = [at('2024-03-01'), at('2024-01-01'), at('2024-02-01')];
+        const { rows: sorted, dropped } = prepareRows(rows);
+        assert.deepEqual(sorted.map(r => r.id), ['2024-01-01', '2024-02-01', '2024-03-01']);
+        assert.equal(dropped, 0);
+    });
+
+    it('drops rows with invalid timestamps and reports the count', () => {
+        const bad = { timestamp: new Date('garbage'), id: 'bad' };
+        const missing = { timestamp: null, id: 'missing' };
+        const rows = [at('2024-02-01'), bad, at('2024-01-01'), missing];
+        const { rows: kept, dropped } = prepareRows(rows);
+        assert.deepEqual(kept.map(r => r.id), ['2024-01-01', '2024-02-01']);
+        assert.equal(dropped, 2);
+    });
+
+    it('handles empty input', () => {
+        assert.deepEqual(prepareRows([]), { rows: [], dropped: 0 });
+    });
+
+    it('does not mutate the input array', () => {
+        const rows = [at('2024-03-01'), at('2024-01-01')];
+        prepareRows(rows);
+        assert.deepEqual(rows.map(r => r.id), ['2024-03-01', '2024-01-01']);
+    });
+
+    it('keeps sheet order for rows sharing a timestamp (stable sort)', () => {
+        const rows = [
+            { timestamp: new Date('2024-01-01T10:00'), id: 'first' },
+            { timestamp: new Date('2024-01-01T10:00'), id: 'second' },
+        ];
+        assert.deepEqual(prepareRows(rows).rows.map(r => r.id), ['first', 'second']);
+    });
+});
+
+describe('empty and all-incomplete datasets', () => {
+    it('fillForward returns empty input unchanged without throwing', () => {
+        assert.deepEqual(fillForward([]), []);
+    });
+
+    it('the full pure pipeline yields [] for an all-partial-movement sheet', () => {
+        // Mirrors DataService.processData: prepareRows -> fillForward ->
+        // normalizePlayerNames -> drop incomplete works. Every row here is a
+        // partial movement (title contains ':'), so everything filters out.
+        const raw = [
+            rawRow({ 'Work Title': '76#2:I' }),
+            rawRow({ 'Timestamp': '1/15/2024 11:00:00', 'Work Title': '76#2:II,III' }),
+        ];
+        const { rows } = prepareRows(raw.map(processRow));
+        const processed = normalizePlayerNames(fillForward(rows));
+        assert.deepEqual(processed.filter(d => !d.work.incomplete), []);
+    });
+
+    it('the full pure pipeline yields [] when every timestamp is invalid', () => {
+        const raw = [rawRow({ 'Timestamp': 'not a date' })];
+        const { rows, dropped } = prepareRows(raw.map(processRow));
+        assert.equal(dropped, 1);
+        const processed = normalizePlayerNames(fillForward(rows));
+        assert.deepEqual(processed.filter(d => !d.work.incomplete), []);
     });
 });
