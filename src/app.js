@@ -323,6 +323,10 @@ export class App {
             result = await this.dataService.fetchFresh();
         } catch (e) {
             console.error('Revalidate failed', e);
+            // Surface the failure instead of leaving the status line claiming
+            // the data was "updated N minutes ago": show an offline/stale
+            // indicator anchored to the last successful fetch.
+            this.updateDataStatus(this._lastFetchAt, 'cache', { offline: true });
             return;
         }
         this._lastFetchAt = result.timestamp;
@@ -457,7 +461,13 @@ export class App {
     // properties are read. `cacheWriteFailed` means the fresh data on screen
     // could not be persisted (localStorage quota): the NEXT launch will boot
     // from an older cache, so say so instead of silently styling it as fresh.
-    updateDataStatus(timestamp, source, { cacheWriteFailed = false } = {}) {
+    // `offline` means a background refresh failed: what's on screen is the
+    // last successful fetch, which may be behind the sheet.
+    //
+    // Only those two failure states get the error color. Serving from cache is
+    // NORMAL operation (cache-first boot paints from it on every launch), so
+    // it renders in the regular status color, not styled as an error.
+    updateDataStatus(timestamp, source, { cacheWriteFailed = false, offline = false } = {}) {
         // Empty dataset: showNoDataState already owns the status line, and
         // data.at(-1) below would throw.
         if (!this.data?.length) return;
@@ -465,14 +475,19 @@ export class App {
             this.data[this.data.length-1].timestamp
         );
 
-        let updateText = source === 'cache'
-            ? `Data Loaded from cache. Age: ${this.dataService.formatTimeSince(timestamp).replace("ago", "old")}`
-            : `Data updated ${this.dataService.formatTimeSince(timestamp)}`;
+        let updateText;
+        if (offline) {
+            updateText = `Offline? Couldn't refresh — showing data from ${this.dataService.formatTimeSince(timestamp)}`;
+        } else if (source === 'cache') {
+            updateText = `Data Loaded from cache. Age: ${this.dataService.formatTimeSince(timestamp).replace("ago", "old")}`;
+        } else {
+            updateText = `Data updated ${this.dataService.formatTimeSince(timestamp)}`;
+        }
         if (cacheWriteFailed) {
             updateText += ' (storage full — offline copy may be stale)';
         }
 
-        const warn = cacheWriteFailed || source === 'cache';
+        const warn = cacheWriteFailed || offline;
         d3.select('#update')
             .text(`${updateText}; last session ${lastSession}`)
             .style("margin-left", "10px")

@@ -212,3 +212,108 @@ test("clearCachedData removes exactly the sheet-cache keys", () => {
     assert.equal(ls.getItem("https://mail.google.com/inbox"), "x");
     assert.equal(ls.getItem("quartetlog_data_url"), SHEET_URL);  // config survives
 });
+
+// ---- fetch races -----------------------------------------------------------
+
+// A promise whose resolve/reject are held by the test.
+function deferred() {
+    let resolve, reject;
+    const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+}
+
+// Observe whether a promise has settled without awaiting it.
+function probe(promise) {
+    const state = { settled: false };
+    promise.then(() => { state.settled = true; }, () => { state.settled = true; });
+    return state;
+}
+
+const nextTick = () => new Promise(res => setImmediate(res));
+
+test("fetchCSV: no cache + slow fetch → waits past the timeout and resolves fresh", async () => {
+    const net = deferred();
+    // timeoutMs: 0 — if the timeout could still reject/downgrade with no
+    // cache, it would fire long before we resolve the network below.
+    const svc = new DataService({ fetchRows: () => net.promise, timeoutMs: 0 });
+
+    const result = svc.fetchCSV();
+    const state = probe(result);
+    await new Promise(res => setTimeout(res, 5));  // let any 0ms timeout fire
+    assert.equal(state.settled, false, "must keep waiting on the in-flight fetch");
+
+    net.resolve(fetchedRows());
+    const r = await result;
+    assert.equal(r.source, "fresh");
+    assert.equal(r.parsed.length, 2);
+    assert.ok(ls.getItem(SHEET_URL), "late-arriving fetch still populates the cache");
+});
+
+test("fetchCSV: no cache + failing fetch rejects (no cache to fall back to)", async () => {
+    const svc = new DataService({
+        fetchRows: () => Promise.reject(new Error("network down")),
+        timeoutMs: 0,
+    });
+    await assert.rejects(svc.fetchCSV());
+});
+
+test("fetchCSV: with a cache, the timeout downgrades to cache; the late fetch still lands", async () => {
+    const ts = Date.now();
+    ls.setItem(SHEET_URL, JSON.stringify({ data: ROWS, timestamp: ts }));
+
+    const net = deferred();
+    const svc = new DataService({ fetchRows: () => net.promise, timeoutMs: 0 });
+
+    const r = await svc.fetchCSV();
+    assert.equal(r.source, "cache");
+    assert.equal(r.timestamp, ts);
+
+    // The in-flight fetch keeps going and refreshes the cache for next launch.
+    const moved = fetchedRows().slice(0, 1);
+    net.resolve(moved);
+    await nextTick();
+    assert.equal(JSON.parse(ls.getItem(SHEET_URL)).data.length, 1);
+});
+
+test("fetchCSV: with a cache, a fast fetch wins the race as fresh", async () => {
+    ls.setItem(SHEET_URL, JSON.stringify({ data: ROWS, timestamp: 1 }));
+    const svc = new DataService({ fetchRows: async () => fetchedRows(), timeoutMs: 60000 });
+    const r = await svc.fetchCSV();
+    assert.equal(r.source, "fresh");
+});
+
+test("fetchFresh: overlapping calls share one network trip and one result", async () => {
+    // Pre-seed the cache so a change is genuinely detectable.
+    ls.setItem(SHEET_URL, JSON.stringify({ data: ROWS.slice(0, 1), timestamp: 1 }));
+
+    let calls = 0;
+    const net = deferred();
+    const svc = new DataService({ fetchRows: () => { calls++; return net.promise; } });
+
+    const p1 = svc.fetchFresh();  // e.g. the 5-minute poll…
+    const p2 = svc.fetchFresh();  // …interleaved with pull-to-refresh
+    assert.equal(calls, 1, "second caller must not start a second fetch");
+
+    net.resolve(fetchedRows());
+    const [r1, r2] = await Promise.all([p1, p2]);
+    assert.equal(r1, r2, "both callers get the same result object");
+    assert.equal(r1.changed, true, "the genuine change is not dropped");
+});
+
+test("fetchFresh: the in-flight guard resets after settling", async () => {
+    let calls = 0;
+    const svc = new DataService({
+        fetchRows: async () => { calls++; return fetchedRows(); },
+    });
+
+    await svc.fetchFresh();
+    assert.equal((await svc.fetchFresh()).changed, false);  // a real second trip
+    assert.equal(calls, 2);
+
+    // …and after a rejection too.
+    const failing = new DataService({
+        fetchRows: () => Promise.reject(new Error("down")),
+    });
+    await assert.rejects(failing.fetchFresh());
+    await assert.rejects(failing.fetchFresh());
+});

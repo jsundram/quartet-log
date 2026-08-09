@@ -4,11 +4,14 @@ import { ALL_WORKS} from './catalog.js';
 import { processRow, prepareRows, fillForward, normalizePlayerNames } from './dataProcessor.js';
 
 export class DataService {
-    // `fetchRows` is injectable for tests (defaults to d3.csv against the
-    // configured sheet URL); production callers use `new DataService()`.
-    constructor({ fetchRows } = {}) {
+    // `fetchRows` and `timeoutMs` (the network-vs-cache race timeout in
+    // fetchCSV, default 5s) are injectable for tests; production callers use
+    // `new DataService()`.
+    constructor({ fetchRows, timeoutMs = 5000 } = {}) {
         this.data = null;
         this._fetchRows = fetchRows || (url => d3.csv(url, processRow));
+        this._timeoutMs = timeoutMs;
+        this._inflightFresh = null;
     }
 
     // --- localStorage cache -------------------------------------------------
@@ -83,48 +86,48 @@ export class DataService {
         }
 
         const cached = this._readCacheEntry(dataUrl);
-        const timeoutDuration = 5000;
 
-        return new Promise((resolve, reject) => {
-            const useCached = () => {
-                if (cached) {
-                    console.log(`Using cached data from ${new Date(cached.timestamp)}`);
-                    resolve({
-                        parsed: cached.rows,
-                        timestamp: cached.timestamp,
-                        source: 'cache'
-                    });
-                } else {
-                    reject(new Error('No cached data available'));
-                }
+        const network = this._fetchRows(dataUrl).then(d => {
+            // A valid-but-empty response (0 rows) is never real data for an
+            // active log; treat it like a fetch error — with a cache that means
+            // falling back to it rather than overwriting the cache with [].
+            // (See fetchFresh for the cache-poisoning rationale.)
+            if (!d.length) {
+                throw new Error('Empty data response');
+            }
+            const timestamp = Date.now();
+            const cacheWriteFailed = !this._writeCache(dataUrl, d, timestamp);
+            return { parsed: d, timestamp, source: 'fresh', cacheWriteFailed };
+        });
+
+        // No cache: the network is the only possible source, so keep waiting on
+        // the in-flight fetch however long it takes. The old code rejected with
+        // "No cached data available" at the 5s timeout while the fetch was
+        // still in flight — it would later resolve (and populate the cache)
+        // with nobody listening, so the user saw an error that a reload
+        // "mysteriously" fixed. The timeout only ever downgrades to cache.
+        if (!cached) {
+            return network;
+        }
+
+        const fromCache = () => {
+            console.log(`Using cached data from ${new Date(cached.timestamp)}`);
+            return {
+                parsed: cached.rows,
+                timestamp: cached.timestamp,
+                source: 'cache'
             };
+        };
 
-            const timeoutId = setTimeout(useCached, timeoutDuration);
-
-            this._fetchRows(dataUrl)
-                .then(d => {
-                    clearTimeout(timeoutId);
-                    // A valid-but-empty response (0 rows) is never real data for
-                    // an active log; treat it like a fetch error and fall back to
-                    // cache rather than overwriting the cache with []. (See
-                    // fetchFresh for the cache-poisoning rationale.)
-                    if (!d.length) {
-                        useCached();
-                        return;
-                    }
-                    const timestamp = Date.now();
-                    const cacheWriteFailed = !this._writeCache(dataUrl, d, timestamp);
-                    resolve({
-                        parsed: d,
-                        timestamp,
-                        source: 'fresh',
-                        cacheWriteFailed
-                    });
-                })
-                .catch(error => {
-                    clearTimeout(timeoutId);
-                    useCached();
-                });
+        // Race the network against the timeout. On timeout, serve the cache —
+        // the network fetch stays in flight and still writes the cache for
+        // next launch when it eventually lands (see `network` above).
+        return new Promise((resolve) => {
+            const timeoutId = setTimeout(() => resolve(fromCache()), this._timeoutMs);
+            network.then(
+                result => { clearTimeout(timeoutId); resolve(result); },
+                () => { clearTimeout(timeoutId); resolve(fromCache()); }
+            );
         });
     }
 
@@ -157,7 +160,22 @@ export class DataService {
     // to keep showing the stale copy. `cacheWriteFailed: true` means the fresh
     // rows could NOT be persisted (quota): the returned data is current, but
     // the next launch will serve an older cache — callers should surface that.
-    async fetchFresh() {
+    //
+    // In-flight guard: concurrent callers (pull-to-refresh, the visibility
+    // handler, and the 5-minute poll can all trigger a revalidate) share one
+    // network trip and one result. Without this, two interleaved fetches could
+    // each compute `changed` against the other's cache write and drop a
+    // genuine update on the floor.
+    fetchFresh() {
+        if (!this._inflightFresh) {
+            this._inflightFresh = this._fetchFreshImpl().finally(() => {
+                this._inflightFresh = null;
+            });
+        }
+        return this._inflightFresh;
+    }
+
+    async _fetchFreshImpl() {
         const dataUrl = getDataUrl();
         if (!dataUrl) {
             throw new Error('No data URL configured');
