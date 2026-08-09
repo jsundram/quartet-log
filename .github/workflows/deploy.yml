@@ -47,6 +47,21 @@ jobs:
           echo "${PANDOC_SHA256}  pandoc-${PANDOC_VERSION}-1-amd64.deb" | sha256sum --check
           sudo dpkg -i "pandoc-${PANDOC_VERSION}-1-amd64.deb"
 
+      # src/aliases.js (real player-name tables) is gitignored personal
+      # data; the secret holds the file's full contents. Without it the
+      # build falls back to the empty stub via scripts/ensure_aliases.mjs
+      # and the deployed site shows the sheet's raw short names.
+      - name: Materialize player aliases from secret
+        env:
+          PLAYER_ALIASES_JS: ${{ secrets.PLAYER_ALIASES_JS }}
+        run: |
+          if [ -n "$PLAYER_ALIASES_JS" ]; then
+            printf '%s' "$PLAYER_ALIASES_JS" > src/aliases.js
+            echo "src/aliases.js materialized from PLAYER_ALIASES_JS secret."
+          else
+            echo "::warning::PLAYER_ALIASES_JS secret is not set — building with the empty alias stub; the deployed site will show un-normalized short names."
+          fi
+
       - name: Build
         run: ./build.sh --prod
 

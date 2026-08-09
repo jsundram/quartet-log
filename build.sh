@@ -34,6 +34,10 @@ for tool in esbuild pandoc node npm; do
     fi
 done
 
+# Materialize src/aliases.js from the checked-in stub if the personal copy
+# is absent (fresh clone, CI without the secret) so the bundle can build.
+node scripts/ensure_aliases.mjs
+
 # Convert markdown to HTML and copy all static assets to $DEPLOY.
 # Safe to call repeatedly — used both for the initial build and for
 # fswatch-driven live reload in dev mode.

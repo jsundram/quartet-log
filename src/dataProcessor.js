@@ -10,14 +10,17 @@ export function classOf(instrumentStr) {
     return instrumentStr.toLowerCase().trim().startsWith('vc') ? 'cello' : 'upper';
 }
 
-export function canonicalize(name, cls) {
+// `aliases` defaults to the deployment's real table (gitignored
+// src/aliases.js via config.js); tests inject placeholder fixtures so they
+// don't depend on its contents.
+export function canonicalize(name, cls, aliases = PLAYER_ALIASES) {
     if (!name) return name;
-    return (cls && PLAYER_ALIASES[name]?.[cls]) ?? name;
+    return (cls && aliases[name]?.[cls]) ?? name;
 }
 
 // Strip a trailing "(instrument)" annotation from a name. Used for player
 // slots where the user occasionally annotates non-string players inline
-// (e.g. "Lois Shapiro (piano)" in Player 1). The instrument info is dropped.
+// (e.g. "Alice Hart (piano)" in Player 1). The instrument info is dropped.
 export function stripParens(name) {
     if (!name) return name;
     const m = name.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
@@ -64,25 +67,25 @@ export function parseOthers(others) {
         });
 }
 
-export function normalizePlayerNames(data) {
+export function normalizePlayerNames(data, aliases = PLAYER_ALIASES) {
     data.forEach(d => {
-        d.player1 = canonicalize(stripParens(d.player1), SLOT_CLASS[0]);
-        d.player2 = canonicalize(stripParens(d.player2), SLOT_CLASS[1]);
-        d.player3 = canonicalize(stripParens(d.player3), SLOT_CLASS[2]);
+        d.player1 = canonicalize(stripParens(d.player1), SLOT_CLASS[0], aliases);
+        d.player2 = canonicalize(stripParens(d.player2), SLOT_CLASS[1], aliases);
+        d.player3 = canonicalize(stripParens(d.player3), SLOT_CLASS[2], aliases);
         d.othersList = parseOthers(d.others).map(o => {
             const cls = classOf(o.instrument);
-            return { name: canonicalize(o.name, cls), instrument: o.instrument, class: cls };
+            return { name: canonicalize(o.name, cls, aliases), instrument: o.instrument, class: cls };
         });
     });
     return data;
 }
 
 // Canonical-name keys for "unique people" counting. Disambiguation between
-// same-bare-name-different-instrument people (e.g. Jen Hsiao vs Jen Minnich)
-// is handled by PLAYER_ALIASES at canonicalization time — bare "Jen" becomes
-// "Jen Hsiao" in upper slots and "Jen Minnich" in cello slots, which are
+// same-bare-name-different-instrument people (e.g. "Jo Alpha" vs "Jo Beta")
+// is handled by PLAYER_ALIASES at canonicalization time — bare "Jo" becomes
+// "Jo Alpha" in upper slots and "Jo Beta" in cello slots, which are
 // already distinct names. One person playing multiple instruments (e.g.
-// Henry Weinberger on piano + cello) collapses correctly to a single name.
+// "Hank Field" on piano + cello) collapses correctly to a single name.
 export function peopleKeysFor(d) {
     const keys = [];
     [d.player1, d.player2, d.player3].forEach(p => {
@@ -478,7 +481,7 @@ function refersToPrevEntry(entry, prevEntry) {
 // write a value in full once, then abbreviate while the session continues:
 // a blank cell or a leading-prefix of the previous entry (e.g. "Chris" after
 // "Chris Smith") repeats it, and the single-letter PLAYER_ABBREVIATIONS
-// ("I" → "Isaac", etc.) expand regardless of the time window. "-" means
+// (e.g. "I" → a configured first name) expand regardless of the window. "-" means
 // "nobody in this slot": it is left as-is and does not advance the session
 // anchor, so shorthand can still refer past it to the last real entry.
 //
@@ -494,7 +497,7 @@ function refersToPrevEntry(entry, prevEntry) {
 // negative time delta would mean unsorted input; it is deliberately treated
 // as "not the same session" rather than being allowed to slip under the
 // window the way any negative number satisfies `hours < 4`.
-export function fillForward(data) {
+export function fillForward(data, abbreviations = PLAYER_ABBREVIATIONS) {
     if (!data.length) return data;
     ["player1", "player2", "player3", "location"].forEach(column => {
         let prev = data[0];
@@ -507,8 +510,8 @@ export function fillForward(data) {
                 const sameSession = hours >= 0 && hours < SESSION_WINDOW_HOURS;
                 if (sameSession && refersToPrevEntry(entry, prevEntry)) {
                     row[column] = prevEntry;
-                } else if (PLAYER_ABBREVIATIONS.hasOwnProperty(entry)) {
-                    prevEntry = PLAYER_ABBREVIATIONS[entry];
+                } else if (abbreviations.hasOwnProperty(entry)) {
+                    prevEntry = abbreviations[entry];
                     row[column] = prevEntry;
                 } else {
                     prevEntry = entry;

@@ -41,19 +41,29 @@ function row(p1, p2, p3, others = []) {
     };
 }
 
-// canonicalize tests depend on real entries in PLAYER_ALIASES (Jen, Isaac).
-// If those entries are removed, these tests should fail loudly — that's the
-// signal the alias map's behavior changed, not a test bug.
+// Placeholder alias fixture, injected into canonicalize/normalizePlayerNames
+// via their optional `aliases` parameter. Tests must NOT depend on the real
+// PLAYER_ALIASES: it lives in the gitignored src/aliases.js (real people's
+// names — this repo is public) and CI runs against the empty stub. Only
+// placeholder names (Alice/Bob/Carol style) belong in this file.
+const ALIASES = {
+    // Same short name, different person per instrument class.
+    'Jo': { upper: 'Jo Alpha', cello: 'Jo Beta' },
+    // Self-alias with only an "upper" mapping.
+    'Ned': { upper: 'Ned' },
+    // Short form of a multi-instrumentalist's full name.
+    'Hank': { upper: 'Hank Field' },
+};
 
 describe('stripParens', () => {
     it('drops a trailing parenthetical instrument annotation', () => {
-        assert.equal(stripParens('Lois Shapiro (piano)'), 'Lois Shapiro');
-        assert.equal(stripParens('Henry (piano)'), 'Henry');
+        assert.equal(stripParens('Alice Hart (piano)'), 'Alice Hart');
+        assert.equal(stripParens('Hank (piano)'), 'Hank');
     });
 
     it('leaves plain names alone', () => {
-        assert.equal(stripParens('Henry'), 'Henry');
-        assert.equal(stripParens('Mary Carfagna'), 'Mary Carfagna');
+        assert.equal(stripParens('Hank'), 'Hank');
+        assert.equal(stripParens('Alice Hart'), 'Alice Hart');
     });
 
     it('handles empty / falsy input without throwing', () => {
@@ -95,30 +105,36 @@ describe('classOf', () => {
 
 describe('canonicalize', () => {
     it('returns the canonical for a known (name, class) pair', () => {
-        assert.equal(canonicalize('Jen', 'upper'), 'Jen Hsiao');
-        assert.equal(canonicalize('Jen', 'cello'), 'Jen Minnich');
-        assert.equal(canonicalize('Isaac', 'upper'), 'Isaac');
+        assert.equal(canonicalize('Jo', 'upper', ALIASES), 'Jo Alpha');
+        assert.equal(canonicalize('Jo', 'cello', ALIASES), 'Jo Beta');
+        assert.equal(canonicalize('Ned', 'upper', ALIASES), 'Ned');
     });
 
     it('returns the input when the alias entry has no mapping for the given class', () => {
-        // Isaac has only an "upper" alias, not "cello"
-        assert.equal(canonicalize('Isaac', 'cello'), 'Isaac');
+        // Ned has only an "upper" alias, not "cello"
+        assert.equal(canonicalize('Ned', 'cello', ALIASES), 'Ned');
     });
 
     it('returns the input when name is not in the alias map', () => {
-        assert.equal(canonicalize('Marshall', 'upper'), 'Marshall');
-        assert.equal(canonicalize('Alice', 'cello'), 'Alice');
+        assert.equal(canonicalize('Marshall', 'upper', ALIASES), 'Marshall');
+        assert.equal(canonicalize('Alice', 'cello', ALIASES), 'Alice');
     });
 
     it('skips aliasing when class is null/undefined', () => {
-        assert.equal(canonicalize('Jen', null), 'Jen');
-        assert.equal(canonicalize('Jen', undefined), 'Jen');
+        assert.equal(canonicalize('Jo', null, ALIASES), 'Jo');
+        assert.equal(canonicalize('Jo', undefined, ALIASES), 'Jo');
     });
 
     it('passes empty/falsy names through unchanged', () => {
-        assert.equal(canonicalize('', 'upper'), '');
-        assert.equal(canonicalize(null, 'upper'), null);
-        assert.equal(canonicalize(undefined, 'upper'), undefined);
+        assert.equal(canonicalize('', 'upper', ALIASES), '');
+        assert.equal(canonicalize(null, 'upper', ALIASES), null);
+        assert.equal(canonicalize(undefined, 'upper', ALIASES), undefined);
+    });
+
+    it('defaults its aliases parameter (callable with two args)', () => {
+        // With no injected table this reads the resolved src/aliases.js —
+        // possibly the empty stub — so only passthrough is asserted.
+        assert.equal(canonicalize('Zelda', 'upper'), 'Zelda');
     });
 });
 
@@ -142,26 +158,26 @@ describe('parseOthers', () => {
     });
 
     it('splits on semicolons', () => {
-        assert.deepEqual(parseOthers('Louisa (vc2); josh (vc2)'), [
-            { name: 'Louisa', instrument: 'vc2' },
-            { name: 'josh', instrument: 'vc2' },
+        assert.deepEqual(parseOthers('Lena (vc2); bob (vc2)'), [
+            { name: 'Lena', instrument: 'vc2' },
+            { name: 'bob', instrument: 'vc2' },
         ]);
     });
 
     it('splits on commas as a fallback separator', () => {
         assert.deepEqual(
-            parseOthers('Alice (vla2), josh (vc2), Nathaniel Jarrett (asst v2)'),
+            parseOthers('Alice (vla2), bob (vc2), Nate Jones (asst v2)'),
             [
                 { name: 'Alice', instrument: 'vla2' },
-                { name: 'josh', instrument: 'vc2' },
-                { name: 'Nathaniel Jarrett', instrument: 'asst v2' },
+                { name: 'bob', instrument: 'vc2' },
+                { name: 'Nate Jones', instrument: 'asst v2' },
             ],
         );
     });
 
     it('trims whitespace around fragments', () => {
-        assert.deepEqual(parseOthers('  Jess Lin  '), [
-            { name: 'Jess Lin', instrument: null },
+        assert.deepEqual(parseOthers('  Alice Lee  '), [
+            { name: 'Alice Lee', instrument: null },
         ]);
     });
 
@@ -194,7 +210,7 @@ describe('parseOthers', () => {
     });
 
     it('only the first inner comma splits — later commas stay in the comment', () => {
-        // Real-world entry: "Isaac (v1, shadowing on II, III)" — second comma
+        // Real-world pattern: "Name (v1, shadowing on II, III)" — second comma
         // is inside the comment and must not split the instrument.
         assert.deepEqual(parseOthers('Carol (v1, shadowing on II, III)'), [
             { name: 'Carol', instrument: 'v1' },
@@ -223,41 +239,41 @@ describe('normalizePlayerNames', () => {
     });
 
     it('aliases player1/player2 as upper and player3 as cello', () => {
-        const data = [mkRow({ player1: 'Jen', player2: 'Isaac', player3: 'Jen' })];
-        normalizePlayerNames(data);
-        // Jen[upper] → Jen Hsiao; Isaac[upper] → Isaac; Jen[cello] → Jen Minnich
-        assert.equal(data[0].player1, 'Jen Hsiao');
-        assert.equal(data[0].player2, 'Isaac');
-        assert.equal(data[0].player3, 'Jen Minnich');
+        const data = [mkRow({ player1: 'Jo', player2: 'Ned', player3: 'Jo' })];
+        normalizePlayerNames(data, ALIASES);
+        // Jo[upper] → Jo Alpha; Ned[upper] → Ned; Jo[cello] → Jo Beta
+        assert.equal(data[0].player1, 'Jo Alpha');
+        assert.equal(data[0].player2, 'Ned');
+        assert.equal(data[0].player3, 'Jo Beta');
     });
 
     it('strips a trailing "(instrument)" from player slots before aliasing', () => {
-        const data = [mkRow({ player1: 'Lois Shapiro (piano)', player2: 'Jen (violin)' })];
-        normalizePlayerNames(data);
-        assert.equal(data[0].player1, 'Lois Shapiro');
-        // Jen with class "upper" (player2 slot) resolves via alias to Jen Hsiao
-        assert.equal(data[0].player2, 'Jen Hsiao');
+        const data = [mkRow({ player1: 'Alice Hart (piano)', player2: 'Jo (violin)' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.equal(data[0].player1, 'Alice Hart');
+        // Jo with class "upper" (player2 slot) resolves via alias to Jo Alpha
+        assert.equal(data[0].player2, 'Jo Alpha');
     });
 
     it('attaches a parsed, canonicalized othersList', () => {
-        const data = [mkRow({ others: 'Jen (vc2); Marshall (va2)' })];
-        normalizePlayerNames(data);
+        const data = [mkRow({ others: 'Jo (vc2); Marshall (va2)' })];
+        normalizePlayerNames(data, ALIASES);
         assert.deepEqual(data[0].othersList, [
-            { name: 'Jen Minnich', instrument: 'vc2', class: 'cello' },
+            { name: 'Jo Beta', instrument: 'vc2', class: 'cello' },
             { name: 'Marshall', instrument: 'va2', class: 'upper' },
         ]);
     });
 
     it('handles a row with empty slots and no Others?', () => {
         const data = [mkRow()];
-        normalizePlayerNames(data);
+        normalizePlayerNames(data, ALIASES);
         assert.equal(data[0].player1, '');
         assert.deepEqual(data[0].othersList, []);
     });
 
     it('returns the input array (for chaining)', () => {
         const data = [mkRow({ player1: 'Marshall' })];
-        const result = normalizePlayerNames(data);
+        const result = normalizePlayerNames(data, ALIASES);
         assert.equal(result, data);
     });
 });
@@ -265,12 +281,12 @@ describe('normalizePlayerNames', () => {
 describe('peopleKeysFor', () => {
     it('returns canonical names from player1/2/3', () => {
         const row = {
-            player1: 'Jen Hsiao',
+            player1: 'Jo Alpha',
             player2: 'Marshall',
-            player3: 'Jen Minnich',
+            player3: 'Jo Beta',
             othersList: [],
         };
-        assert.deepEqual(peopleKeysFor(row), ['Jen Hsiao', 'Marshall', 'Jen Minnich']);
+        assert.deepEqual(peopleKeysFor(row), ['Jo Alpha', 'Marshall', 'Jo Beta']);
     });
 
     it('skips empty and "-" sentinel player slots', () => {
@@ -285,15 +301,15 @@ describe('peopleKeysFor', () => {
 
     it('includes othersList entries by canonical name only', () => {
         const row = {
-            player1: 'Jen Hsiao',
+            player1: 'Jo Alpha',
             player2: '',
             player3: '',
             othersList: [
-                { name: 'Lois Shapiro', instrument: 'piano', class: 'upper' },
-                { name: 'Jen Minnich', instrument: 'vc2', class: 'cello' },
+                { name: 'Alice Hart', instrument: 'piano', class: 'upper' },
+                { name: 'Jo Beta', instrument: 'vc2', class: 'cello' },
             ],
         };
-        assert.deepEqual(peopleKeysFor(row), ['Jen Hsiao', 'Lois Shapiro', 'Jen Minnich']);
+        assert.deepEqual(peopleKeysFor(row), ['Jo Alpha', 'Alice Hart', 'Jo Beta']);
     });
 
     it('handles a row with no othersList field at all', () => {
@@ -301,32 +317,32 @@ describe('peopleKeysFor', () => {
         assert.deepEqual(peopleKeysFor(row), ['Marshall']);
     });
 
-    it('Jen Hsiao + Jen Minnich in the same row produce two distinct keys', () => {
-        // The whole point of instrument-aware aliasing: the two Jens count as two.
+    it('two same-short-name people in one row produce two distinct keys', () => {
+        // The whole point of instrument-aware aliasing: the two Jos count as two.
         const data = [
-            { player1: 'Jen', player2: 'Marshall', player3: 'Jen', others: '' },
+            { player1: 'Jo', player2: 'Marshall', player3: 'Jo', others: '' },
         ];
-        normalizePlayerNames(data);
+        normalizePlayerNames(data, ALIASES);
         const keys = peopleKeysFor(data[0]);
-        assert.ok(keys.includes('Jen Hsiao'));
-        assert.ok(keys.includes('Jen Minnich'));
+        assert.ok(keys.includes('Jo Alpha'));
+        assert.ok(keys.includes('Jo Beta'));
         assert.equal(new Set(keys).size, 3);
     });
 
-    it('Henry Weinberger on multiple instruments collapses to one key (within Set)', () => {
+    it('one person on multiple instruments collapses to one key (within Set)', () => {
         // Same person, different instruments — should NOT split.
-        // Henry[upper] aliases to Henry Weinberger; "Henry Weinberger" in Others?
+        // Hank[upper] aliases to Hank Field; "Hank Field" in Others?
         // stays canonical regardless of class.
         const data = [
-            { player1: 'Henry', player2: 'Marshall', player3: 'Stephanie',
-              others: 'Henry Weinberger (vc)' },
+            { player1: 'Hank', player2: 'Marshall', player3: 'Stephanie',
+              others: 'Hank Field (vc)' },
         ];
-        normalizePlayerNames(data);
+        normalizePlayerNames(data, ALIASES);
         const keys = peopleKeysFor(data[0]);
-        // Player1's "Henry" canonicalized to "Henry Weinberger"; Others' Henry Weinberger
-        // stays as "Henry Weinberger" (already canonical). Both contribute the same key.
-        const henryCount = keys.filter(k => k === 'Henry Weinberger').length;
-        assert.equal(henryCount, 2); // appears twice in the list...
+        // Player1's "Hank" canonicalized to "Hank Field"; Others' Hank Field
+        // stays as "Hank Field" (already canonical). Both contribute the same key.
+        const hankCount = keys.filter(k => k === 'Hank Field').length;
+        assert.equal(hankCount, 2); // appears twice in the list...
         assert.equal(new Set(keys).size, 3); // ...but de-dupes in a Set to one person
     });
 });
@@ -339,7 +355,7 @@ describe('computeAggregateStats', () => {
         player1: '', player2: '', player3: '',
         others: '',
         ...overrides,
-    }])[0];
+    }], ALIASES)[0];
 
     it('returns zeroed stats for an empty array', () => {
         assert.deepEqual(computeAggregateStats([]), {
@@ -366,10 +382,10 @@ describe('computeAggregateStats', () => {
 
     it('counts canonical people across player slots and othersList', () => {
         const rows = [
-            mkRow({ player1: 'Jen', player2: 'Isaac', player3: 'Jen',
+            mkRow({ player1: 'Jo', player2: 'Ned', player3: 'Jo',
                     others: 'Marshall (va2)' }),
         ];
-        // Jen[upper]→Jen Hsiao, Isaac[upper]→Isaac, Jen[cello]→Jen Minnich, Marshall(va2)→Marshall
+        // Jo[upper]→Jo Alpha, Ned[upper]→Ned, Jo[cello]→Jo Beta, Marshall(va2)→Marshall
         // = 4 distinct people
         assert.equal(computeAggregateStats(rows).uniquePeople, 4);
     });
@@ -732,10 +748,10 @@ describe('disambiguateLabels', () => {
     });
 
     it('falls back to First L. on first-name collision', () => {
-        const nodes = [{ name: 'Jen Hsiao' }, { name: 'Jen Minnich' }];
+        const nodes = [{ name: 'Jo Alpha' }, { name: 'Jo Beta' }];
         const labels = disambiguateLabels(nodes);
-        assert.equal(labels.get('Jen Hsiao'), 'Jen H.');
-        assert.equal(labels.get('Jen Minnich'), 'Jen M.');
+        assert.equal(labels.get('Jo Alpha'), 'Jo A.');
+        assert.equal(labels.get('Jo Beta'), 'Jo B.');
     });
 
     it('falls back to full name when First L. still collides', () => {
@@ -1096,16 +1112,17 @@ describe('fillForward', () => {
         assert.equal(data[2].player1, 'Chris Smith');
     });
 
-    it('expands single-letter PLAYER_ABBREVIATIONS regardless of the window', () => {
-        // "I" -> "Isaac" comes from config PLAYER_ABBREVIATIONS (fillForward
-        // itself does no aliasing, so the un-canonicalized short name is fine
-        // here). If that table entry is removed this should fail loudly.
+    it('expands single-letter abbreviations regardless of the window', () => {
+        // Injected table (the real PLAYER_ABBREVIATIONS lives in the
+        // gitignored src/aliases.js; the checked-in stub is empty, so the
+        // suite must not depend on real entries). fillForward itself does
+        // no aliasing — the un-canonicalized short name is fine here.
         const data = [
             ffRow(0, { player1: 'Alice' }),
             ffRow(10, { player1: 'I' }),
         ];
-        fillForward(data);
-        assert.equal(data[1].player1, 'Isaac');
+        fillForward(data, { I: 'Ike' });
+        assert.equal(data[1].player1, 'Ike');
     });
 
     it('treats a negative time delta (unsorted input) as not-same-session', () => {

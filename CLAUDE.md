@@ -112,17 +112,26 @@ The Player dropdown refreshes only on `"date"` / `"part"` changes (not `"player"
 
 ### Player name handling
 
-**Canonical names**: `PLAYER_ALIASES` in `src/config.js` is **instrument-class-aware** because some short names refer to different people on different instruments (e.g. `Jen` on violin/viola is Jen Hsiao, on cello is Jen Minnich). Shape:
+**Canonical names**: `PLAYER_ALIASES` is **instrument-class-aware** because a short name can refer to different people on different instruments (a hypothetical `Jo` on violin/viola could be Jo Alpha while `Jo` on cello is Jo Beta). Shape:
 ```js
-{ "Jen": { upper: "Jen Hsiao", cello: "Jen Minnich" } }
+{ "Jo": { upper: "Jo Alpha", cello: "Jo Beta" } }
 ```
-Classes: `upper` (V1, V2, VA, VLA — violin/viola alias as one person) and `cello` (VC, never aliases with upper). Per-instrument aliasing happens at ingestion (`normalizePlayerNames`) so all downstream consumers see canonical names. `peopleKeysFor()` keys the unique-people set by canonical name (no class suffix), so a multi-instrumentalist like Henry Weinberger on both piano and cello correctly collapses to one person.
+Classes: `upper` (V1, V2, VA, VLA — violin/viola alias as one person) and `cello` (VC, never aliases with upper). Per-instrument aliasing happens at ingestion (`normalizePlayerNames`) so all downstream consumers see canonical names. `peopleKeysFor()` keys the unique-people set by canonical name (no class suffix), so a multi-instrumentalist playing e.g. both piano and cello correctly collapses to one person.
 
-**Player slot conventions**: `player1`/`player2` are always "upper" class, `player3` is always "cello" — derived from the user's own part (V1/V2/VA). `stripParens` removes inline `(instrument)` annotations like `Lois Shapiro (piano)` from player slots before aliasing.
+**Alias privacy (build-time injection)**: the real `PLAYER_ALIASES` / `PLAYER_ABBREVIATIONS` tables are ~40 real people's full names — personal data that must never appear in a tracked file (the repo is public). Mechanism:
+- `src/aliases.js` — the REAL tables. Gitignored, personal; never commit it.
+- `src/aliases.stub.js` — checked in: empty tables with the same exported shape + JSDoc typedefs and the mechanism docs.
+- `scripts/ensure_aliases.mjs` — copies the stub to `src/aliases.js` when it's missing (fresh clone, CI). Idempotent, dependency-free. Run automatically by `build.sh` (both modes) and by the npm `pretest` hook, so every entry point works without the personal file — names just pass through un-normalized.
+- `src/config.js` re-exports both tables from `./aliases.js`, so no other module changed its imports.
+- Deploy (`.github/workflows/deploy.yml`): a "Materialize player aliases from secret" step before Build writes `src/aliases.js` from the `PLAYER_ALIASES_JS` Actions secret (the file's full contents). If the secret is unset, it prints a `::warning::` and the deployed site shows the sheet's raw short names.
+- **Accepted residue**: the real names remain in git HISTORY (pre-extraction `src/config.js`) and in the SERVED BUNDLE of any deploy that has the secret. Both accepted for now — a history rewrite was explicitly declined.
+- Tests must not depend on the real tables (CI runs against the stub): `canonicalize` / `normalizePlayerNames` take an optional trailing `aliases` argument, and test fixtures inject placeholder tables (Alice/Bob/Carol-style names only — never real names).
 
-**Others? column**: free-form, parsed by `parseOthers`. Entries are separated by `;` or `,` **at paren depth 0** (paren-aware split, so commas inside an annotation don't tear an entry in half). Each entry is `Name`, `Name (instrument)`, or `Name (instrument, comment)`. Inside the parens, the **first** comma separates the instrument code from a free-form comment — later commas stay in the comment (e.g. `Isaac (v1, shadowing on II, III)` → instrument `v1`, comment ignored). The instrument string classifies via `classOf` (`vc*` → cello, else upper). The parsed list is attached as `othersList` on each row; the raw `others` string stays untouched for the CSV-download path.
+**Player slot conventions**: `player1`/`player2` are always "upper" class, `player3` is always "cello" — derived from the user's own part (V1/V2/VA). `stripParens` removes inline `(instrument)` annotations like `Alice Hart (piano)` from player slots before aliasing.
 
-**Audit script** (`scripts/audit_aliases.py`) reads an exported CSV (default `archive/data.csv`, gitignored) and surfaces candidate aliases by lowercased first-token grouping + teammate-overlap. Reads `PLAYER_ALIASES` live from `src/config.js` via a `node -e` subshell — single source of truth, no manual sync.
+**Others? column**: free-form, parsed by `parseOthers`. Entries are separated by `;` or `,` **at paren depth 0** (paren-aware split, so commas inside an annotation don't tear an entry in half). Each entry is `Name`, `Name (instrument)`, or `Name (instrument, comment)`. Inside the parens, the **first** comma separates the instrument code from a free-form comment — later commas stay in the comment (e.g. `Carol (v1, shadowing on II, III)` → instrument `v1`, comment ignored). The instrument string classifies via `classOf` (`vc*` → cello, else upper). The parsed list is attached as `othersList` on each row; the raw `others` string stays untouched for the CSV-download path.
+
+**Audit script** (`scripts/audit_aliases.py`) reads an exported CSV (default `archive/data.csv`, gitignored) and surfaces candidate aliases by lowercased first-token grouping + teammate-overlap. Loads `PLAYER_ALIASES` **and** `PLAYER_ABBREVIATIONS` live from the resolved `src/aliases.js` via a `node -e` subshell (running `ensure_aliases.mjs` first) — single source of truth, no manual sync. It warns when the tables are empty (stub) since the audit is then meaningless, and its paste-ready output block targets `src/aliases.js`, never a tracked file.
 
 **Fetch scripts** (both read source URL from `.dev-data-url`, both gitignore their outputs):
 - `scripts/fetch_processed.mjs` — fetches the sheet, runs the same `prepareRows` + `fillForward` + `normalizePlayerNames` + drop-incompletes pipeline as the in-browser "Download Data" button, writes `archive/data.csv` via the same shared writer (`src/csvFormat.js`). This is the file `audit_aliases.py` defaults to.
@@ -141,7 +150,7 @@ Per-year stats column shows five numbers (Pieces, Unique Pieces, People played w
 ### Configuration files
 
 - **`src/urlConfig.js`** — `getDataUrl` / `setDataUrl` / `hasDataUrl` / `isValidGoogleSheetsUrl` / `clearDataUrl`. URL persists in localStorage.
-- **`src/config.js`** — `getBegin` / `setBegin`, `getCssColor(token)` / `getPartColor(part)` (read colors from CSS custom properties on `:root`; the canonical source for V1/V2/VA part colors lives in `static/css/viz.css` as `--color-part-{v1|v2|va}`), `invalidateColorCache()` (clear the memo, called by the theme manager on toggle), `PLAYER_ABBREVIATIONS` (single-letter expansion: I→Isaac, E→Elaine, S→Shay, J→Josh), `PLAYER_ALIASES` (instrument-class-keyed), `CALENDAR_CONFIG`.
+- **`src/config.js`** — `getBegin` / `setBegin`, `getCssColor(token)` / `getPartColor(part)` (read colors from CSS custom properties on `:root`; the canonical source for V1/V2/VA part colors lives in `static/css/viz.css` as `--color-part-{v1|v2|va}`), `invalidateColorCache()` (clear the memo, called by the theme manager on toggle), `PLAYER_ABBREVIATIONS` (single-letter → short-name expansion) and `PLAYER_ALIASES` (instrument-class-keyed) — both re-exported from the gitignored `src/aliases.js` (see "Alias privacy" above), `CALENDAR_CONFIG`.
 - **`src/catalog.js`** — `ALL_WORKS` and `HAYDN_PETERS` (loaded in parallel from `all_works.json` and `haydn_peters.json`), `COMPOSERS` set, `ALL_TAB` / `isAllTab` / `isMiscTab` helpers, `getPetersVolume(work)` for Haydn tooltip suffix, `generateQuartetRouletteUrl(d)` per-composer URL builder.
 - **`src/themeManager.js`** — three-state theme: `auto` (default, follows `prefers-color-scheme`) / `light` / `dark`. Persists to `localStorage.theme`, applies via `<html data-theme="…">` (no attribute for auto). API: `getTheme()`, `setTheme(t)`, `cycleTheme()`, `isCurrentlyDark()` (resolved boolean), `subscribe(fn)` (listener for changes; fires on user toggle AND on system theme flip when in auto). Initial application is split: a synchronous inline `<script>` in `index.html` / `_pandoc_template.html` sets `data-theme` before first paint to avoid FOUC; `initTheme()` re-applies and attaches the matchMedia watcher after the bundle loads.
 
@@ -179,6 +188,7 @@ Pandoc reads `gfm+attributes+implicit_figures` so `![alt](path){width=600px}` sy
 - `archive/data-raw.csv` — raw unprocessed sheet, refreshed via `scripts/fetch_raw.sh`. Personal data; gitignored.
 - `archive/*.zip` — pre-existing deploy snapshots; gitignored via `*.zip`.
 - `alias-output.txt` — output of `audit_aliases.py` if redirected; gitignored.
+- `src/aliases.js` — the REAL `PLAYER_ALIASES` / `PLAYER_ABBREVIATIONS` tables (real people's names). Personal; gitignored. Created from `src/aliases.stub.js` by `scripts/ensure_aliases.mjs` when absent; CI materializes it from the `PLAYER_ALIASES_JS` secret. See "Alias privacy (build-time injection)".
 - `.dev-data-url` — single-line Google Sheets CSV URL used by `build.sh` (dev mode only) to print a preconfigured `?data=…` URL. Personal; gitignored.
 - `last_deploy/` — build output; gitignored.
 - `md/*.html` — pandoc previously wrote here; now writes directly to `last_deploy/`. The `md/*.html` glob is still gitignored as a safety net, with `!md/_pandoc_template.html` exception.

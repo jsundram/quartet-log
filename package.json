@@ -6,6 +6,7 @@
         "node": ">=26"
     },
     "scripts": {
+        "pretest": "node scripts/ensure_aliases.mjs",
         "test": "TZ=America/New_York node --test test/*.mjs"
     },
     "config": {
