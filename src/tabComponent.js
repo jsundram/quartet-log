@@ -77,9 +77,15 @@ export function pickRandomWork(filteredPlays, now, begin, random) {
 export class TabComponent {
     constructor(tableComponent) {
         this.tableComponent = tableComponent;
+        // The active tab's source of truth; .active-tab classes reflect it.
+        this.activeTab = null;
     }
 
     createTabs() {
+        // Idempotent: a re-init rebuilds the tab strip + panes instead of
+        // appending duplicates.
+        d3.select("#tabs").html("");
+        d3.select("#tabContent").html("");
         const makeTab = (name) => {
             d3.select("#tabs").append("button")
                 .attr("data-composer", name)
@@ -95,6 +101,7 @@ export class TabComponent {
     }
 
     showTab(composer) {
+        this.activeTab = composer;
         // Hide all tabs and remove active class from all tab buttons
         d3.selectAll(".tab").classed("active-tab", false);
         d3.selectAll("#tabs button").classed("active-tab-button", false);

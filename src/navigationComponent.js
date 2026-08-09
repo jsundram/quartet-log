@@ -31,6 +31,9 @@ export class NavigationComponent {
         this.onViewChange = onViewChange;
         this.selectedPlayers = new Set();
         this.availablePlayers = [];
+        // The Part filter's source of truth. The .part-btn.active class is a
+        // REFLECTION of this field, not the state itself.
+        this.selectedPart = "ANY";
         this.dateFilter = new DateFilterWidget('#dateSlider', () => this.onFilterChange('date'));
 
         // Close dropdown when clicking outside
@@ -43,6 +46,11 @@ export class NavigationComponent {
     }
 
     createMenu() {
+        // Idempotent: d3 .on bindings replace themselves, but the document/
+        // window listeners below would stack on a re-init (error → re-enter
+        // URL) — wire them exactly once and keep teardown handles.
+        const rewireOnly = this._menuWired;
+
         const hamburgerMenu = d3.select(".hamburger-menu");
         const menuItems = d3.select(".menu-items");
         const menuRoot = document.getElementById("menu");
@@ -57,15 +65,20 @@ export class NavigationComponent {
             );
         });
 
-        // Native dismiss patterns: tap outside, or press Escape.
-        document.addEventListener("click", (e) => {
-            if (menuRoot && !menuRoot.contains(e.target)) {
-                menuItems.style("display", "none");
-            }
-        });
-        document.addEventListener("keydown", (e) => {
-            if (e.key === "Escape") menuItems.style("display", "none");
-        });
+        // Native dismiss patterns: tap outside, or press Escape. Once-only,
+        // with teardown handles kept on the instance.
+        if (!rewireOnly) {
+            this._onDocClick = (e) => {
+                if (menuRoot && !menuRoot.contains(e.target)) {
+                    menuItems.style("display", "none");
+                }
+            };
+            this._onDocKeydown = (e) => {
+                if (e.key === "Escape") menuItems.style("display", "none");
+            };
+            document.addEventListener("click", this._onDocClick);
+            document.addEventListener("keydown", this._onDocKeydown);
+        }
 
         // Render the theme label once so it reflects whatever the head-
         // script applied from localStorage on this page load.
@@ -130,7 +143,11 @@ export class NavigationComponent {
         });
 
         // Hash-routing: react to back/forward and direct URL edits.
-        window.addEventListener("hashchange", () => this.applyView(viewFromHash()));
+        if (!rewireOnly) {
+            this._onHashChange = () => this.applyView(viewFromHash());
+            window.addEventListener("hashchange", this._onHashChange);
+        }
+        this._menuWired = true;
     }
 
     // Toggle which view container is visible. Pure DOM + notification — does
@@ -152,6 +169,10 @@ export class NavigationComponent {
 
     createRadioButtons() {
         const parts = ["V1", "V2", "VA", "ANY"];
+        // Idempotent: a re-init rebuilds the group instead of stacking a
+        // second row of buttons. The current selection survives via
+        // this.selectedPart (state, not DOM, is the source of truth).
+        d3.select("#radioButtons .part-buttons").remove();
         // Prepend so Part sits to the left of the existing Player widget.
         const group = d3.select("#radioButtons")
             .insert("div", ":first-child")
@@ -162,7 +183,7 @@ export class NavigationComponent {
         parts.forEach(part => {
             group.append("button")
                 .attr("type", "button")
-                .attr("class", `part-btn${part === "ANY" ? " active" : ""}`)
+                .attr("class", `part-btn${part === this.selectedPart ? " active" : ""}`)
                 .attr("data-part", part)
                 .text(part)
                 .on("click", () => this.handlePartClick(part));
@@ -170,6 +191,8 @@ export class NavigationComponent {
     }
 
     handlePartClick(part) {
+        this.selectedPart = part;
+        // Reflect state into the DOM (never read back from it).
         d3.selectAll(".part-btn").classed("active", function () {
             return d3.select(this).attr("data-part") === part;
         });
@@ -185,8 +208,7 @@ export class NavigationComponent {
     }
 
     getSelectedPart() {
-        const active = d3.select(".part-btn.active").node();
-        return active ? active.getAttribute("data-part") : "ANY";
+        return this.selectedPart;
     }
 
     getSelectedPlayers() {
