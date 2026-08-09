@@ -1,0 +1,15 @@
+# Keeps the SHA-pinned GitHub Actions current: Dependabot understands
+# `uses: owner/action@<sha> # vX.Y.Z` pins, preserves the pin style, and
+# opens a PR (which test.yml then checks) whenever an action releases.
+# Without this, pinned actions never move — how the workflows ended up on
+# node20-era releases the runners now warn about.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      # One PR per week covering all action bumps, not one PR per action.
+      actions:
+        patterns: ["*"]
