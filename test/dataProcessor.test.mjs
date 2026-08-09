@@ -9,7 +9,6 @@ import {
     normalizePlayerNames,
     peopleKeysFor,
     computeAggregateStats,
-    longestConsecutiveRun,
     longestRunInfo,
     formatStreakStart,
     normalizeDashboardPart,
@@ -22,6 +21,10 @@ import {
     computePartBreakdownPerMusician,
     computePartBreakdownPerComposer,
     predominantPart,
+    prepareRows,
+    fillForward,
+    processRow,
+    parseWork,
 } from '../src/dataProcessor.js';
 
 // Hand-built rows for the network helpers. Reflects the real data model:
@@ -37,19 +40,29 @@ function row(p1, p2, p3, others = []) {
     };
 }
 
-// canonicalize tests depend on real entries in PLAYER_ALIASES (Jen, Isaac).
-// If those entries are removed, these tests should fail loudly — that's the
-// signal the alias map's behavior changed, not a test bug.
+// Placeholder alias fixture, injected into canonicalize/normalizePlayerNames
+// via their optional `aliases` parameter. Tests must NOT depend on the real
+// PLAYER_ALIASES: it lives in the gitignored src/aliases.js (real people's
+// names — this repo is public) and CI runs against the empty stub. Only
+// placeholder names (Alice/Bob/Carol style) belong in this file.
+const ALIASES = {
+    // Same short name, different person per instrument class.
+    'Jo': { upper: 'Jo Alpha', cello: 'Jo Beta' },
+    // Self-alias with only an "upper" mapping.
+    'Ned': { upper: 'Ned' },
+    // Short form of a multi-instrumentalist's full name.
+    'Hank': { upper: 'Hank Field' },
+};
 
 describe('stripParens', () => {
     it('drops a trailing parenthetical instrument annotation', () => {
-        assert.equal(stripParens('Lois Shapiro (piano)'), 'Lois Shapiro');
-        assert.equal(stripParens('Henry (piano)'), 'Henry');
+        assert.equal(stripParens('Alice Hart (piano)'), 'Alice Hart');
+        assert.equal(stripParens('Hank (piano)'), 'Hank');
     });
 
     it('leaves plain names alone', () => {
-        assert.equal(stripParens('Henry'), 'Henry');
-        assert.equal(stripParens('Mary Carfagna'), 'Mary Carfagna');
+        assert.equal(stripParens('Hank'), 'Hank');
+        assert.equal(stripParens('Alice Hart'), 'Alice Hart');
     });
 
     it('handles empty / falsy input without throwing', () => {
@@ -91,30 +104,36 @@ describe('classOf', () => {
 
 describe('canonicalize', () => {
     it('returns the canonical for a known (name, class) pair', () => {
-        assert.equal(canonicalize('Jen', 'upper'), 'Jen Hsiao');
-        assert.equal(canonicalize('Jen', 'cello'), 'Jen Minnich');
-        assert.equal(canonicalize('Isaac', 'upper'), 'Isaac');
+        assert.equal(canonicalize('Jo', 'upper', ALIASES), 'Jo Alpha');
+        assert.equal(canonicalize('Jo', 'cello', ALIASES), 'Jo Beta');
+        assert.equal(canonicalize('Ned', 'upper', ALIASES), 'Ned');
     });
 
     it('returns the input when the alias entry has no mapping for the given class', () => {
-        // Isaac has only an "upper" alias, not "cello"
-        assert.equal(canonicalize('Isaac', 'cello'), 'Isaac');
+        // Ned has only an "upper" alias, not "cello"
+        assert.equal(canonicalize('Ned', 'cello', ALIASES), 'Ned');
     });
 
     it('returns the input when name is not in the alias map', () => {
-        assert.equal(canonicalize('Marshall', 'upper'), 'Marshall');
-        assert.equal(canonicalize('Alice', 'cello'), 'Alice');
+        assert.equal(canonicalize('Marshall', 'upper', ALIASES), 'Marshall');
+        assert.equal(canonicalize('Alice', 'cello', ALIASES), 'Alice');
     });
 
     it('skips aliasing when class is null/undefined', () => {
-        assert.equal(canonicalize('Jen', null), 'Jen');
-        assert.equal(canonicalize('Jen', undefined), 'Jen');
+        assert.equal(canonicalize('Jo', null, ALIASES), 'Jo');
+        assert.equal(canonicalize('Jo', undefined, ALIASES), 'Jo');
     });
 
     it('passes empty/falsy names through unchanged', () => {
-        assert.equal(canonicalize('', 'upper'), '');
-        assert.equal(canonicalize(null, 'upper'), null);
-        assert.equal(canonicalize(undefined, 'upper'), undefined);
+        assert.equal(canonicalize('', 'upper', ALIASES), '');
+        assert.equal(canonicalize(null, 'upper', ALIASES), null);
+        assert.equal(canonicalize(undefined, 'upper', ALIASES), undefined);
+    });
+
+    it('defaults its aliases parameter (callable with two args)', () => {
+        // With no injected table this reads the resolved src/aliases.js —
+        // possibly the empty stub — so only passthrough is asserted.
+        assert.equal(canonicalize('Zelda', 'upper'), 'Zelda');
     });
 });
 
@@ -138,26 +157,26 @@ describe('parseOthers', () => {
     });
 
     it('splits on semicolons', () => {
-        assert.deepEqual(parseOthers('Louisa (vc2); josh (vc2)'), [
-            { name: 'Louisa', instrument: 'vc2' },
-            { name: 'josh', instrument: 'vc2' },
+        assert.deepEqual(parseOthers('Lena (vc2); bob (vc2)'), [
+            { name: 'Lena', instrument: 'vc2' },
+            { name: 'bob', instrument: 'vc2' },
         ]);
     });
 
     it('splits on commas as a fallback separator', () => {
         assert.deepEqual(
-            parseOthers('Alice (vla2), josh (vc2), Nathaniel Jarrett (asst v2)'),
+            parseOthers('Alice (vla2), bob (vc2), Nate Jones (asst v2)'),
             [
                 { name: 'Alice', instrument: 'vla2' },
-                { name: 'josh', instrument: 'vc2' },
-                { name: 'Nathaniel Jarrett', instrument: 'asst v2' },
+                { name: 'bob', instrument: 'vc2' },
+                { name: 'Nate Jones', instrument: 'asst v2' },
             ],
         );
     });
 
     it('trims whitespace around fragments', () => {
-        assert.deepEqual(parseOthers('  Jess Lin  '), [
-            { name: 'Jess Lin', instrument: null },
+        assert.deepEqual(parseOthers('  Alice Lee  '), [
+            { name: 'Alice Lee', instrument: null },
         ]);
     });
 
@@ -190,7 +209,7 @@ describe('parseOthers', () => {
     });
 
     it('only the first inner comma splits — later commas stay in the comment', () => {
-        // Real-world entry: "Isaac (v1, shadowing on II, III)" — second comma
+        // Real-world pattern: "Name (v1, shadowing on II, III)" — second comma
         // is inside the comment and must not split the instrument.
         assert.deepEqual(parseOthers('Carol (v1, shadowing on II, III)'), [
             { name: 'Carol', instrument: 'v1' },
@@ -219,41 +238,41 @@ describe('normalizePlayerNames', () => {
     });
 
     it('aliases player1/player2 as upper and player3 as cello', () => {
-        const data = [mkRow({ player1: 'Jen', player2: 'Isaac', player3: 'Jen' })];
-        normalizePlayerNames(data);
-        // Jen[upper] → Jen Hsiao; Isaac[upper] → Isaac; Jen[cello] → Jen Minnich
-        assert.equal(data[0].player1, 'Jen Hsiao');
-        assert.equal(data[0].player2, 'Isaac');
-        assert.equal(data[0].player3, 'Jen Minnich');
+        const data = [mkRow({ player1: 'Jo', player2: 'Ned', player3: 'Jo' })];
+        normalizePlayerNames(data, ALIASES);
+        // Jo[upper] → Jo Alpha; Ned[upper] → Ned; Jo[cello] → Jo Beta
+        assert.equal(data[0].player1, 'Jo Alpha');
+        assert.equal(data[0].player2, 'Ned');
+        assert.equal(data[0].player3, 'Jo Beta');
     });
 
     it('strips a trailing "(instrument)" from player slots before aliasing', () => {
-        const data = [mkRow({ player1: 'Lois Shapiro (piano)', player2: 'Jen (violin)' })];
-        normalizePlayerNames(data);
-        assert.equal(data[0].player1, 'Lois Shapiro');
-        // Jen with class "upper" (player2 slot) resolves via alias to Jen Hsiao
-        assert.equal(data[0].player2, 'Jen Hsiao');
+        const data = [mkRow({ player1: 'Alice Hart (piano)', player2: 'Jo (violin)' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.equal(data[0].player1, 'Alice Hart');
+        // Jo with class "upper" (player2 slot) resolves via alias to Jo Alpha
+        assert.equal(data[0].player2, 'Jo Alpha');
     });
 
     it('attaches a parsed, canonicalized othersList', () => {
-        const data = [mkRow({ others: 'Jen (vc2); Marshall (va2)' })];
-        normalizePlayerNames(data);
+        const data = [mkRow({ others: 'Jo (vc2); Marshall (va2)' })];
+        normalizePlayerNames(data, ALIASES);
         assert.deepEqual(data[0].othersList, [
-            { name: 'Jen Minnich', instrument: 'vc2', class: 'cello' },
+            { name: 'Jo Beta', instrument: 'vc2', class: 'cello' },
             { name: 'Marshall', instrument: 'va2', class: 'upper' },
         ]);
     });
 
     it('handles a row with empty slots and no Others?', () => {
         const data = [mkRow()];
-        normalizePlayerNames(data);
+        normalizePlayerNames(data, ALIASES);
         assert.equal(data[0].player1, '');
         assert.deepEqual(data[0].othersList, []);
     });
 
     it('returns the input array (for chaining)', () => {
         const data = [mkRow({ player1: 'Marshall' })];
-        const result = normalizePlayerNames(data);
+        const result = normalizePlayerNames(data, ALIASES);
         assert.equal(result, data);
     });
 });
@@ -261,12 +280,12 @@ describe('normalizePlayerNames', () => {
 describe('peopleKeysFor', () => {
     it('returns canonical names from player1/2/3', () => {
         const row = {
-            player1: 'Jen Hsiao',
+            player1: 'Jo Alpha',
             player2: 'Marshall',
-            player3: 'Jen Minnich',
+            player3: 'Jo Beta',
             othersList: [],
         };
-        assert.deepEqual(peopleKeysFor(row), ['Jen Hsiao', 'Marshall', 'Jen Minnich']);
+        assert.deepEqual(peopleKeysFor(row), ['Jo Alpha', 'Marshall', 'Jo Beta']);
     });
 
     it('skips empty and "-" sentinel player slots', () => {
@@ -281,15 +300,15 @@ describe('peopleKeysFor', () => {
 
     it('includes othersList entries by canonical name only', () => {
         const row = {
-            player1: 'Jen Hsiao',
+            player1: 'Jo Alpha',
             player2: '',
             player3: '',
             othersList: [
-                { name: 'Lois Shapiro', instrument: 'piano', class: 'upper' },
-                { name: 'Jen Minnich', instrument: 'vc2', class: 'cello' },
+                { name: 'Alice Hart', instrument: 'piano', class: 'upper' },
+                { name: 'Jo Beta', instrument: 'vc2', class: 'cello' },
             ],
         };
-        assert.deepEqual(peopleKeysFor(row), ['Jen Hsiao', 'Lois Shapiro', 'Jen Minnich']);
+        assert.deepEqual(peopleKeysFor(row), ['Jo Alpha', 'Alice Hart', 'Jo Beta']);
     });
 
     it('handles a row with no othersList field at all', () => {
@@ -297,32 +316,32 @@ describe('peopleKeysFor', () => {
         assert.deepEqual(peopleKeysFor(row), ['Marshall']);
     });
 
-    it('Jen Hsiao + Jen Minnich in the same row produce two distinct keys', () => {
-        // The whole point of instrument-aware aliasing: the two Jens count as two.
+    it('two same-short-name people in one row produce two distinct keys', () => {
+        // The whole point of instrument-aware aliasing: the two Jos count as two.
         const data = [
-            { player1: 'Jen', player2: 'Marshall', player3: 'Jen', others: '' },
+            { player1: 'Jo', player2: 'Marshall', player3: 'Jo', others: '' },
         ];
-        normalizePlayerNames(data);
+        normalizePlayerNames(data, ALIASES);
         const keys = peopleKeysFor(data[0]);
-        assert.ok(keys.includes('Jen Hsiao'));
-        assert.ok(keys.includes('Jen Minnich'));
+        assert.ok(keys.includes('Jo Alpha'));
+        assert.ok(keys.includes('Jo Beta'));
         assert.equal(new Set(keys).size, 3);
     });
 
-    it('Henry Weinberger on multiple instruments collapses to one key (within Set)', () => {
+    it('one person on multiple instruments collapses to one key (within Set)', () => {
         // Same person, different instruments — should NOT split.
-        // Henry[upper] aliases to Henry Weinberger; "Henry Weinberger" in Others?
+        // Hank[upper] aliases to Hank Field; "Hank Field" in Others?
         // stays canonical regardless of class.
         const data = [
-            { player1: 'Henry', player2: 'Marshall', player3: 'Stephanie',
-              others: 'Henry Weinberger (vc)' },
+            { player1: 'Hank', player2: 'Marshall', player3: 'Stephanie',
+              others: 'Hank Field (vc)' },
         ];
-        normalizePlayerNames(data);
+        normalizePlayerNames(data, ALIASES);
         const keys = peopleKeysFor(data[0]);
-        // Player1's "Henry" canonicalized to "Henry Weinberger"; Others' Henry Weinberger
-        // stays as "Henry Weinberger" (already canonical). Both contribute the same key.
-        const henryCount = keys.filter(k => k === 'Henry Weinberger').length;
-        assert.equal(henryCount, 2); // appears twice in the list...
+        // Player1's "Hank" canonicalized to "Hank Field"; Others' Hank Field
+        // stays as "Hank Field" (already canonical). Both contribute the same key.
+        const hankCount = keys.filter(k => k === 'Hank Field').length;
+        assert.equal(hankCount, 2); // appears twice in the list...
         assert.equal(new Set(keys).size, 3); // ...but de-dupes in a Set to one person
     });
 });
@@ -335,7 +354,7 @@ describe('computeAggregateStats', () => {
         player1: '', player2: '', player3: '',
         others: '',
         ...overrides,
-    }])[0];
+    }], ALIASES)[0];
 
     it('returns zeroed stats for an empty array', () => {
         assert.deepEqual(computeAggregateStats([]), {
@@ -362,10 +381,10 @@ describe('computeAggregateStats', () => {
 
     it('counts canonical people across player slots and othersList', () => {
         const rows = [
-            mkRow({ player1: 'Jen', player2: 'Isaac', player3: 'Jen',
+            mkRow({ player1: 'Jo', player2: 'Ned', player3: 'Jo',
                     others: 'Marshall (va2)' }),
         ];
-        // Jen[upper]→Jen Hsiao, Isaac[upper]→Isaac, Jen[cello]→Jen Minnich, Marshall(va2)→Marshall
+        // Jo[upper]→Jo Alpha, Ned[upper]→Ned, Jo[cello]→Jo Beta, Marshall(va2)→Marshall
         // = 4 distinct people
         assert.equal(computeAggregateStats(rows).uniquePeople, 4);
     });
@@ -448,17 +467,17 @@ describe('computeAggregateStats', () => {
     });
 });
 
-describe('longestConsecutiveRun', () => {
+describe('longestRunInfo().length (longest consecutive run)', () => {
     it('returns 0 for empty input', () => {
-        assert.equal(longestConsecutiveRun([]), 0);
+        assert.equal(longestRunInfo([]).length, 0);
     });
 
     it('finds the longest run and ignores order and duplicates', () => {
-        assert.equal(longestConsecutiveRun([5, 1, 2, 9, 3, 2, 10, 11]), 3); // 1,2,3
+        assert.equal(longestRunInfo([5, 1, 2, 9, 3, 2, 10, 11]).length, 3); // 1,2,3
     });
 
     it('treats a single day as a run of 1', () => {
-        assert.equal(longestConsecutiveRun([42]), 1);
+        assert.equal(longestRunInfo([42]).length, 1);
     });
 });
 
@@ -728,10 +747,10 @@ describe('disambiguateLabels', () => {
     });
 
     it('falls back to First L. on first-name collision', () => {
-        const nodes = [{ name: 'Jen Hsiao' }, { name: 'Jen Minnich' }];
+        const nodes = [{ name: 'Jo Alpha' }, { name: 'Jo Beta' }];
         const labels = disambiguateLabels(nodes);
-        assert.equal(labels.get('Jen Hsiao'), 'Jen H.');
-        assert.equal(labels.get('Jen Minnich'), 'Jen M.');
+        assert.equal(labels.get('Jo Alpha'), 'Jo A.');
+        assert.equal(labels.get('Jo Beta'), 'Jo B.');
     });
 
     it('falls back to full name when First L. still collides', () => {
@@ -917,5 +936,296 @@ describe('predominantPart', () => {
         assert.equal(predominantPart(null), null);
         assert.equal(predominantPart(undefined), null);
         assert.equal(predominantPart({ V1: 0, V2: 0, VA: 0, VC: 0, OTHER: 0 }), null);
+    });
+});
+
+// Raw sheet row in the shape d3.csv / parseCSV hands to processRow. Fixture
+// names are placeholders (Alice/Bob/Carol/...) — never real names from
+// PLAYER_ALIASES, which would canonicalize and break assertions.
+function rawRow(overrides = {}) {
+    return {
+        'Timestamp': '1/15/2024 10:00:00',
+        'Composer': 'Haydn',
+        'Work Title': '76#2',
+        'Which Part': 'V1',
+        'Player 1': 'Alice',
+        'Player 2': 'Bob',
+        'Player 3': 'Carol',
+        'Others?': '',
+        'Location': 'Home',
+        'Comments': '',
+        ...overrides,
+    };
+}
+
+describe('prepareRows', () => {
+    const at = iso => ({ timestamp: new Date(iso), id: iso });
+
+    it('sorts out-of-order rows by timestamp ascending', () => {
+        const rows = [at('2024-03-01'), at('2024-01-01'), at('2024-02-01')];
+        const { rows: sorted, dropped } = prepareRows(rows);
+        assert.deepEqual(sorted.map(r => r.id), ['2024-01-01', '2024-02-01', '2024-03-01']);
+        assert.equal(dropped, 0);
+    });
+
+    it('drops rows with invalid timestamps and reports the count', () => {
+        const bad = { timestamp: new Date('garbage'), id: 'bad' };
+        const missing = { timestamp: null, id: 'missing' };
+        const rows = [at('2024-02-01'), bad, at('2024-01-01'), missing];
+        const { rows: kept, dropped } = prepareRows(rows);
+        assert.deepEqual(kept.map(r => r.id), ['2024-01-01', '2024-02-01']);
+        assert.equal(dropped, 2);
+    });
+
+    it('handles empty input', () => {
+        assert.deepEqual(prepareRows([]), { rows: [], dropped: 0 });
+    });
+
+    it('does not mutate the input array', () => {
+        const rows = [at('2024-03-01'), at('2024-01-01')];
+        prepareRows(rows);
+        assert.deepEqual(rows.map(r => r.id), ['2024-03-01', '2024-01-01']);
+    });
+
+    it('keeps sheet order for rows sharing a timestamp (stable sort)', () => {
+        const rows = [
+            { timestamp: new Date('2024-01-01T10:00'), id: 'first' },
+            { timestamp: new Date('2024-01-01T10:00'), id: 'second' },
+        ];
+        assert.deepEqual(prepareRows(rows).rows.map(r => r.id), ['first', 'second']);
+    });
+});
+
+describe('empty and all-incomplete datasets', () => {
+    it('fillForward returns empty input unchanged without throwing', () => {
+        assert.deepEqual(fillForward([]), []);
+    });
+
+    it('the full pure pipeline yields [] for an all-partial-movement sheet', () => {
+        // Mirrors DataService.processData: prepareRows -> fillForward ->
+        // normalizePlayerNames -> drop incomplete works. Every row here is a
+        // partial movement (title contains ':'), so everything filters out.
+        const raw = [
+            rawRow({ 'Work Title': '76#2:I' }),
+            rawRow({ 'Timestamp': '1/15/2024 11:00:00', 'Work Title': '76#2:II,III' }),
+        ];
+        const { rows } = prepareRows(raw.map(processRow));
+        const processed = normalizePlayerNames(fillForward(rows));
+        assert.deepEqual(processed.filter(d => !d.work.incomplete), []);
+    });
+
+    it('the full pure pipeline yields [] when every timestamp is invalid', () => {
+        const raw = [rawRow({ 'Timestamp': 'not a date' })];
+        const { rows, dropped } = prepareRows(raw.map(processRow));
+        assert.equal(dropped, 1);
+        const processed = normalizePlayerNames(fillForward(rows));
+        assert.deepEqual(processed.filter(d => !d.work.incomplete), []);
+    });
+});
+
+describe('fillForward', () => {
+    // Processed-row fixtures (post-processRow shape). All four fill-forward
+    // columns default to "-" (no entry) so each test can exercise one column
+    // in isolation. Placeholder names only — see rawRow above.
+    const T0 = new Date('2024-01-15T10:00:00');
+    const ffRow = (hoursAfter, cols = {}) => ({
+        timestamp: new Date(T0.getTime() + hoursAfter * 3600 * 1000),
+        player1: '-', player2: '-', player3: '-', location: '-',
+        ...cols,
+    });
+
+    it('does not merge a mid-word prefix: "Chris" after "Christina" stays "Chris"', () => {
+        const data = [
+            ffRow(0, { player1: 'Christina' }),
+            ffRow(1, { player1: 'Chris' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, 'Chris');
+    });
+
+    it('expands a word-boundary prefix: "Chris" after "Chris Smith" in the same session', () => {
+        const data = [
+            ffRow(0, { player1: 'Chris Smith' }),
+            ffRow(1, { player1: 'Chris' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, 'Chris Smith');
+    });
+
+    it('treats the session window as a strict < 4h bound', () => {
+        const inWindow = [
+            ffRow(0, { player1: 'Chris Smith' }),
+            ffRow(3.99, { player1: 'Chris' }),
+        ];
+        fillForward(inWindow);
+        assert.equal(inWindow[1].player1, 'Chris Smith');
+
+        const outOfWindow = [
+            ffRow(0, { player1: 'Chris Smith' }),
+            ffRow(4, { player1: 'Chris' }),
+        ];
+        fillForward(outOfWindow);
+        assert.equal(outOfWindow[1].player1, 'Chris');
+    });
+
+    it('ditto-fills an empty cell inside the session window, chaining forward', () => {
+        const data = [
+            ffRow(0, { player1: 'Alice' }),
+            ffRow(1, { player1: '' }),
+            ffRow(2, { player1: '' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, 'Alice');
+        assert.equal(data[2].player1, 'Alice');
+    });
+
+    it('leaves an empty cell empty outside the session window', () => {
+        const data = [
+            ffRow(0, { player1: 'Alice' }),
+            ffRow(5, { player1: '' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, '');
+    });
+
+    it('an out-of-window empty cell resets the reference entry', () => {
+        // The 3rd row's "Bob" is not a prefix of the (now empty) reference,
+        // so it stands on its own instead of resurrecting "Alice".
+        const data = [
+            ffRow(0, { player1: 'Alice' }),
+            ffRow(5, { player1: '' }),
+            ffRow(5.5, { player1: 'Bob' }),
+        ];
+        fillForward(data);
+        assert.equal(data[2].player1, 'Bob');
+    });
+
+    it('leaves "-" cells untouched and refers past them to the last real entry', () => {
+        const data = [
+            ffRow(0, { player1: 'Chris Smith' }),
+            ffRow(1),  // player1: '-'
+            ffRow(2, { player1: 'Chris' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, '-');
+        assert.equal(data[2].player1, 'Chris Smith');
+    });
+
+    it('expands single-letter abbreviations regardless of the window', () => {
+        // Injected table (the real PLAYER_ABBREVIATIONS lives in the
+        // gitignored src/aliases.js; the checked-in stub is empty, so the
+        // suite must not depend on real entries). fillForward itself does
+        // no aliasing — the un-canonicalized short name is fine here.
+        const data = [
+            ffRow(0, { player1: 'Alice' }),
+            ffRow(10, { player1: 'I' }),
+        ];
+        fillForward(data, { I: 'Ike' });
+        assert.equal(data[1].player1, 'Ike');
+    });
+
+    it('treats a negative time delta (unsorted input) as not-same-session', () => {
+        // prepareRows makes this impossible in the real pipeline; pin the
+        // guard anyway so a negative delta can never slip under `hours < 4`.
+        const data = [
+            ffRow(2, { player1: 'Chris Smith' }),
+            ffRow(0, { player1: 'Chris' }),  // 2 hours BEFORE the row above
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, 'Chris');
+    });
+
+    it('fills the location column with the same rules', () => {
+        const data = [
+            ffRow(0, { location: 'Home' }),
+            ffRow(1, { location: '' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].location, 'Home');
+    });
+});
+
+describe('processRow', () => {
+    it('parses the sheet timestamp as a local Date', () => {
+        const d = processRow(rawRow({ 'Timestamp': '1/15/2024 10:30:00' }));
+        assert.equal(d.timestamp.getFullYear(), 2024);
+        assert.equal(d.timestamp.getMonth(), 0);
+        assert.equal(d.timestamp.getDate(), 15);
+        assert.equal(d.timestamp.getHours(), 10);
+        assert.equal(d.timestamp.getMinutes(), 30);
+    });
+
+    it('yields an Invalid Date (not a throw) for garbage timestamps — prepareRows drops those', () => {
+        const d = processRow(rawRow({ 'Timestamp': 'not a date' }));
+        assert.ok(Number.isNaN(d.timestamp.getTime()));
+    });
+
+    it('trims whitespace from text fields', () => {
+        const d = processRow(rawRow({
+            'Composer': ' Haydn ',
+            'Player 1': '  Alice ',
+            'Location': ' Home ',
+        }));
+        assert.equal(d.composer, 'Haydn');
+        assert.equal(d.player1, 'Alice');
+        assert.equal(d.location, 'Home');
+    });
+
+    it('normalizes part VA1 to VA and passes other parts through', () => {
+        assert.equal(processRow(rawRow({ 'Which Part': 'VA1' })).part, 'VA');
+        assert.equal(processRow(rawRow({ 'Which Part': 'V2' })).part, 'V2');
+        assert.equal(processRow(rawRow({ 'Which Part': 'VA' })).part, 'VA');
+    });
+
+    it('throws a clear error naming any missing/renamed columns', () => {
+        const noComposer = rawRow();
+        delete noComposer['Composer'];
+        assert.throws(() => processRow(noComposer), /missing expected column.*Composer/);
+
+        const renamed = rawRow();
+        delete renamed['Which Part'];
+        renamed['Part'] = 'V1';
+        assert.throws(() => processRow(renamed), /missing expected column.*Which Part/);
+    });
+});
+
+describe('parseWork', () => {
+    it('parses "catalog#number" titles', () => {
+        assert.deepEqual(parseWork('76#2'),
+            { title: '76#2', incomplete: false, catalog: 76, number: 2 });
+    });
+
+    it('parses a bare catalog number with no #', () => {
+        assert.deepEqual(parseWork('20'),
+            { title: '20', incomplete: false, catalog: 20, number: null });
+    });
+
+    it('flags partial movements (":" in the title) as incomplete', () => {
+        const w = parseWork('76#2:I');
+        assert.equal(w.incomplete, true);
+        assert.equal(w.catalog, 76);
+        assert.equal(w.number, 2);  // parseInt stops at the ":"
+        assert.equal(parseWork('76#2').incomplete, false);
+    });
+
+    it('falls back to stripping a leading letter for catalogs like K465 / D 810', () => {
+        assert.equal(parseWork('K465').catalog, 465);
+        assert.equal(parseWork('D 810').catalog, 810);
+        assert.equal(parseWork('K465').number, null);
+    });
+
+    it('yields NaN catalog for fully non-numeric titles', () => {
+        const w = parseWork('Quartet');
+        assert.ok(Number.isNaN(w.catalog));
+        assert.equal(w.number, null);
+        assert.equal(w.incomplete, false);
+    });
+
+    it('recovers the catalog via the strip-first-char fallback when it precedes #', () => {
+        // "#3": nothing before the "#", so the first parse is NaN and the
+        // substr(1) fallback reads the digits after it.
+        const w = parseWork('#3');
+        assert.equal(w.number, 3);
+        assert.equal(w.catalog, 3);
     });
 });

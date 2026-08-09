@@ -22,23 +22,29 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Mirror PLAYER_ABBREVIATIONS from src/config.js. (Tiny + stable; not worth
-# loading via Node like we do for PLAYER_ALIASES below.)
-ABBREVIATIONS = {"I": "Isaac", "E": "Elaine", "S": "Shay", "J": "Josh"}
 
-
-def load_player_aliases() -> dict[str, dict[str, str]]:
-    """Read PLAYER_ALIASES from src/config.js by asking Node to evaluate it.
+def load_alias_tables() -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+    """Read PLAYER_ALIASES + PLAYER_ABBREVIATIONS from src/aliases.js by
+    asking Node to evaluate it.
 
     Single source of truth: the JS module. Prevents drift between the
     runtime aliases and what this audit considers "already covered".
+    The real tables live in the gitignored src/aliases.js;
+    scripts/ensure_aliases.mjs is run first so a fresh clone gets the
+    empty stub instead of an import error — the audit warns below if the
+    tables it loaded are empty (i.e. you're auditing against the stub).
     """
     js = (
-        "import('./src/config.js')"
-        ".then(m => process.stdout.write(JSON.stringify(m.PLAYER_ALIASES)))"
+        "import('./src/aliases.js')"
+        ".then(m => process.stdout.write(JSON.stringify("
+        "{aliases: m.PLAYER_ALIASES, abbreviations: m.PLAYER_ABBREVIATIONS})))"
         ".catch(e => { console.error(e.message); process.exit(1); })"
     )
     try:
+        subprocess.run(
+            ["node", "scripts/ensure_aliases.mjs"],
+            capture_output=True, text=True, check=True, cwd=REPO_ROOT,
+        )
         result = subprocess.run(
             ["node", "-e", js],
             capture_output=True, text=True, check=True, cwd=REPO_ROOT,
@@ -47,13 +53,22 @@ def load_player_aliases() -> dict[str, dict[str, str]]:
         print("node is not on PATH — install Node.js to run the audit.", file=sys.stderr)
         sys.exit(1)
     except subprocess.CalledProcessError as e:
-        print(f"Failed to load PLAYER_ALIASES from src/config.js:\n{e.stderr}",
+        print(f"Failed to load alias tables from src/aliases.js:\n{e.stderr}",
               file=sys.stderr)
         sys.exit(1)
-    return json.loads(result.stdout)
+    tables = json.loads(result.stdout)
+    return tables["aliases"], tables["abbreviations"]
 
 
-EXISTING_ALIASES = load_player_aliases()
+EXISTING_ALIASES, ABBREVIATIONS = load_alias_tables()
+
+if not EXISTING_ALIASES and not ABBREVIATIONS:
+    print(
+        "Warning: src/aliases.js has empty tables (the stub copy?) — every\n"
+        "variant will look new and abbreviations won't expand. Put your real\n"
+        "tables in src/aliases.js (gitignored) before trusting this audit.",
+        file=sys.stderr,
+    )
 
 # Slot semantics from src/dataProcessor.js
 SLOT_CLASS = ["upper", "upper", "cello"]
@@ -132,7 +147,9 @@ def collect_appearances(rows: list[dict]) -> dict[tuple[str, str], list[list[str
             raw = (row.get(f"Player {i + 1}") or "").strip()
             if raw and raw != "-":
                 people.append((expand_abbrev(strip_parens(raw)), SLOT_CLASS[i]))
-        for name, instr in parse_others(row.get("Others?") or ""):
+        # The canonical header is "Others?" (see src/csvFormat.js), but
+        # exports written before the header fix used "Others" — accept both.
+        for name, instr in parse_others(row.get("Others?") or row.get("Others") or ""):
             cls = class_of(instr)
             if name and cls:
                 people.append((expand_abbrev(name), cls))
@@ -157,7 +174,7 @@ def jaccard(a: set, b: set) -> float:
 
 
 def base_token(name: str) -> str:
-    """Lowercased first whitespace-stripped token — groups 'Jen', 'Jen Hsiao', 'jen ' together."""
+    """Lowercased first whitespace-stripped token — groups 'Jo', 'Jo Alpha', 'jo ' together."""
     parts = name.strip().split()
     return parts[0].lower() if parts else name.lower()
 
@@ -271,7 +288,7 @@ def main() -> None:
         )
 
     # Final paste-ready PLAYER_ALIASES block
-    print("\n=== PLAYER_ALIASES proposal (paste-ready) ===\n")
+    print("\n=== PLAYER_ALIASES proposal (paste into src/aliases.js — gitignored; NEVER into a tracked file) ===\n")
     print("export const PLAYER_ALIASES = {")
     # Re-emit the seed first
     for k in sorted(EXISTING_ALIASES):

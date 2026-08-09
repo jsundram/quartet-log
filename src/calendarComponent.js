@@ -1,6 +1,41 @@
+import * as d3 from "d3";
 import { getBegin, CALENDAR_CONFIG, getCssColor } from './config.js';
 import { peopleKeysFor, computeAggregateStats, longestRunInfo, formatStreakStart } from './dataProcessor.js';
 import { isCurrentlyDark } from './themeManager.js';
+import { escapeHtml } from './escapeHtml.js';
+import { tooltip } from './tooltip.js';
+import { buildAggregateStatDefs } from './statDefs.js';
+
+// Body of a day tooltip (date heading, piece count, plays table). Pure and
+// exported for tests: every sheet-derived cell (composer, work title, part,
+// player names) is escaped.
+export function buildDayTooltipHtml(d, formatDate, sessionData) {
+    const pieces = d.value === 1 ? "piece" : "pieces";
+    let html = `<h4>${escapeHtml(formatDate(d.date))}</h4>`;
+    html += `<p>${d.value} ${pieces} played</p>`;
+
+    if (sessionData && sessionData.length > 0) {
+        html += `<table class="calendar-tooltip-table">`;
+        html += `<thead><tr><th>Composer</th><th>Work</th><th>Part</th><th>Players</th></tr></thead>`;
+        html += `<tbody>`;
+        sessionData.forEach(session => {
+            const composer = session.composer || '';
+            const work = session.work?.title || session.workTitle || '';
+            const part = session.part || '';
+            const players = [session.player1, session.player2, session.player3]
+                .filter(p => p)
+                .join(', ');
+            html += `<tr>`;
+            html += `<td>${escapeHtml(composer)}</td>`;
+            html += `<td>${escapeHtml(work)}</td>`;
+            html += `<td>${escapeHtml(part)}</td>`;
+            html += `<td>${escapeHtml(players)}</td>`;
+            html += `</tr>`;
+        });
+        html += `</tbody></table>`;
+    }
+    return html;
+}
 
 // Year math for the per-year stat tooltips. UTC-based to match the way the
 // calendar groups days (d.date.getUTCFullYear()), so "what year" / "what day
@@ -11,6 +46,32 @@ export function isLeapYear(year) {
 
 export function daysInYear(year) {
     return isLeapYear(year) ? 366 : 365;
+}
+
+// Per-week piece totals for one year's day-value array. 54 slots: a leap
+// year starting on Saturday spans 54 Sunday-weeks. Pure — exported for tests.
+export function calculateWeekTotals(values, timeWeek) {
+    const weekTotals = new Array(54).fill(0);
+    values.forEach(d => {
+        const weekNum = timeWeek.count(d3.utcYear(d.date), d.date);
+        if (weekNum < 54) {
+            weekTotals[weekNum] += d.value;
+        }
+    });
+    return weekTotals;
+}
+
+// Count of playing days per weekday (0=Sunday … 6=Saturday). Pure —
+// exported for tests.
+export function calculateDayOfWeekTotals(values) {
+    const dayTotals = new Array(7).fill(0);
+    values.forEach(d => {
+        if (d.value > 0) {
+            const dayOfWeek = d.date.getUTCDay();
+            dayTotals[dayOfWeek]++;
+        }
+    });
+    return dayTotals;
 }
 
 // 1-based day of year: Jan 1 → 1, Dec 31 → 365 (or 366 in leap years).
@@ -26,11 +87,6 @@ export class CalendarComponent {
         this.cellSize = CALENDAR_CONFIG.cellSize;
         this.height = CALENDAR_CONFIG.height;
 
-        // Create tooltip div
-        this.tooltipDiv = d3.select("body").append("div")
-            .attr("class", "tooltip")
-            .style("display", "none");
-
         // Lightbox / fullscreen mode (same pattern as MusicianNetworkComponent).
         // When on, #calendar fills the viewport via the .fullscreen CSS class
         // and the grid renders in the transposed vertical layout, sized so a
@@ -44,7 +100,7 @@ export class CalendarComponent {
     // with whatever color values the CSS now resolves to (the d3 SVG fills
     // and the canvas-rendered legend gradient are both baked at build time
     // so they need a fresh pass). Only removes nodes this component created
-    // (.calendar-gen) — the static <h1> and #daytooltip in index.html stay.
+    // (.calendar-gen) — the static <h1> in index.html stays.
     rerender() {
         if (!this.data) return;
         d3.select("#calendar").selectAll(":scope > .calendar-gen").remove();
@@ -263,7 +319,7 @@ export class CalendarComponent {
         year.append("g")
             .attr("text-anchor", "middle")
             .selectAll()
-            .data(([year, values]) => this.calculateDayOfWeekTotals(values))
+            .data(([, values]) => calculateDayOfWeekTotals(values))
             .join("text")
             .attr("x", this.cellSize * 53 + this.cellSize / 2)
             .attr("y", (d, i) => (countDay(i) + 0.5) * this.cellSize)
@@ -279,10 +335,10 @@ export class CalendarComponent {
             const statText = year.append("g")
                 .attr("text-anchor", "start")
                 .selectAll()
-                .data(([year, values]) => [year])
+                .data(([year]) => [year])
                 .join("text")
-                    .attr("x", d => this.cellSize*54 + 10)
-                    .attr("y", d => this.cellSize*(2 + i))
+                    .attr("x", () => this.cellSize*54 + 10)
+                    .attr("y", () => this.cellSize*(2 + i))
                     .attr("dy", ".31em")
                     .text(year => def.value(year));
             this.attachStatTooltip(statText, def.title, def.desc);
@@ -297,7 +353,7 @@ export class CalendarComponent {
         // Weekly totals at bottom of each column
         year.append("g")
             .selectAll()
-            .data(([, values]) => this.calculateWeekTotals(values, timeWeek))
+            .data(([, values]) => calculateWeekTotals(values, timeWeek))
             .join("text")
             .attr("x", (d, i) => i * this.cellSize + this.cellSize / 2)
             .attr("y", 7 * this.cellSize + 12)
@@ -455,7 +511,7 @@ export class CalendarComponent {
         year.append("g")
             .attr("text-anchor", "start")
             .selectAll()
-            .data(([, values]) => this.calculateWeekTotals(values, timeWeek))
+            .data(([, values]) => calculateWeekTotals(values, timeWeek))
             .join("text")
             .attr("x", 7 * cell + 4)
             .attr("y", (d, i) => (i + 0.5) * cell)
@@ -468,7 +524,7 @@ export class CalendarComponent {
         year.append("g")
             .attr("text-anchor", "middle")
             .selectAll()
-            .data(([, values]) => this.calculateDayOfWeekTotals(values))
+            .data(([, values]) => calculateDayOfWeekTotals(values))
             .join("text")
             .attr("x", (d, i) => (countDay(i) + 0.5) * cell)
             .attr("y", ROWS * cell + 12)
@@ -483,7 +539,7 @@ export class CalendarComponent {
             const statText = year.append("g")
                 .attr("text-anchor", "start")
                 .selectAll()
-                .data(([year, values]) => [year])
+                .data(([year]) => [year])
                 .join("text")
                     .attr("x", 0)
                     .attr("y", statY + i * statRowH);
@@ -550,30 +606,6 @@ export class CalendarComponent {
             : `M0,${(w + 1) * cell}H${d * cell}V${w * cell}`}H${7 * cell}`;
     }
 
-    calculateWeekTotals(values, timeWeek) {
-        // 54 slots: a leap year starting on Saturday spans 54 Sunday-weeks.
-        const weekTotals = new Array(54).fill(0);
-        values.forEach(d => {
-            const weekNum = timeWeek.count(d3.utcYear(d.date), d.date);
-            if (weekNum < 54) {
-                weekTotals[weekNum] += d.value;
-            }
-        });
-        return weekTotals;
-    }
-
-    calculateDayOfWeekTotals(values) {
-        // Count days with sessions for each day of week (0=Sunday, 6=Saturday)
-        const dayTotals = new Array(7).fill(0);
-        values.forEach(d => {
-            if (d.value > 0) {
-                const dayOfWeek = d.date.getUTCDay();
-                dayTotals[dayOfWeek]++;
-            }
-        });
-        return dayTotals;
-    }
-
     renderCalendarCells(year, timeWeek, countDay, color, formatDate, sessions, { cellSize = this.cellSize, vertical = false } = {}) {
         const week = d => timeWeek.count(d3.utcYear(d.date), d.date);
         const dow = d => countDay(d.date.getUTCDay());
@@ -586,10 +618,10 @@ export class CalendarComponent {
             .attr("x", d => (vertical ? dow(d) : week(d)) * cellSize + 0.5)
             .attr("y", d => (vertical ? week(d) : dow(d)) * cellSize + 0.5)
             .attr("fill", d => d.value == 0 ? getCssColor('--color-bg-empty-cell') : color(d.value))
-            .style("cursor", "pointer")
-            .on("mouseenter", (event, d) => this.showTooltip(event, d, formatDate, sessions))
-            .on("mouseleave", () => this.hideTooltip())
-            .on("click", (event, d) => this.showTooltip(event, d, formatDate, sessions));
+            .call(sel => tooltip.attach(sel, (event, d) => {
+                if (d.value === 0) return null; // no tooltip for empty days
+                return buildDayTooltipHtml(d, formatDate, sessions.get(d.date.getTime()));
+            }));
     }
 
     renderMonthLabels(year, timeWeek, formatMonth) {
@@ -727,81 +759,8 @@ export class CalendarComponent {
         return canvas;
     }
 
-    showTooltip(event, d, formatDate, sessions) {
-        if (d.value === 0) return; // Don't show tooltip for days with no activity
-
-        const pieces = d.value === 1 ? "piece" : "pieces";
-        let html = `<span class="tooltip-close">&times;</span>`;
-        html += `<h4>${formatDate(d.date)}</h4>`;
-        html += `<p>${d.value} ${pieces} played</p>`;
-
-        // Get session data for this date
-        const sessionData = sessions.get(d.date.getTime());
-        if (sessionData && sessionData.length > 0) {
-            html += `<table class="calendar-tooltip-table">`;
-            html += `<thead><tr><th>Composer</th><th>Work</th><th>Part</th><th>Players</th></tr></thead>`;
-            html += `<tbody>`;
-            sessionData.forEach(session => {
-                const composer = session.composer || '';
-                const work = session.work?.title || session.workTitle || '';
-                const part = session.part || '';
-                const players = [session.player1, session.player2, session.player3]
-                    .filter(p => p)
-                    .join(', ');
-                html += `<tr>`;
-                html += `<td>${composer}</td>`;
-                html += `<td>${work}</td>`;
-                html += `<td>${part}</td>`;
-                html += `<td>${players}</td>`;
-                html += `</tr>`;
-            });
-            html += `</tbody></table>`;
-        }
-
-        this.tooltipDiv
-            .html(html)
-            .style("display", "block")
-            // Clear the stat tooltip's inline 320px cap; the CSS viewport
-            // clamp governs day tooltips (widest in the app — full plays table).
-            .style("max-width", null);
-
-        // Add click handler to close button
-        this.tooltipDiv.select(".tooltip-close")
-            .on("click", () => this.hideTooltip());
-
-        this.positionTooltip(event);
-    }
-
-    positionTooltip(event) {
-        const tooltip = this.tooltipDiv.node();
-        const tRect = tooltip.getBoundingClientRect();
-        const margin = 10;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        // Work in viewport (client) coordinates so the clamping is correct
-        // even when the page is scrolled or the fullscreen overlay is up,
-        // then convert back to page coordinates for the absolute placement.
-        let left = event.clientX + margin;
-        let top = event.clientY + margin;
-        if (left + tRect.width > vw) {
-            left = event.clientX - tRect.width - margin;
-        }
-        if (top + tRect.height > vh) {
-            top = event.clientY - tRect.height - margin;
-        }
-        // Final clamp: never off-screen (CSS max-width/max-height keep the
-        // tooltip itself smaller than the viewport).
-        left = Math.max(margin, Math.min(left, vw - tRect.width - margin));
-        top = Math.max(margin, Math.min(top, vh - tRect.height - margin));
-
-        this.tooltipDiv
-            .style("left", (left + window.scrollX) + "px")
-            .style("top", (top + window.scrollY) + "px");
-    }
-
     hideTooltip() {
-        this.tooltipDiv.style("display", "none");
+        tooltip.hide();
     }
 
     renderRecentStats(parent, data, days) {
@@ -809,51 +768,13 @@ export class CalendarComponent {
         const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
         const recent = data.filter(d => d.timestamp >= cutoff && d.timestamp <= now);
         const agg = computeAggregateStats(recent);
-        const streakStart = formatStreakStart(agg.maxStreakInfo);
-
         // Full labels on desktop, dashboard-style short labels on mobile (the
         // two are toggled by a CSS media query, mirroring the dashboard tiles)
         // so five metrics stay clear where there's room and stay compact on a
         // phone, where the row wraps (.recent-stats-row is flex-wrap: wrap).
-        // The tap/hover tooltip spells out the full name either way.
-        const stats = [
-            {
-                label: 'Pieces',
-                short: 'Pieces',
-                value: agg.pieces,
-                title: `Pieces in the last ${days} days`,
-                desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
-            },
-            {
-                label: 'Unique pieces',
-                short: 'Unique',
-                value: agg.uniquePieces,
-                title: `Unique pieces in the last ${days} days`,
-                desc: "Distinct works (composer + title). Repeats of the same piece collapse to one.",
-            },
-            {
-                label: 'Unique people',
-                short: 'People',
-                value: agg.uniquePeople,
-                title: `People played with in the last ${days} days`,
-                desc: "Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.",
-            },
-            {
-                label: 'Days played',
-                short: 'Days',
-                value: agg.daysPlayed,
-                title: `Playing days in the last ${days} days`,
-                desc: 'Distinct days with at least one whole piece logged.',
-            },
-            {
-                label: 'Max streak',
-                short: 'Streak',
-                value: agg.maxStreak,
-                title: `Longest streak in the last ${days} days`,
-                desc: 'Longest run of consecutive days with at least one whole piece logged, within this window.'
-                    + (streakStart ? `<br><br>Started: ${streakStart}` : ''),
-            },
-        ];
+        // The tap/hover tooltip spells out the full name either way. Defs are
+        // single-sourced with the ALL tab and dashboard KPI tiles.
+        const stats = buildAggregateStatDefs(agg, `in the last ${days} days`);
 
         const container = parent.append('div').attr('class', 'recent-stats');
         container.append('h4').text(`Last ${days} days`);
@@ -869,27 +790,9 @@ export class CalendarComponent {
     }
 
     attachStatTooltip(selection, getTitle, getDescription) {
-        const show = (event, year) => this.showStatTooltip(event, getTitle(year), getDescription(year));
-        selection
-            .style("cursor", "pointer")
-            .on("mouseenter", show)
-            .on("mouseleave", () => this.hideTooltip())
-            .on("click", show);
-    }
-
-    showStatTooltip(event, title, description) {
-        let html = `<span class="tooltip-close">&times;</span>`;
-        html += `<h4>${title}</h4>`;
-        html += `<p>${description}</p>`;
-
-        this.tooltipDiv
-            .html(html)
-            .style("display", "block")
-            .style("max-width", "320px");
-
-        this.tooltipDiv.select(".tooltip-close")
-            .on("click", () => this.hideTooltip());
-
-        this.positionTooltip(event);
+        // Stat titles/descriptions are app-authored constants (no sheet data).
+        tooltip.attach(selection,
+            (event, year) => `<h4>${getTitle(year)}</h4><p>${getDescription(year)}</p>`,
+            { maxWidth: '320px' });
     }
 }

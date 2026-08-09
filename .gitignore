@@ -10,3 +10,10 @@ md/*.html
 archive/*.csv
 alias-output.txt
 .dev-data-url
+node_modules/
+# Real player-name tables (personal data). The glob also catches editor/
+# Dropbox duplicates like "aliases (1).js" so they can't get committed.
+src/aliases*.js
+!src/aliases.stub.js
+test-results/
+playwright-report/

@@ -1,23 +1,79 @@
+// @ts-check
 import { PLAYER_ABBREVIATIONS, PLAYER_ALIASES } from './config.js';
+
+/**
+ * Parsed "Work Title" cell (parseWork output).
+ * @typedef {Object} Work
+ * @property {string} title - the raw sheet title, e.g. "76#2" or "17#2:I"
+ * @property {number} catalog - opus/K./D. number; NaN when unparseable
+ * @property {number|null} number - number within the opus ("#N"), or null
+ * @property {boolean} incomplete - title contains ":" (partial movements)
+ */
+
+/**
+ * Parsed "Others?" entry (parseOthers output; `class` added at
+ * normalizePlayerNames time).
+ * @typedef {Object} OtherPlayer
+ * @property {string} name
+ * @property {string|null} instrument - the code inside "(...)", or null
+ * @property {'upper'|'cello'|null} [class] - classOf(instrument)
+ */
+
+/**
+ * One processed play row — the canonical shape flowing through the whole
+ * app (processRow output, enriched by fillForward / normalizePlayerNames).
+ * The nullable fields are null only on the placeholder rows createEmptyRow
+ * makes for never-played catalog works; sheet-derived rows always carry
+ * strings and a real Date.
+ * @typedef {Object} Row
+ * @property {Date|null} timestamp
+ * @property {string} composer
+ * @property {Work} work
+ * @property {string|null} part - "V1" | "V2" | "VA" | rarer values ("VA2", ...)
+ * @property {string|null} player1 - upper slot (see SLOT_CLASS)
+ * @property {string|null} player2 - upper slot
+ * @property {string|null} player3 - cello slot
+ * @property {string|null} others - raw "Others?" cell (kept for CSV export)
+ * @property {string|null} location
+ * @property {string} comments
+ * @property {OtherPlayer[]} [othersList] - attached by normalizePlayerNames
+ */
 
 // Slot semantics from extractUniquePlayers below:
 //   player1, player2 → upper (V1/V2/VA, depending on user's part)
 //   player3          → cello (always)
-const SLOT_CLASS = ['upper', 'upper', 'cello'];
+const SLOT_CLASS = /** @type {const} */ (['upper', 'upper', 'cello']);
 
+/**
+ * @param {string|null|undefined} instrumentStr
+ * @returns {'upper'|'cello'|null}
+ */
 export function classOf(instrumentStr) {
     if (!instrumentStr) return null;
     return instrumentStr.toLowerCase().trim().startsWith('vc') ? 'cello' : 'upper';
 }
 
-export function canonicalize(name, cls) {
+// `aliases` defaults to the deployment's real table (gitignored
+// src/aliases.js via config.js); tests inject placeholder fixtures so they
+// don't depend on its contents.
+/**
+ * @param {string|null} name
+ * @param {'upper'|'cello'|null} cls
+ * @param {Record<string, import('./aliases.stub.js').AliasEntry>} [aliases]
+ * @returns {string|null}
+ */
+export function canonicalize(name, cls, aliases = PLAYER_ALIASES) {
     if (!name) return name;
-    return (cls && PLAYER_ALIASES[name]?.[cls]) ?? name;
+    return (cls && aliases[name]?.[cls]) ?? name;
 }
 
 // Strip a trailing "(instrument)" annotation from a name. Used for player
 // slots where the user occasionally annotates non-string players inline
-// (e.g. "Lois Shapiro (piano)" in Player 1). The instrument info is dropped.
+// (e.g. "Alice Hart (piano)" in Player 1). The instrument info is dropped.
+/**
+ * @param {string|null} name
+ * @returns {string|null}
+ */
 export function stripParens(name) {
     if (!name) return name;
     const m = name.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
@@ -26,7 +82,9 @@ export function stripParens(name) {
 
 // Split `s` on `,` or `;` at paren depth 0 only — so commas inside a
 // "(instrument, comment)" annotation don't tear an entry in half.
+/** @param {string} s */
 function splitOutsideParens(s) {
+    /** @type {string[]} */
     const parts = [];
     let depth = 0;
     let start = 0;
@@ -49,6 +107,10 @@ function splitOutsideParens(s) {
 // from a free-form comment ("v2, on III", "vc, doubling", "v1, shadowing on
 // II, III"); only the instrument piece is kept on the parsed entry, and
 // further commas inside the comment are tolerated.
+/**
+ * @param {string|null|undefined} others
+ * @returns {OtherPlayer[]}
+ */
 export function parseOthers(others) {
     if (!others) return [];
     return splitOutsideParens(others)
@@ -64,25 +126,37 @@ export function parseOthers(others) {
         });
 }
 
-export function normalizePlayerNames(data) {
+/**
+ * @param {Row[]} data
+ * @param {Record<string, import('./aliases.stub.js').AliasEntry>} [aliases]
+ * @returns {Row[]}
+ */
+export function normalizePlayerNames(data, aliases = PLAYER_ALIASES) {
     data.forEach(d => {
-        d.player1 = canonicalize(stripParens(d.player1), SLOT_CLASS[0]);
-        d.player2 = canonicalize(stripParens(d.player2), SLOT_CLASS[1]);
-        d.player3 = canonicalize(stripParens(d.player3), SLOT_CLASS[2]);
+        d.player1 = canonicalize(stripParens(d.player1), SLOT_CLASS[0], aliases);
+        d.player2 = canonicalize(stripParens(d.player2), SLOT_CLASS[1], aliases);
+        d.player3 = canonicalize(stripParens(d.player3), SLOT_CLASS[2], aliases);
         d.othersList = parseOthers(d.others).map(o => {
             const cls = classOf(o.instrument);
-            return { name: canonicalize(o.name, cls), instrument: o.instrument, class: cls };
+            // o.name is a non-empty string, so canonicalize returns a string
+            // (the alias hit or the name itself), never null.
+            const name = /** @type {string} */ (canonicalize(o.name, cls, aliases));
+            return { name, instrument: o.instrument, class: cls };
         });
     });
     return data;
 }
 
 // Canonical-name keys for "unique people" counting. Disambiguation between
-// same-bare-name-different-instrument people (e.g. Jen Hsiao vs Jen Minnich)
-// is handled by PLAYER_ALIASES at canonicalization time — bare "Jen" becomes
-// "Jen Hsiao" in upper slots and "Jen Minnich" in cello slots, which are
+// same-bare-name-different-instrument people (e.g. "Jo Alpha" vs "Jo Beta")
+// is handled by PLAYER_ALIASES at canonicalization time — bare "Jo" becomes
+// "Jo Alpha" in upper slots and "Jo Beta" in cello slots, which are
 // already distinct names. One person playing multiple instruments (e.g.
-// Henry Weinberger on piano + cello) collapses correctly to a single name.
+// "Hank Field" on piano + cello) collapses correctly to a single name.
+/**
+ * @param {Row} d
+ * @returns {string[]}
+ */
 export function peopleKeysFor(d) {
     const keys = [];
     [d.player1, d.player2, d.player3].forEach(p => {
@@ -97,6 +171,10 @@ export function peopleKeysFor(d) {
 // to "VA"; anything else is excluded (returns null). Kept local to the
 // dashboard so it doesn't perturb the global part filter / processRow
 // semantics elsewhere.
+/**
+ * @param {string|null} part
+ * @returns {'V1'|'V2'|'VA'|null}
+ */
 export function normalizeDashboardPart(part) {
     if (!part) return null;
     if (part === 'V1' || part === 'V2') return part;
@@ -111,24 +189,27 @@ export function normalizeDashboardPart(part) {
 // Lets computeAggregateStats measure both distinct playing days and the
 // longest consecutive run. Avoids pulling d3 in here so the function stays
 // unit-testable under node:test.
+/** @param {Date} ts */
 function dayOrdinal(ts) {
     return Math.floor(Date.UTC(ts.getFullYear(), ts.getMonth(), ts.getDate()) / 86400000);
 }
 
 // Longest run of consecutive day ordinals in `days` (a Set or array of
-// integer day numbers, as produced by dayOrdinal). Returns 0 for empty input.
-export function longestConsecutiveRun(days) {
-    return longestRunInfo(days).length;
-}
-
-// Like longestConsecutiveRun, but also reports how many distinct runs tie
+// integer day numbers, as produced by dayOrdinal), plus how many distinct runs tie
 // for the longest and where the most recent of them begins. Returns
 // { length, count, start } with `start` in the same units as the input
 // (null for empty input). Feeds the streak tooltips.
+/**
+ * @param {Iterable<number>} days
+ * @returns {{ length: number, count: number, start: number|null }}
+ */
 export function longestRunInfo(days) {
     const sorted = Array.from(new Set(days)).sort((a, b) => a - b);
-    let best = 0, count = 0, bestStart = null;
-    let run = 0, runStart = null, prev = null;
+    let best = 0, count = 0;
+    /** @type {number|null} */ let bestStart = null;
+    let run = 0;
+    /** @type {number|null} */ let runStart = null;
+    /** @type {number|null} */ let prev = null;
     for (const d of sorted) {
         if (prev !== null && d === prev + 1) {
             run += 1;
@@ -154,6 +235,10 @@ export function longestRunInfo(days) {
 // of equal-length streaks appended when there's a tie — e.g. "7/10/2026 (3)".
 // Empty string when there's no streak. `start` must be a Date whose UTC
 // fields hold the local calendar day (the maxStreakInfo convention below).
+/**
+ * @param {{ count: number, start: Date|null }} info
+ * @returns {string}
+ */
 export function formatStreakStart({ count, start }) {
     if (!start) return '';
     const date = `${start.getUTCMonth() + 1}/${start.getUTCDate()}/${start.getUTCFullYear()}`;
@@ -164,6 +249,12 @@ export function formatStreakStart({ count, start }) {
 // header ("Last 365 days"), the dashboard KPI tiles, and the ALL tab. The
 // streak is scoped to whatever slice is passed in — a run is only counted
 // within the window/filter these rows represent.
+/**
+ * @param {Row[]} rows
+ * @returns {{ pieces: number, uniquePieces: number, uniquePeople: number,
+ *             daysPlayed: number, maxStreak: number,
+ *             maxStreakInfo: { count: number, start: Date|null } }}
+ */
 export function computeAggregateStats(rows) {
     const works = new Set();
     const people = new Set();
@@ -198,6 +289,10 @@ export function computeAggregateStats(rows) {
 
 // Count pieces per musician. Each musician counts once per row even
 // if they appear twice (e.g. duplicate othersList entry).
+/**
+ * @param {Row[]} rows
+ * @returns {{ name: string, count: number }[]}
+ */
 export function computeNodeCounts(rows) {
     const counts = new Map();
     rows.forEach(d => {
@@ -210,6 +305,11 @@ export function computeNodeCounts(rows) {
 
 // For every unordered pair (a < b lexicographically) of musicians in the
 // same piece where both endpoints are in allowedSet, count co-occurrences.
+/**
+ * @param {Row[]} rows
+ * @param {Set<string>} allowedSet
+ * @returns {{ source: string, target: string, weight: number }[]}
+ */
 export function computeEdgeCounts(rows, allowedSet) {
     const counts = new Map();
     rows.forEach(d => {
@@ -233,6 +333,10 @@ export function computeEdgeCounts(rows, allowedSet) {
 // edges are co-occurrences between those nodes. `minCount` is the user-facing
 // threshold from the dashboard slider; a value of 1 includes every musician
 // who appeared at all.
+/**
+ * @param {Row[]} rows
+ * @param {number} [minCount]
+ */
 export function buildNetworkData(rows, minCount = 1) {
     const allNodes = computeNodeCounts(rows);
     const nodes = allNodes.filter(n => n.count >= minCount);
@@ -246,6 +350,11 @@ export function buildNetworkData(rows, minCount = 1) {
 // density the layout can handle. Returns 1 (= include everyone) when there
 // are fewer musicians than the cap. When there are ties at the cap boundary,
 // bumps the threshold by one so we stay at or under the cap.
+/**
+ * @param {Row[]} rows
+ * @param {number} [maxNodes]
+ * @returns {number}
+ */
 export function defaultMinPiecesForGraph(rows, maxNodes = 50) {
     const counts = computeNodeCounts(rows).map(n => n.count);
     if (counts.length <= maxNodes) return 1;
@@ -271,6 +380,10 @@ const SLOT_TO_PART = {
 // bucket. Handles common shapes: v1, V1, v2, va, va2, vla, vc, vc2, plus
 // "asst v2" assistant notation. Anything unrecognized — piano, harpsichord,
 // blanks — bucketed as OTHER.
+/**
+ * @param {string|null|undefined} instrument
+ * @returns {'V1'|'V2'|'VA'|'VC'|'OTHER'}
+ */
 export function partFromInstrument(instrument) {
     if (!instrument) return 'OTHER';
     const s = instrument.toLowerCase().trim().replace(/^as?st\s+/, '');
@@ -284,12 +397,19 @@ export function partFromInstrument(instrument) {
 // Argmax over a part-breakdown vector: which instrument did this musician
 // play most? Ties broken by V1 → V2 → VA → VC → OTHER (the iteration order).
 // Used by the chord view to group musicians into instrument blocks.
-const PRED_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
+// Canonical part display/stacking order, shared by the dashboard's stacked
+// bars, the network views' grouping, and predominantPart's tie-breaking.
+export const PART_ORDER = /** @type {const} */ (['V1', 'V2', 'VA', 'VC', 'OTHER']);
+/**
+ * @param {Partial<Record<'V1'|'V2'|'VA'|'VC'|'OTHER', number>>|null|undefined} parts
+ * @returns {'V1'|'V2'|'VA'|'VC'|'OTHER'|null}
+ */
 export function predominantPart(parts) {
     if (!parts) return null;
+    /** @type {'V1'|'V2'|'VA'|'VC'|'OTHER'|null} */
     let best = null;
     let bestCount = -1;
-    for (const part of PRED_ORDER) {
+    for (const part of PART_ORDER) {
         const c = parts[part] ?? 0;
         if (c > bestCount) {
             best = part;
@@ -303,8 +423,17 @@ export function predominantPart(parts) {
 // player1/2/3 slots are mapped via SLOT_TO_PART; othersList entries use the
 // parsed instrument string. The returned breakdown vectors sum to the
 // musician's total appearance count (including any OTHER, like piano).
+/**
+ * @param {Row[]} rows
+ * @returns {Map<string, Record<'V1'|'V2'|'VA'|'VC'|'OTHER', number>>}
+ */
 export function computePartBreakdownPerMusician(rows) {
+    /** @type {Map<string, Record<'V1'|'V2'|'VA'|'VC'|'OTHER', number>>} */
     const result = new Map();
+    /**
+     * @param {string} name
+     * @param {'V1'|'V2'|'VA'|'VC'|'OTHER'} part
+     */
     const bump = (name, part) => {
         let parts = result.get(name);
         if (!parts) {
@@ -331,7 +460,12 @@ export function computePartBreakdownPerMusician(rows) {
 // (V1/V2/VA via normalizeDashboardPart; anything else buckets to OTHER).
 // The returned breakdown vectors sum to the composer's total piece count,
 // so the dashboard's Top Composers bar can stack by the user's own part.
+/**
+ * @param {Row[]} rows
+ * @returns {Map<string, Record<'V1'|'V2'|'VA'|'OTHER', number>>}
+ */
 export function computePartBreakdownPerComposer(rows) {
+    /** @type {Map<string, Record<'V1'|'V2'|'VA'|'OTHER', number>>} */
     const result = new Map();
     rows.forEach(d => {
         let parts = result.get(d.composer);
@@ -349,13 +483,19 @@ export function computePartBreakdownPerComposer(rows) {
 // the first token is unique, that's the label; if two share, fall back to
 // "First L." (first-token + last-name's initial); if those still collide,
 // fall back to the full canonical name.
+/**
+ * @param {{ name: string }[]} nodes
+ * @returns {Map<string, string>} canonical name → display label
+ */
 export function disambiguateLabels(nodes) {
+    /** @type {Map<string, string>} */
     const labels = new Map();
+    /** @type {Map<string, string[]>} */
     const byFirst = new Map();
     nodes.forEach(n => {
         const first = n.name.split(/\s+/)[0];
         if (!byFirst.has(first)) byFirst.set(first, []);
-        byFirst.get(first).push(n.name);
+        byFirst.get(first)?.push(n.name);
     });
     byFirst.forEach((names, first) => {
         if (names.length === 1) {
@@ -381,13 +521,18 @@ export function disambiguateLabels(nodes) {
     return labels;
 }
 
+/**
+ * @param {string} title
+ * @returns {Work}
+ */
 export function parseWork(title) {
     // Incompletely played works are usually noted like e.g. 17#2:I.
     let incomplete = title.indexOf(":") != -1;
 
     const pound = title.indexOf('#');
     const number = pound == -1 ? null : parseInt(title.substr(pound + 1));
-    let catalog = null;
+    /** @type {number} */
+    let catalog;
 
     if (number === null)
         catalog = parseInt(title);
@@ -406,22 +551,117 @@ export function parseWork(title) {
     };
 }
 
+// Prepare freshly-parsed rows for the processing pipeline: drop rows whose
+// Timestamp failed to parse (an Invalid Date's value is NaN, which passes
+// truthiness checks and silently corrupts fillForward's session-window math
+// and the streak calculations) and sort the survivors by timestamp
+// ascending. Nothing upstream guarantees sheet order — one backdated row at
+// the top of the sheet would otherwise mis-anchor BEGIN (`data[0]`) and
+// produce negative time deltas in fillForward. Sort is stable, so rows
+// sharing a timestamp keep their sheet order. Does not mutate the input
+// array. Returns { rows, dropped } where `dropped` counts the removed
+// invalid-timestamp rows (callers may want to log it).
+/**
+ * @param {Row[]} rows
+ * @returns {{ rows: Row[], dropped: number }}
+ */
+export function prepareRows(rows) {
+    const kept = rows.filter(
+        /** @type {(r: Row) => r is Row & { timestamp: Date }} */
+        (r => r.timestamp instanceof Date && !Number.isNaN(r.timestamp.getTime())));
+    kept.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    return { rows: kept, dropped: rows.length - kept.length };
+}
+
+// Sheet columns processRow reads. Checked up front so a renamed/missing
+// column in the sheet fails with a clear error naming the column, instead of
+// a bare TypeError (or worse, silent undefineds for the unguarded reads).
+// The Others column is handled separately: the live sheet's header is
+// "Others?", but exports written before the header fix (csvFormat.js) used
+// "Others" — accept either spelling so old exports still re-ingest.
+const REQUIRED_COLUMNS = [
+    'Timestamp', 'Composer', 'Work Title', 'Which Part',
+    'Player 1', 'Player 2', 'Player 3', 'Location', 'Comments',
+];
+
+/**
+ * @param {Record<string, string|undefined>} d - one raw CSV row (header → cell)
+ * @returns {Row}
+ */
 export function processRow(d) {
+    const missing = REQUIRED_COLUMNS.filter(c => d[c] === undefined);
+    const others = d["Others?"] ?? d["Others"];
+    if (others === undefined) missing.push('Others?');
+    if (missing.length) {
+        throw new Error(`Row is missing expected column(s): ${missing.join(', ')}`);
+    }
+    // The guard above proved every column read below is present; narrow the
+    // types for tsc (it can't see through the REQUIRED_COLUMNS loop).
+    const r = /** @type {Record<string, string>} */ (d);
     return {
-        "timestamp": new Date(d.Timestamp),
-        "composer": d.Composer.trim(),
-        "work": parseWork(d["Work Title"].trim()),
-        "part": d["Which Part"] == "VA1" ? "VA" : d["Which Part"],
-        "player1": d["Player 1"].trim(),
-        "player2": d["Player 2"].trim(),
-        "player3": d["Player 3"].trim(),
-        "others": d["Others?"].trim(),
-        "location": d.Location.trim(),
-        "comments": d.Comments.trim()
+        "timestamp": new Date(r.Timestamp),
+        "composer": r.Composer.trim(),
+        "work": parseWork(r["Work Title"].trim()),
+        "part": r["Which Part"] == "VA1" ? "VA" : r["Which Part"],
+        "player1": r["Player 1"].trim(),
+        "player2": r["Player 2"].trim(),
+        "player3": r["Player 3"].trim(),
+        "others": /** @type {string} */ (others).trim(),
+        "location": r.Location.trim(),
+        "comments": r.Comments.trim()
     };
 }
 
-export function fillForward(data) {
+// Two consecutive rows in the same column count as one "session" when they
+// are less than this many hours apart. Within a session, shorthand entries
+// (empty cells, name prefixes) refer back to the previous entry.
+export const SESSION_WINDOW_HOURS = 4;
+
+// Does `entry` refer to the same person/place as `prevEntry` (the last full
+// value seen in this column)? True when:
+//   - `entry` is empty — a blank cell inside the session window is a ditto
+//     mark ("same as the row above");
+//   - `entry` equals `prevEntry` exactly;
+//   - `prevEntry` starts with `entry` followed by a word boundary — "Chris"
+//     abbreviates a previous "Chris Smith". The boundary requirement is what
+//     keeps "Chris" from silently merging with a previous "Christina": a
+//     prefix that ends mid-word is a different name, not an abbreviation.
+/**
+ * @param {string} entry
+ * @param {string} prevEntry
+ */
+function refersToPrevEntry(entry, prevEntry) {
+    if (entry === '' || entry === prevEntry) return true;
+    return prevEntry.startsWith(entry) && /\s/.test(prevEntry[entry.length]);
+}
+
+// Expand shorthand in the player/location columns. The sheet convention is to
+// write a value in full once, then abbreviate while the session continues:
+// a blank cell or a leading-prefix of the previous entry (e.g. "Chris" after
+// "Chris Smith") repeats it, and the single-letter PLAYER_ABBREVIATIONS
+// (e.g. "I" → a configured first name) expand regardless of the window. "-" means
+// "nobody in this slot": it is left as-is and does not advance the session
+// anchor, so shorthand can still refer past it to the last real entry.
+//
+// Cell semantics, pinned by tests:
+//   "-"    → no player; untouched.
+//   ""     → within SESSION_WINDOW_HOURS of the previous non-"-" row: filled
+//            with the previous entry. Outside the window: left empty, and
+//            becomes the new (empty) reference entry.
+//   prefix → same-session prefix-at-a-word-boundary of the previous entry:
+//            expanded to it. Otherwise treated as a new value.
+//
+// Rows must be in chronological order (prepareRows guarantees this). A
+// negative time delta would mean unsorted input; it is deliberately treated
+// as "not the same session" rather than being allowed to slip under the
+// window the way any negative number satisfies `hours < 4`.
+/**
+ * @param {Row[]} data - MUST be in chronological order (see prepareRows)
+ * @param {Record<string, string>} [abbreviations]
+ * @returns {Row[]}
+ */
+export function fillForward(data, abbreviations = PLAYER_ABBREVIATIONS) {
+    if (!data.length) return data;
     ["player1", "player2", "player3", "location"].forEach(column => {
         let prev = data[0];
         let prevEntry = prev[column];
@@ -429,14 +669,19 @@ export function fillForward(data) {
         data.slice(1).forEach(row => {
             const entry = row[column].trim();
             if (entry != '-') {
-                const hours = (row.timestamp - prev.timestamp) / 1000 / 60 / 60;
-                if (hours < 4 && prevEntry.indexOf(entry) != -1) {
+                // Number(Date) = ms epoch; rows here come from the sheet, so
+                // timestamps are real Dates (nulls exist only on
+                // createEmptyRow placeholders, which never enter fillForward).
+                const hours = (Number(row.timestamp) - Number(prev.timestamp)) / 1000 / 60 / 60;
+                const sameSession = hours >= 0 && hours < SESSION_WINDOW_HOURS;
+                if (sameSession && refersToPrevEntry(entry, prevEntry)) {
                     row[column] = prevEntry;
-                } else if (PLAYER_ABBREVIATIONS.hasOwnProperty(entry)) {
-                    prevEntry = PLAYER_ABBREVIATIONS[entry];
+                } else if (Object.prototype.hasOwnProperty.call(abbreviations, entry)) {
+                    prevEntry = abbreviations[entry];
                     row[column] = prevEntry;
                 } else {
                     prevEntry = entry;
+                    row[column] = entry;
                 }
                 prev = row;
             }
@@ -445,6 +690,12 @@ export function fillForward(data) {
     return data;
 }
 
+/**
+ * Placeholder row for a catalog work with no plays (null timestamp/players).
+ * @param {string} composer
+ * @param {string} title
+ * @returns {Row}
+ */
 export function createEmptyRow(composer, title) {
     return {
         "timestamp": null,
@@ -460,10 +711,21 @@ export function createEmptyRow(composer, title) {
     };
 }
 
+// Minimum entries for a player to appear in the Player filter dropdown: the
+// dropdown is for filtering by the people you play with REGULARLY; below
+// this floor it fills up with one-off guests and reading-party stands.
+export const PLAYER_DROPDOWN_MIN_ENTRIES = 20;
+
+/**
+ * @param {Row[]} data
+ * @returns {string[]} "Name.part" keys (e.g. "Alice.v1") for the dropdown
+ */
 export function extractUniquePlayers(data) {
+    /** @type {Map<string, number>} */
     const playerCounts = new Map();
 
     data.forEach(d => {
+        /** @type {string[]} */
         let players = [];
         if (d.part === "V1") {
             if (d.player1) players.push(d.player1 + ".v2");
@@ -484,11 +746,117 @@ export function extractUniquePlayers(data) {
         });
     });
 
-    // Filter to only include players with 20+ entries
+    // Filter to the dropdown-worthy regulars only
     const filteredPlayers = Array.from(playerCounts.entries())
-        .filter(([player, count]) => count >= 20)
-        .map(([player, count]) => player)
+        .filter(([, count]) => count >= PLAYER_DROPDOWN_MIN_ENTRIES)
+        .map(([player]) => player)
         .sort();
 
     return filteredPlayers;
+}
+
+// Stacked-bar segments for a ranked row's part breakdown, in PART_ORDER.
+// `d.parts` maps part → count (computePartBreakdownPer*); rows without a
+// breakdown get a single unkeyed segment (defensive fallback for callers
+// that omit it). Returns [{ part, count, x0 }] with x0 the running offset.
+export function stackedPartSegments(d) {
+    if (!d.parts) return [{ part: null, count: d.count, x0: 0 }];
+    const result = [];
+    let cum = 0;
+    PART_ORDER.forEach(part => {
+        const c = d.parts[part] ?? 0;
+        if (c > 0) {
+            result.push({ part, count: c, x0: cum });
+            cum += c;
+        }
+    });
+    return result;
+}
+
+// --- Player-filter matching (the Player dropdown's core semantics) -------
+//
+// Selections are "Name.instrument" tokens (extractUniquePlayers). A row
+// matches when EVERY selected person matches on AT LEAST ONE of their
+// selected instruments (AND across people, OR across one person's
+// instruments). Instrument slots are relative to the user's own part: e.g.
+// when the user played V1, player1 is the V2 chair (see extractUniquePlayers).
+
+export function checkSinglePlayerMatch(d, playerName, instrument) {
+    if (instrument === "v1") {
+        return (d.part === "V2" && d.player1 === playerName) ||
+               (d.part === "VA" && d.player1 === playerName);
+    } else if (instrument === "v2") {
+        return (d.part === "V1" && d.player1 === playerName) ||
+               (d.part === "VA" && d.player2 === playerName);
+    } else if (instrument === "va") {
+        return (d.part === "V1" && d.player2 === playerName) ||
+               (d.part === "V2" && d.player2 === playerName);
+    } else if (instrument === "vc") {
+        return d.player3 === playerName;
+    }
+    return false;
+}
+
+export function checkPlayersMatch(d, selectedPlayers) {
+    // No selection = "ANY".
+    if (selectedPlayers.length === 0) return true;
+
+    // Group tokens by person: ["Alice.v1","Alice.v2","Bob.va"]
+    //   => { Alice: ["v1","v2"], Bob: ["va"] }
+    const playerGroups = new Map();
+    for (const p of selectedPlayers) {
+        const [name, instrument] = p.split(".");
+        if (!playerGroups.has(name)) playerGroups.set(name, []);
+        playerGroups.get(name).push(instrument);
+    }
+
+    for (const [name, instruments] of playerGroups) {
+        const anyInstrumentMatches = instruments.some(inst =>
+            checkSinglePlayerMatch(d, name, inst)
+        );
+        if (!anyInstrumentMatches) return false;
+    }
+    return true;
+}
+
+// --- Network slider state machine ----------------------------------------
+//
+// Pure transition function for the min-pieces slider. `prev` is
+// { userMinCount, lastSelection, preSelectionMinCount } (nulls on first
+// render); `rows` the filtered dataset; `selection` the selected musician or
+// null. Returns the next state plus the derived { max, effectiveMin }.
+//
+// Rules (pinned by tests): the slider max is the 5th-ranked musician's count
+// so the top 5 always qualify; entering/swapping a selection overrides
+// userMinCount with the ~50-node default for the subset (backing up the
+// pre-selection value); exiting restores the backup; first render seeds from
+// the 50-node default; effectiveMin is userMinCount clamped to [1, max]
+// without mutating it, so widening the filter restores the user's setting.
+export function computeSliderSync(prev, rows, selection) {
+    const counts = computeNodeCounts(rows);
+    const idx = Math.min(4, counts.length - 1);
+    const max = Math.max(1, counts[idx]?.count ?? 1);
+
+    let { userMinCount, lastSelection, preSelectionMinCount } = prev;
+    if (selection && selection !== lastSelection) {
+        if (lastSelection === null) {
+            preSelectionMinCount = userMinCount;
+        }
+        userMinCount = defaultMinPiecesForGraph(rows);
+    } else if (!selection && lastSelection !== null) {
+        if (preSelectionMinCount !== null) {
+            userMinCount = preSelectionMinCount;
+            preSelectionMinCount = null;
+        }
+    } else if (userMinCount === null) {
+        userMinCount = Math.max(1, Math.min(max, defaultMinPiecesForGraph(rows)));
+    }
+
+    return {
+        userMinCount,
+        lastSelection: selection ?? null,
+        preSelectionMinCount,
+        max,
+        effectiveMin: Math.max(1, Math.min(max, userMinCount)),
+    };
 }

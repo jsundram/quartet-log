@@ -1,37 +1,91 @@
-import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog';
-import { getBegin, getPartColor, getCssColor } from './config';
-import { createEmptyRow, computeAggregateStats, formatStreakStart } from './dataProcessor';
+import * as d3 from "d3";
+import { COMPOSERS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog.js';
+import { getBegin, getPartColor, getCssColor } from './config.js';
+import { createEmptyRow, computeAggregateStats } from './dataProcessor.js';
+import { escapeHtml } from './escapeHtml.js';
+import { buildAggregateStatDefs } from './statDefs.js';
+import { tooltip } from './tooltip.js';
+
+// Body of a work tooltip. Pure and exported for tests: every sheet-derived
+// value (composer, title, location, part, players, comments) is escaped —
+// comments especially are free-form user text.
+export function buildWorkTooltipHtml(d) {
+    const ts = d.timestamp ? d.timestamp.toLocaleDateString() : "Unplayed";
+    const url = generateQuartetRouletteUrl(d);
+
+    const petersVol = d.composer === 'Haydn' ? getPetersVolume(d.work) : null;
+    const petersSuffix = petersVol ? `: Peters ${escapeHtml(petersVol)}` : '';
+    // target="_blank" is load-bearing on iOS homescreen webclips: without
+    // it, taps on the link from inside the standalone webapp can fail to
+    // navigate to quartetroulette.com. rel pairs with it for security.
+    let html = `<h4><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(d.composer)} - ${escapeHtml(d.work.title)}</a>${petersSuffix}</h4>`;
+    html += "<ul>";
+    html += `<li>${ts}${d.location ? " - " + escapeHtml(d.location) : ""}</li>`;
+    if (d.part) html += `<li>${escapeHtml(d.part)}</li>`;
+    if (d.player1) html += `<li>${escapeHtml([d.player1, d.player2, d.player3].join(", "))}</li>`;
+    if (d.comments?.trim()) html += `<li>${escapeHtml(d.comments)}</li>`;
+    html += "</ul>";
+    return html;
+}
+
+// Group play rows by (transformed) work title for one composer tab. Only
+// rows whose composer and title are in the tab's catalog lists count; every
+// catalog title is present in the result (empty array when unplayed), which
+// is what renders the zero-play rows. Pure — catalog lists are injected.
+export function groupPlaysByWork(filteredData, fullData, { composers, works, transformTitle }) {
+    const m = D => new Map(d3.groups(
+        D.filter(d => {
+            const title = transformTitle(d);
+            return composers.includes(d.composer) && works.includes(title);
+        }),
+        d => transformTitle(d)
+    ));
+    // make sure every title is present, fill in with [] if not.
+    const fm = M => new Map(works.map(t => [t, M.get(t) || []]));
+
+    return { filteredPlays: fm(m(filteredData)), allPlays: fm(m(fullData)) };
+}
+
+// Weighted random suggestion over a tab's works: weight = days since the
+// work's last play in the current filtered view (never-played falls back to
+// `begin`, i.e. the maximum weight), so the pick leans toward what's
+// least-recently played. Pure — `random` in [0, 1) is injected so tests are
+// deterministic. Returns { title, daysAgo, display } or null for an empty pool.
+export function pickRandomWork(filteredPlays, now, begin, random) {
+    const maxDays = d3.timeDay.count(begin, now);
+    const weighted = Array.from(filteredPlays)
+        .map(([t, ps]) => [t, ps.at(-1)?.timestamp || begin])
+        .map(([t, ts]) => [t, d3.timeDay.count(ts, now)]);
+
+    const total = d3.sum(weighted, d => d[1]);
+    const r = random * total;
+
+    let cumulative = 0;
+    const selected = weighted.find(([, weight]) => {
+        cumulative += weight;
+        return r <= cumulative;
+    });
+    if (!selected) return null;
+
+    const [title, daysAgo] = selected;
+    const display = daysAgo < maxDays
+        ? `${title} - (last played ${daysAgo} days ago)`
+        : `${title} - not played in this view!`;
+    return { title, daysAgo, display };
+}
 
 export class TabComponent {
     constructor(tableComponent) {
-        this.tooltipDiv = d3.select("#tooltip");
         this.tableComponent = tableComponent;
-
-        // Tap/click outside the tooltip dismisses it. Pairs with the touch-
-        // friendly mouseout gating on .work-label and .play-square — without
-        // a tap-outside path, touch users could only dismiss via the × button.
-        // Taps on the triggering elements don't dismiss because their own
-        // mouseover/click handlers re-show (or replace) the tooltip content.
-        document.addEventListener('click', (e) => {
-            const tooltipNode = this.tooltipDiv.node();
-            if (!tooltipNode || tooltipNode.style.display === 'none') return;
-            if (tooltipNode.contains(e.target)) return;
-            const cls = e.target.classList;
-            if (cls?.contains('work-label') || cls?.contains('play-square')) return;
-            // Musician-network elements re-open the tooltip on click; let them through.
-            if (cls?.contains('network-node') || cls?.contains('network-edge')
-                || cls?.contains('matrix-cell') || cls?.contains('matrix-label')
-                || cls?.contains('network-arc') || cls?.contains('network-chord')) return;
-            // Dashboard stat tiles and the ALL tab's stat cells show their
-            // explainer tooltip on click; the click target is a child span,
-            // so match via closest().
-            if (e.target.closest?.('#dashboardStats .stat-tile')) return;
-            if (e.target.closest?.('.all-stat')) return;
-            this.hideTooltip();
-        });
+        // The active tab's source of truth; .active-tab classes reflect it.
+        this.activeTab = null;
     }
 
     createTabs() {
+        // Idempotent: a re-init rebuilds the tab strip + panes instead of
+        // appending duplicates.
+        d3.select("#tabs").html("");
+        d3.select("#tabContent").html("");
         const makeTab = (name) => {
             d3.select("#tabs").append("button")
                 .attr("data-composer", name)
@@ -47,6 +101,10 @@ export class TabComponent {
     }
 
     showTab(composer) {
+        this.activeTab = composer;
+        // Lazy-render hook: the app re-renders this tab now if a filter
+        // change happened while it was hidden.
+        if (this.onTabShown) this.onTabShown(composer);
         // Hide all tabs and remove active class from all tab buttons
         d3.selectAll(".tab").classed("active-tab", false);
         d3.selectAll("#tabs button").classed("active-tab-button", false);
@@ -85,42 +143,9 @@ export class TabComponent {
 
     updateAllTabContent(composerDiv, filteredData) {
         const agg = computeAggregateStats(filteredData);
-        const streakStart = formatStreakStart(agg.maxStreakInfo);
-        // Same explainer copy as the dashboard's KPI tiles — both describe
-        // the slice matching the current filters.
-        const stats = [
-            {
-                label: 'Pieces',
-                value: agg.pieces,
-                title: 'Pieces in the current filter',
-                desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
-            },
-            {
-                label: 'Unique pieces',
-                value: agg.uniquePieces,
-                title: 'Unique pieces in the current filter',
-                desc: 'Distinct works (composer + title). Repeats of the same piece collapse to one.',
-            },
-            {
-                label: 'Unique people',
-                value: agg.uniquePeople,
-                title: 'People played with in the current filter',
-                desc: 'Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.',
-            },
-            {
-                label: 'Days played',
-                value: agg.daysPlayed,
-                title: 'Playing days in the current filter',
-                desc: 'Distinct days with at least one whole piece logged.',
-            },
-            {
-                label: 'Max streak',
-                value: agg.maxStreak,
-                title: 'Longest streak in the current filter',
-                desc: 'Longest run of consecutive days with at least one whole piece logged, within the current filter.'
-                    + (streakStart ? `<br><br>Started: ${streakStart}` : ''),
-            },
-        ];
+        // Shared defs (single-sourced with the dashboard KPI tiles and the
+        // calendar's recent-stats header).
+        const stats = buildAggregateStatDefs(agg);
 
         const wrap = composerDiv.selectAll('.all-stats')
             .data([1])
@@ -142,11 +167,10 @@ export class TabComponent {
             });
         cells.select('.all-stat-label').text(d => `${d.label}:`);
         cells.select('.all-stat-value').text(d => d.value);
-        cells
-            .style('cursor', 'pointer')
-            .on('mouseenter', (event, d) => this.showStatTooltip(event, d))
-            .on('mouseleave', () => this.hideTooltip())
-            .on('click', (event, d) => this.showStatTooltip(event, d));
+        // Explainer tooltip; stat titles/descriptions are app-authored
+        // constants (no sheet data).
+        tooltip.attach(cells, (event, d) => `<h4>${d.title}</h4><p>${d.desc}</p>`,
+            { maxWidth: '320px' });
 
         // Reuse the existing data table by wrapping the flat array in the
         // shape updateDataTable expects.
@@ -158,30 +182,15 @@ export class TabComponent {
     }
 
     processComposerData(composer, filteredData, fullData) {
-        const composers = getComposersForTab(composer);
-        const works = getWorksForTab(composer);
-
-        // For MISC tab, transform work titles to include composer prefix
-        const transformTitle = isMiscTab(composer)
-            ? d => `${d.composer}-${d.work.title}`
-            : d => d.work.title;
-
-        // group by title (with optional transformation)
-        // Filter to only include works in the catalog for this tab
-        const m = D => new Map(d3.groups(
-            D.filter(d => {
-                const title = transformTitle(d);
-                return composers.includes(d.composer) && works.includes(title);
-            }),
-            d => transformTitle(d)
-        ));
-        // make sure every title is present, fill in with [] if not.
-        const fm = M => new Map(works.map(t => [t, M.get(t) || []]));
-
-        const filteredPlays = fm(m(filteredData));
-        const allPlays = fm(m(fullData));
-
-        return { filteredPlays, allPlays };
+        // Catalog lookups here; the grouping itself is pure + tested.
+        return groupPlaysByWork(filteredData, fullData, {
+            composers: getComposersForTab(composer),
+            works: getWorksForTab(composer),
+            // For MISC tab, transform work titles to include composer prefix
+            transformTitle: isMiscTab(composer)
+                ? d => `${d.composer}-${d.work.title}`
+                : d => d.work.title,
+        });
     }
 
     updateRandomButton(composerDiv, composerData) {
@@ -196,13 +205,20 @@ export class TabComponent {
         if (!randomButtonContainer.select("button").size()) {
             randomButtonContainer.append("button")
                 .attr("class", "random-button")
-                .text("Random")
-                .on("click", () => this.handleRandomSelection(composerDiv, composerData));
+                .text("Random");
 
             randomButtonContainer.append("span")
                 .attr("class", "random-work-display")
                 .style("margin-left", "10px");
         }
+
+        // (Re)bind on EVERY update, not just at creation — d3's .on replaces
+        // the previous listener, so the handler always reads the composerData
+        // from the latest updateTabContent call. Binding only at creation
+        // froze the first render's data in the closure, so the suggestion
+        // ignored every later filter change.
+        randomButtonContainer.select("button")
+            .on("click", () => this.handleRandomSelection(composerDiv, composerData));
     }
 
     handleRandomSelection(composerDiv, composerData) {
@@ -210,37 +226,14 @@ export class TabComponent {
         // filters: works never played under those filters fall back to getBegin()
         // (maxDays weight), nudging the pick toward what's least-recently played
         // in the current context.
-        const { filteredPlays } = composerData;
-        const now = new Date();
-        const maxDays = d3.timeDay.count(getBegin(), now);
-
-        const weighted = Array.from(filteredPlays)
-            .map(([t, ps]) => [t, ps.at(-1)?.timestamp || getBegin()])
-            .map(([t, ts]) => [t, d3.timeDay.count(ts, now)])
-
-        // Select work using weighted random selection
-        const total = d3.sum(weighted, d => d[1]);
-        const random = Math.random() * total;
-
-        let cumulative = 0;
-        const selected = weighted.find(([t, weight]) => {
-            cumulative += weight;
-            return random <= cumulative;
-        });
-
-        // Update display
+        const selected = pickRandomWork(composerData.filteredPlays, new Date(), getBegin(), Math.random());
         if (selected) {
-            const [title, daysAgo] = selected;
-            const display = daysAgo < maxDays ?
-                `${title} - (last played ${daysAgo} days ago)` :
-                `${title} - not played in this view!`;
-
-            composerDiv.select(".random-work-display").text(display);
+            composerDiv.select(".random-work-display").text(selected.display);
         }
     }
 
     updateWorkRows(composerDiv, composerData, part) {
-        const { filteredPlays, allPlays } = composerData;
+        const { filteredPlays } = composerData;
         const rows = composerDiv.selectAll(".work-row")
             .data(filteredPlays, d => d[0])
             .join("div")
@@ -266,8 +259,8 @@ export class TabComponent {
         // No mouseout/mouseleave handler: auto-dismissing on cursor-leaves-
         // label kills the path to clicking the link inside the tooltip
         // (mouseout fires when the cursor moves from .work-label into the
-        // tooltip). Dismissal is handled uniformly by the document click-
-        // outside listener (set up in the constructor) and the × button.
+        // tooltip). Dismissal is the tooltip module's click-outside listener
+        // and the × button; own() below registers the labels as triggers.
         labelContainer.selectAll(".work-label")
             .data([label])
             .join("div")
@@ -291,7 +284,8 @@ export class TabComponent {
                 const originalTitle = getOriginalWorkTitle(composer, label);
 
                 this.showTooltip(event, all?.at(index) || createEmptyRow(realComposer, originalTitle));
-            });
+            })
+            .call(sel => tooltip.own(sel));
     }
 
     updatePlaySquares(row, entries) {
@@ -315,11 +309,12 @@ export class TabComponent {
                 this.showTooltip(event, d);
             })
             .on("mouseout", (event, d) => {
-                // Reset hover-highlight bg; tooltip dismissal is the document
-                // click-outside handler's job (see constructor).
+                // Reset hover-highlight bg; tooltip dismissal is the tooltip
+                // module's click-outside listener (squares are own()ed below).
                 d3.select(event.currentTarget)
                     .style("background-color", this.getColorForPart(d.part));
-            });
+            })
+            .call(sel => tooltip.own(sel));
 
         squares.exit().remove();
 
@@ -396,73 +391,13 @@ export class TabComponent {
         return getPartColor(part);
     }
 
-    // Explainer tooltip for the ALL tab's stat cells (same title/desc shape
-    // as the dashboard's KPI tiles).
-    showStatTooltip(event, stat) {
-        this.tooltipDiv
-            .html(`<span class="tooltip-close">&times;</span><h4>${stat.title}</h4><p>${stat.desc}</p>`)
-            .style('display', 'block')
-            .style('max-width', '320px');
-        this.tooltipDiv.select('.tooltip-close').on('click', () => this.hideTooltip());
-        this.positionTooltip(event);
-    }
-
     showTooltip(event, d) {
         if (!d) return;
-
-        const ts = d.timestamp ? d.timestamp.toLocaleDateString() : "Unplayed";
-        const url = generateQuartetRouletteUrl(d);
-
-        let html = `<span class="tooltip-close">&times;</span>`;
-        const petersVol = d.composer === 'Haydn' ? getPetersVolume(d.work) : null;
-        const petersSuffix = petersVol ? `: Peters ${petersVol}` : '';
-        // target="_blank" is load-bearing on iOS homescreen webclips: without
-        // it, taps on the link from inside the standalone webapp can fail to
-        // navigate to quartetroulette.com. rel pairs with it for security.
-        html += `<h4><a href="${url}" target="_blank" rel="noopener noreferrer">${d.composer} - ${d.work.title}</a>${petersSuffix}</h4>`;
-        html += "<ul>";
-        html += `<li>${ts}${d.location ? " - " + d.location : ""}</li>`;
-        if (d.part) html += `<li>${d.part}</li>`;
-        if (d.player1) html += `<li>${[d.player1, d.player2, d.player3].join(", ")}</li>`;
-        if (d.comments?.trim()) html += `<li>${d.comments}</li>`;
-        html += "</ul>";
-
-        this.tooltipDiv
-            .html(html)
-            .style("display", "block")
-            // Clear the stat tooltip's inline 320px cap; the CSS viewport
-            // clamp governs work tooltips.
-            .style("max-width", null);
-
-        // Add click handler to close button
-        this.tooltipDiv.select(".tooltip-close")
-            .on("click", () => this.hideTooltip());
-
-        this.positionTooltip(event);
-    }
-
-    positionTooltip(event) {
-        const tooltip = this.tooltipDiv.node();
-        const tRect = tooltip.getBoundingClientRect();
-        const margin = 10;
-
-        let left = event.pageX + margin;
-        let top = event.pageY + margin;
-
-        // Adjust position to keep tooltip within viewport
-        if (left + tRect.width > window.innerWidth) {
-            left = Math.max(margin, event.pageX - tRect.width - margin);
-        }
-        if (top + tRect.height > window.innerHeight) {
-            top = Math.max(margin, event.pageY - tRect.height - margin);
-        }
-
-        this.tooltipDiv
-            .style("left", left + "px")
-            .style("top", top + "px");
+        // Wide tooltip: no max-width cap — the CSS viewport clamp governs.
+        tooltip.show(event, buildWorkTooltipHtml(d));
     }
 
     hideTooltip() {
-        this.tooltipDiv.style("display", "none");
+        tooltip.hide();
     }
 }

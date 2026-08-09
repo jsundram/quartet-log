@@ -1,7 +1,13 @@
 #!/bin/bash
-# deps: esbuild 0.24.2, pandoc 3.6.2
+# deps: esbuild (devDependency — version pinned in package.json/lockfile),
+#       pandoc (version + .deb checksum pinned in package.json "config"),
 #       fswatch (optional, for live-reload of static assets in dev mode)
 #
+# Fail loudly: any failed command (pandoc, cp, sed, mv, esbuild) must fail
+# the build — CI runs `./build.sh --prod` as the deploy step, and a silent
+# partial failure would deploy a broken site with a green check.
+set -euo pipefail
+
 DEPLOY="./last_deploy"
 
 # Parse flags: --prod, --port <n>
@@ -15,6 +21,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Prefer the locked esbuild from node_modules over any global install so
+# local builds match CI byte-for-byte (`npm ci`/`npm install` puts it there).
+export PATH="$PWD/node_modules/.bin:$PATH"
+
+# Preflight: fail fast with a clear message instead of partway through the
+# build with a confusing one. fswatch is optional (dev nicety, checked later).
+for tool in esbuild pandoc node npm; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "Error: required tool '$tool' not found on PATH." >&2
+        exit 1
+    fi
+done
+
+# Materialize src/aliases.js from the checked-in stub if the personal copy
+# is absent (fresh clone, CI without the secret) so the bundle can build.
+node scripts/ensure_aliases.mjs
+
 # Convert markdown to HTML and copy all static assets to $DEPLOY.
 # Safe to call repeatedly — used both for the initial build and for
 # fswatch-driven live reload in dev mode.
@@ -23,7 +46,10 @@ copy_assets() {
     # than into md/ and then moving — otherwise fswatch (watching md/) sees
     # the writes, fires copy_assets again, and we spin in a tight loop.
     local deploy_abs
-    deploy_abs="$(cd "$DEPLOY" && pwd)"
+    if ! deploy_abs="$(cd "$DEPLOY" && pwd)" || [[ -z "$deploy_abs" ]]; then
+        echo "Error: deploy directory '$DEPLOY' does not exist." >&2
+        return 1
+    fi
     pushd md/ > /dev/null
     for md in *.md; do
         f=$(basename "$md" .md)
@@ -41,9 +67,6 @@ copy_assets() {
     cp static/css/viz.css "$DEPLOY/"
     cp static/data/all_works.json "$DEPLOY/"
     cp static/data/haydn_peters.json "$DEPLOY/"
-
-    # wget -O d3.v7.min.js https://unpkg.com/d3@7.9.0/dist/d3.min.js
-    cp static/js/d3.v7.min.js "$DEPLOY/"
 
     # Favicon files (including manifest)
     cp -r static/favicon/* "$DEPLOY/"
@@ -74,21 +97,21 @@ if [[ "$PROD" == true ]]; then
     WORKS_VERSION=$(shasum -a 256 "$DEPLOY/all_works.json" | cut -c1-8)
 fi
 
-BASE_ESBUILD_CMD="esbuild src/app.js \
-    --bundle \
-    --target=chrome92,firefox90,safari15.4,edge92 \
-    --format=iife \
-    --global-name=App \
-    --define:__WORKS_VERSION__='\"$WORKS_VERSION\"' \
-    --outfile=$DEPLOY/bundle.js"
+ESBUILD_ARGS=(
+    src/app.js
+    --bundle
+    --target=chrome92,firefox90,safari15.4,edge92
+    --format=iife
+    --global-name=App
+    "--define:__WORKS_VERSION__=\"$WORKS_VERSION\""
+    "--outfile=$DEPLOY/bundle.js"
+)
 
 if [[ "$PROD" == true ]]; then
     echo "Running tests..."
     npm test || { echo "Tests failed — aborting production build."; exit 1; }
     echo "Building for production..."
-    eval "$BASE_ESBUILD_CMD \
-        --minify \
-        --tree-shaking=true"
+    esbuild "${ESBUILD_ARGS[@]}" --minify --tree-shaking=true
 
     # Content-hash bundle.js and viz.css so iOS homescreen webclips (and any
     # other aggressively-caching layer) don't keep serving stale copies after
@@ -110,30 +133,32 @@ if [[ "$PROD" == true ]]; then
     NEW_CSS=$(hash_and_rename "viz.css")
 
     # Rewrite references in the deployed index.html only — the source file
-    # in the working tree stays on stable names. -i.bak is portable across
-    # BSD (macOS) and GNU (CI) sed.
+    # in the working tree stays on stable names. Match the exact src=/href=
+    # attributes rather than any occurrence of the filenames, so an unrelated
+    # mention (e.g. in a comment or inline script) can never be rewritten.
+    # -i.bak is portable across BSD (macOS) and GNU (CI) sed.
     sed -i.bak \
-        -e "s|bundle\.js|$NEW_BUNDLE|g" \
-        -e "s|viz\.css|$NEW_CSS|g" \
+        -e "s|src=\"\./bundle\.js\"|src=\"./$NEW_BUNDLE\"|" \
+        -e "s|href=\"\./viz\.css\"|href=\"./$NEW_CSS\"|" \
         "$DEPLOY/index.html"
     rm "$DEPLOY/index.html.bak"
+    # Verify the rewrite actually landed — sed exits 0 even when nothing matches.
+    grep -q "$NEW_BUNDLE" "$DEPLOY/index.html" || { echo "Error: bundle reference not rewritten in index.html" >&2; exit 1; }
+    grep -q "$NEW_CSS" "$DEPLOY/index.html" || { echo "Error: css reference not rewritten in index.html" >&2; exit 1; }
     echo "Content-hashed: $NEW_BUNDLE, $NEW_CSS"
 
-    # Generate the service worker from static/sw.js, injecting the hashed shell
-    # filenames + a cache version derived from those hashes. Because the hashes
-    # move whenever code / CSS / catalog data change, the SW cache name (V)
-    # changes on every meaningful deploy and evicts the stale cache on activate
-    # — no hand-bumped version constant to forget. Prod-only: dev serves the
-    # unhashed files off esbuild's live server and registers no SW.
-    BHASH="${NEW_BUNDLE#bundle-}"; BHASH="${BHASH%.js}"
-    CHASH="${NEW_CSS#viz-}"; CHASH="${CHASH%.css}"
-    SW_VERSION="ql-${BHASH}-${CHASH}"
-    sed \
-        -e "s|__SW_VERSION__|$SW_VERSION|g" \
-        -e "s|__BUNDLE_JS__|$NEW_BUNDLE|g" \
-        -e "s|__CSS_FILE__|$NEW_CSS|g" \
-        static/sw.js > "$DEPLOY/sw.js"
-    echo "Service worker: $DEPLOY/sw.js ($SW_VERSION)"
+    # Generate the service worker + version.json from static/sw.js via
+    # scripts/gen_sw.mjs: the precache list comes from $DEPLOY's actual
+    # contents and the cache version V hashes every precached asset, so any
+    # deploy that changes anything evicts the stale cache on activate.
+    # Prod-only: dev serves the unhashed files off esbuild's live server and
+    # registers no SW.
+    node scripts/gen_sw.mjs "$DEPLOY"
+
+    echo -e "\nBuild complete. Files in deploy directory:"
+    ls -la "$DEPLOY"
+    echo -e "\nBundle size:"
+    ls -lh "$DEPLOY"/bundle*.js
 else
     echo "Building for development..."
 
@@ -142,18 +167,24 @@ else
 
     # Background helpers (proxy, fswatch) die with this script (Ctrl-C, etc).
     # $BG_PIDS expands at signal time, so PIDs appended after the trap is set
-    # are still covered.
+    # are still covered. The fswatch pipelines are `fswatch | while` — $! is
+    # the `while` subshell, and killing only that side orphans the fswatch
+    # process (it lingers until its next write hits the broken pipe). pkill
+    # by parent PID catches the fswatch side, which is a direct child of
+    # this script (both members of a background pipeline are).
     BG_PIDS=""
-    trap 'kill $BG_PIDS 2>/dev/null' EXIT INT TERM
+    trap 'kill $BG_PIDS 2>/dev/null || true; pkill -P $$ -x fswatch 2>/dev/null || true' EXIT INT TERM
 
     # Watch static assets in the background so that CSS / HTML / markdown /
     # data / favicon edits get re-copied into $DEPLOY without restarting the
     # build. esbuild --watch only re-bundles JS, so we need a separate watcher.
     if command -v fswatch >/dev/null 2>&1; then
-        WATCH_PATHS="index.html CNAME static md"
+        WATCH_PATHS=(index.html CNAME static md)
         # --latency 0.3 debounces rapid bursts of file events into one copy.
-        fswatch -o --latency 0.3 $WATCH_PATHS | while read _; do
-            copy_assets
+        # `|| echo` keeps the watcher alive across a transient failure (e.g.
+        # a pandoc syntax error mid-edit) instead of dying under `set -e`.
+        fswatch -o --latency 0.3 "${WATCH_PATHS[@]}" | while read -r _; do
+            copy_assets || echo "[WARNING] asset copy failed — fix and save again"
         done &
         BG_PIDS="$BG_PIDS $!"
         echo "Watching static assets with fswatch (PID $!)..."
@@ -162,7 +193,7 @@ else
         # rerun is one compact line instead of 31 ✔'s. TZ matches the npm test
         # script (and thus CI) so timezone-sensitive tests can't pass on save
         # but fail in CI.
-        fswatch -o --latency 0.5 src test | while read _; do
+        fswatch -o --latency 0.5 src test | while read -r _; do
             echo "[$(date +%H:%M:%S)] JS change — re-running tests..."
             TZ=America/New_York node --test --test-reporter=dot test/*.mjs || true
         done &
@@ -197,14 +228,14 @@ else
         fi
     fi
 
-    eval "$BASE_ESBUILD_CMD \
-        --sourcemap \
-        --watch \
-        --serve=$ESBUILD_PORT \
-        --servedir=$DEPLOY"
+    # Run esbuild in the background and `wait` on it rather than in the
+    # foreground: bash defers signal traps while a foreground child runs, so
+    # a plain `kill <script-pid>` would never reach the cleanup trap (only
+    # interactive Ctrl-C, which signals the whole process group, would).
+    # Backgrounded + wait, the trap fires promptly and kills every helper.
+    # --watch=forever because plain --watch exits when stdin closes, which
+    # is exactly what backgrounding does.
+    esbuild "${ESBUILD_ARGS[@]}" --sourcemap --watch=forever "--serve=$ESBUILD_PORT" "--servedir=$DEPLOY" &
+    BG_PIDS="$BG_PIDS $!"
+    wait $!
 fi
-
-echo -e "\nBuild complete. Files in deploy directory:"
-ls -la $DEPLOY
-echo -e "\nBundle size:"
-ls -lh "$DEPLOY"/bundle*.js

@@ -1,7 +1,7 @@
+// @ts-check
 // URL configuration management for localStorage-based data source
 
 const STORAGE_KEY = 'quartetlog_data_url';
-const CACHE_KEY_PREFIX = 'quartetlog_cache_';
 
 /**
  * Check if a URL is configured
@@ -12,6 +12,7 @@ export function hasDataUrl() {
 
 /**
  * Get the configured data URL from localStorage
+ * @returns {string|null}
  */
 export function getDataUrl() {
     return localStorage.getItem(STORAGE_KEY);
@@ -19,6 +20,7 @@ export function getDataUrl() {
 
 /**
  * Save a data URL to localStorage and clear any old cached data
+ * @param {string} url
  */
 export function setDataUrl(url) {
     // Clear old cache before setting new URL
@@ -35,16 +37,30 @@ export function clearDataUrl() {
 }
 
 /**
- * Clear cached CSV data from localStorage
+ * Clear cached CSV data from localStorage.
+ *
+ * The DataService cache is keyed by the sheet URL itself (envelope format),
+ * historically with a sibling `<url>_timestamp` key (legacy two-key format).
+ * Match cache keys with the same predicate that admits data URLs in the first
+ * place (isValidGoogleSheetsUrl) so every acceptable host form is covered —
+ * the old substring check ('docs.google.com') missed other *.google.com hosts
+ * — and only remove `_timestamp` keys whose base key is such a URL, instead
+ * of blanket-deleting every `*_timestamp` key in storage.
+ *
+ * Exported for tests; app code reaches it via setDataUrl/clearDataUrl.
  */
-function clearCachedData() {
-    // Remove all keys that start with cache prefix or are URLs
+export function clearCachedData() {
+    const TS_SUFFIX = '_timestamp';
+    /** @param {string} key */
+    const isCacheKey = (key) =>
+        isValidGoogleSheetsUrl(key) ||
+        (key.endsWith(TS_SUFFIX) &&
+            isValidGoogleSheetsUrl(key.slice(0, -TS_SUFFIX.length)));
+
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(CACHE_KEY_PREFIX) ||
-            key.includes('docs.google.com') ||
-            key.endsWith('_timestamp'))) {
+        if (key && isCacheKey(key)) {
             keysToRemove.push(key);
         }
     }
@@ -55,6 +71,8 @@ function clearCachedData() {
  * Build a mobile-setup link from a data URL: <origin><pathname>?data=<encoded>.
  * encodeURIComponent ensures the embedded Google Sheets URL (which has its
  * own ?gid=…&single=true&output=csv) survives parsing on the receiving end.
+ * @param {string} dataUrl
+ * @returns {string}
  */
 export function buildMobileSetupLink(dataUrl) {
     const base = window.location.origin + window.location.pathname;
@@ -95,6 +113,8 @@ export function consumeDataParam() {
 
 /**
  * Validate that a URL is a valid Google Sheets CSV export URL
+ * @param {unknown} url
+ * @returns {boolean}
  */
 export function isValidGoogleSheetsUrl(url) {
     if (!url || typeof url !== 'string') {
@@ -120,7 +140,7 @@ export function isValidGoogleSheetsUrl(url) {
         }
 
         return true;
-    } catch (e) {
+    } catch {
         return false;
     }
 }
