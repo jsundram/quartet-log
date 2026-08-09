@@ -25,6 +25,7 @@ import {
     prepareRows,
     fillForward,
     processRow,
+    parseWork,
 } from '../src/dataProcessor.js';
 
 // Hand-built rows for the network helpers. Reflects the real data model:
@@ -1004,5 +1005,211 @@ describe('empty and all-incomplete datasets', () => {
         assert.equal(dropped, 1);
         const processed = normalizePlayerNames(fillForward(rows));
         assert.deepEqual(processed.filter(d => !d.work.incomplete), []);
+    });
+});
+
+describe('fillForward', () => {
+    // Processed-row fixtures (post-processRow shape). All four fill-forward
+    // columns default to "-" (no entry) so each test can exercise one column
+    // in isolation. Placeholder names only — see rawRow above.
+    const T0 = new Date('2024-01-15T10:00:00');
+    const ffRow = (hoursAfter, cols = {}) => ({
+        timestamp: new Date(T0.getTime() + hoursAfter * 3600 * 1000),
+        player1: '-', player2: '-', player3: '-', location: '-',
+        ...cols,
+    });
+
+    it('does not merge a mid-word prefix: "Chris" after "Christina" stays "Chris"', () => {
+        const data = [
+            ffRow(0, { player1: 'Christina' }),
+            ffRow(1, { player1: 'Chris' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, 'Chris');
+    });
+
+    it('expands a word-boundary prefix: "Chris" after "Chris Smith" in the same session', () => {
+        const data = [
+            ffRow(0, { player1: 'Chris Smith' }),
+            ffRow(1, { player1: 'Chris' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, 'Chris Smith');
+    });
+
+    it('treats the session window as a strict < 4h bound', () => {
+        const inWindow = [
+            ffRow(0, { player1: 'Chris Smith' }),
+            ffRow(3.99, { player1: 'Chris' }),
+        ];
+        fillForward(inWindow);
+        assert.equal(inWindow[1].player1, 'Chris Smith');
+
+        const outOfWindow = [
+            ffRow(0, { player1: 'Chris Smith' }),
+            ffRow(4, { player1: 'Chris' }),
+        ];
+        fillForward(outOfWindow);
+        assert.equal(outOfWindow[1].player1, 'Chris');
+    });
+
+    it('ditto-fills an empty cell inside the session window, chaining forward', () => {
+        const data = [
+            ffRow(0, { player1: 'Alice' }),
+            ffRow(1, { player1: '' }),
+            ffRow(2, { player1: '' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, 'Alice');
+        assert.equal(data[2].player1, 'Alice');
+    });
+
+    it('leaves an empty cell empty outside the session window', () => {
+        const data = [
+            ffRow(0, { player1: 'Alice' }),
+            ffRow(5, { player1: '' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, '');
+    });
+
+    it('an out-of-window empty cell resets the reference entry', () => {
+        // The 3rd row's "Bob" is not a prefix of the (now empty) reference,
+        // so it stands on its own instead of resurrecting "Alice".
+        const data = [
+            ffRow(0, { player1: 'Alice' }),
+            ffRow(5, { player1: '' }),
+            ffRow(5.5, { player1: 'Bob' }),
+        ];
+        fillForward(data);
+        assert.equal(data[2].player1, 'Bob');
+    });
+
+    it('leaves "-" cells untouched and refers past them to the last real entry', () => {
+        const data = [
+            ffRow(0, { player1: 'Chris Smith' }),
+            ffRow(1),  // player1: '-'
+            ffRow(2, { player1: 'Chris' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, '-');
+        assert.equal(data[2].player1, 'Chris Smith');
+    });
+
+    it('expands single-letter PLAYER_ABBREVIATIONS regardless of the window', () => {
+        // "I" -> "Isaac" comes from config PLAYER_ABBREVIATIONS (fillForward
+        // itself does no aliasing, so the un-canonicalized short name is fine
+        // here). If that table entry is removed this should fail loudly.
+        const data = [
+            ffRow(0, { player1: 'Alice' }),
+            ffRow(10, { player1: 'I' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, 'Isaac');
+    });
+
+    it('treats a negative time delta (unsorted input) as not-same-session', () => {
+        // prepareRows makes this impossible in the real pipeline; pin the
+        // guard anyway so a negative delta can never slip under `hours < 4`.
+        const data = [
+            ffRow(2, { player1: 'Chris Smith' }),
+            ffRow(0, { player1: 'Chris' }),  // 2 hours BEFORE the row above
+        ];
+        fillForward(data);
+        assert.equal(data[1].player1, 'Chris');
+    });
+
+    it('fills the location column with the same rules', () => {
+        const data = [
+            ffRow(0, { location: 'Home' }),
+            ffRow(1, { location: '' }),
+        ];
+        fillForward(data);
+        assert.equal(data[1].location, 'Home');
+    });
+});
+
+describe('processRow', () => {
+    it('parses the sheet timestamp as a local Date', () => {
+        const d = processRow(rawRow({ 'Timestamp': '1/15/2024 10:30:00' }));
+        assert.equal(d.timestamp.getFullYear(), 2024);
+        assert.equal(d.timestamp.getMonth(), 0);
+        assert.equal(d.timestamp.getDate(), 15);
+        assert.equal(d.timestamp.getHours(), 10);
+        assert.equal(d.timestamp.getMinutes(), 30);
+    });
+
+    it('yields an Invalid Date (not a throw) for garbage timestamps — prepareRows drops those', () => {
+        const d = processRow(rawRow({ 'Timestamp': 'not a date' }));
+        assert.ok(Number.isNaN(d.timestamp.getTime()));
+    });
+
+    it('trims whitespace from text fields', () => {
+        const d = processRow(rawRow({
+            'Composer': ' Haydn ',
+            'Player 1': '  Alice ',
+            'Location': ' Home ',
+        }));
+        assert.equal(d.composer, 'Haydn');
+        assert.equal(d.player1, 'Alice');
+        assert.equal(d.location, 'Home');
+    });
+
+    it('normalizes part VA1 to VA and passes other parts through', () => {
+        assert.equal(processRow(rawRow({ 'Which Part': 'VA1' })).part, 'VA');
+        assert.equal(processRow(rawRow({ 'Which Part': 'V2' })).part, 'V2');
+        assert.equal(processRow(rawRow({ 'Which Part': 'VA' })).part, 'VA');
+    });
+
+    it('throws a clear error naming any missing/renamed columns', () => {
+        const noComposer = rawRow();
+        delete noComposer['Composer'];
+        assert.throws(() => processRow(noComposer), /missing expected column.*Composer/);
+
+        const renamed = rawRow();
+        delete renamed['Which Part'];
+        renamed['Part'] = 'V1';
+        assert.throws(() => processRow(renamed), /missing expected column.*Which Part/);
+    });
+});
+
+describe('parseWork', () => {
+    it('parses "catalog#number" titles', () => {
+        assert.deepEqual(parseWork('76#2'),
+            { title: '76#2', incomplete: false, catalog: 76, number: 2 });
+    });
+
+    it('parses a bare catalog number with no #', () => {
+        assert.deepEqual(parseWork('20'),
+            { title: '20', incomplete: false, catalog: 20, number: null });
+    });
+
+    it('flags partial movements (":" in the title) as incomplete', () => {
+        const w = parseWork('76#2:I');
+        assert.equal(w.incomplete, true);
+        assert.equal(w.catalog, 76);
+        assert.equal(w.number, 2);  // parseInt stops at the ":"
+        assert.equal(parseWork('76#2').incomplete, false);
+    });
+
+    it('falls back to stripping a leading letter for catalogs like K465 / D 810', () => {
+        assert.equal(parseWork('K465').catalog, 465);
+        assert.equal(parseWork('D 810').catalog, 810);
+        assert.equal(parseWork('K465').number, null);
+    });
+
+    it('yields NaN catalog for fully non-numeric titles', () => {
+        const w = parseWork('Quartet');
+        assert.ok(Number.isNaN(w.catalog));
+        assert.equal(w.number, null);
+        assert.equal(w.incomplete, false);
+    });
+
+    it('recovers the catalog via the strip-first-char fallback when it precedes #', () => {
+        // "#3": nothing before the "#", so the first parse is NaN and the
+        // substr(1) fallback reads the digits after it.
+        const w = parseWork('#3');
+        assert.equal(w.number, 3);
+        assert.equal(w.catalog, 3);
     });
 });

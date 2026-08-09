@@ -423,7 +423,19 @@ export function prepareRows(rows) {
     return { rows: kept, dropped: rows.length - kept.length };
 }
 
+// Sheet columns processRow reads. Checked up front so a renamed/missing
+// column in the sheet fails with a clear error naming the column, instead of
+// a bare TypeError (or worse, silent undefineds for the unguarded reads).
+const REQUIRED_COLUMNS = [
+    'Timestamp', 'Composer', 'Work Title', 'Which Part',
+    'Player 1', 'Player 2', 'Player 3', 'Others?', 'Location', 'Comments',
+];
+
 export function processRow(d) {
+    const missing = REQUIRED_COLUMNS.filter(c => d[c] === undefined);
+    if (missing.length) {
+        throw new Error(`Row is missing expected column(s): ${missing.join(', ')}`);
+    }
     return {
         "timestamp": new Date(d.Timestamp),
         "composer": d.Composer.trim(),
@@ -438,6 +450,45 @@ export function processRow(d) {
     };
 }
 
+// Two consecutive rows in the same column count as one "session" when they
+// are less than this many hours apart. Within a session, shorthand entries
+// (empty cells, name prefixes) refer back to the previous entry.
+const SESSION_WINDOW_HOURS = 4;
+
+// Does `entry` refer to the same person/place as `prevEntry` (the last full
+// value seen in this column)? True when:
+//   - `entry` is empty — a blank cell inside the session window is a ditto
+//     mark ("same as the row above");
+//   - `entry` equals `prevEntry` exactly;
+//   - `prevEntry` starts with `entry` followed by a word boundary — "Chris"
+//     abbreviates a previous "Chris Smith". The boundary requirement is what
+//     keeps "Chris" from silently merging with a previous "Christina": a
+//     prefix that ends mid-word is a different name, not an abbreviation.
+function refersToPrevEntry(entry, prevEntry) {
+    if (entry === '' || entry === prevEntry) return true;
+    return prevEntry.startsWith(entry) && /\s/.test(prevEntry[entry.length]);
+}
+
+// Expand shorthand in the player/location columns. The sheet convention is to
+// write a value in full once, then abbreviate while the session continues:
+// a blank cell or a leading-prefix of the previous entry (e.g. "Chris" after
+// "Chris Smith") repeats it, and the single-letter PLAYER_ABBREVIATIONS
+// ("I" → "Isaac", etc.) expand regardless of the time window. "-" means
+// "nobody in this slot": it is left as-is and does not advance the session
+// anchor, so shorthand can still refer past it to the last real entry.
+//
+// Cell semantics, pinned by tests:
+//   "-"    → no player; untouched.
+//   ""     → within SESSION_WINDOW_HOURS of the previous non-"-" row: filled
+//            with the previous entry. Outside the window: left empty, and
+//            becomes the new (empty) reference entry.
+//   prefix → same-session prefix-at-a-word-boundary of the previous entry:
+//            expanded to it. Otherwise treated as a new value.
+//
+// Rows must be in chronological order (prepareRows guarantees this). A
+// negative time delta would mean unsorted input; it is deliberately treated
+// as "not the same session" rather than being allowed to slip under the
+// window the way any negative number satisfies `hours < 4`.
 export function fillForward(data) {
     if (!data.length) return data;
     ["player1", "player2", "player3", "location"].forEach(column => {
@@ -448,13 +499,15 @@ export function fillForward(data) {
             const entry = row[column].trim();
             if (entry != '-') {
                 const hours = (row.timestamp - prev.timestamp) / 1000 / 60 / 60;
-                if (hours < 4 && prevEntry.indexOf(entry) != -1) {
+                const sameSession = hours >= 0 && hours < SESSION_WINDOW_HOURS;
+                if (sameSession && refersToPrevEntry(entry, prevEntry)) {
                     row[column] = prevEntry;
                 } else if (PLAYER_ABBREVIATIONS.hasOwnProperty(entry)) {
                     prevEntry = PLAYER_ABBREVIATIONS[entry];
                     row[column] = prevEntry;
                 } else {
                     prevEntry = entry;
+                    row[column] = entry;
                 }
                 prev = row;
             }
