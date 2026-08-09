@@ -43,18 +43,11 @@ export default [
         },
     },
     {
-        // These four files are mid-refactor on a concurrent branch (tooltip
-        // consolidation); suppress the rule here instead of editing them so
-        // the merge stays clean. TODO: remove this block and fix the handful
-        // of unused vars once that refactor lands.
-        files: [
-            "src/tabComponent.js",
-            "src/calendarComponent.js",
-            "src/musicianNetworkComponent.js",
-            "src/dashboardComponent.js",
-        ],
-        rules: {
-            "no-unused-vars": "off",
+        // Playwright spec + config: Node context, but page.evaluate callbacks
+        // execute in the browser, so both global sets apply.
+        files: ["e2e/**/*.js", "playwright.config.js"],
+        languageOptions: {
+            globals: { ...globals.node, ...globals.browser },
         },
     },
     {

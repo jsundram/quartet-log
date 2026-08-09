@@ -15,3 +15,5 @@ node_modules/
 # Dropbox duplicates like "aliases (1).js" so they can't get committed.
 src/aliases*.js
 !src/aliases.stub.js
+test-results/
+playwright-report/

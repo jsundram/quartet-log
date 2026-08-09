@@ -5,7 +5,6 @@ import { MAX_DESIGN_WIDTH, isMobileWidth, isTouchPrimary } from './breakpoints.j
 import {
     buildNetworkData,
     disambiguateLabels,
-    defaultMinPiecesForGraph,
     computePartBreakdownPerMusician,
     computeSliderSync,
     PART_ORDER,

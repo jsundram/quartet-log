@@ -1,7 +1,7 @@
 import * as d3 from "d3";
-import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog.js';
+import { COMPOSERS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog.js';
 import { getBegin, getPartColor, getCssColor } from './config.js';
-import { createEmptyRow, computeAggregateStats, formatStreakStart } from './dataProcessor.js';
+import { createEmptyRow, computeAggregateStats } from './dataProcessor.js';
 import { escapeHtml } from './escapeHtml.js';
 import { buildAggregateStatDefs } from './statDefs.js';
 import { tooltip } from './tooltip.js';
@@ -233,7 +233,7 @@ export class TabComponent {
     }
 
     updateWorkRows(composerDiv, composerData, part) {
-        const { filteredPlays, allPlays } = composerData;
+        const { filteredPlays } = composerData;
         const rows = composerDiv.selectAll(".work-row")
             .data(filteredPlays, d => d[0])
             .join("div")

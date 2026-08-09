@@ -319,7 +319,7 @@ export class CalendarComponent {
         year.append("g")
             .attr("text-anchor", "middle")
             .selectAll()
-            .data(([year, values]) => calculateDayOfWeekTotals(values))
+            .data(([, values]) => calculateDayOfWeekTotals(values))
             .join("text")
             .attr("x", this.cellSize * 53 + this.cellSize / 2)
             .attr("y", (d, i) => (countDay(i) + 0.5) * this.cellSize)
@@ -335,10 +335,10 @@ export class CalendarComponent {
             const statText = year.append("g")
                 .attr("text-anchor", "start")
                 .selectAll()
-                .data(([year, values]) => [year])
+                .data(([year]) => [year])
                 .join("text")
-                    .attr("x", d => this.cellSize*54 + 10)
-                    .attr("y", d => this.cellSize*(2 + i))
+                    .attr("x", () => this.cellSize*54 + 10)
+                    .attr("y", () => this.cellSize*(2 + i))
                     .attr("dy", ".31em")
                     .text(year => def.value(year));
             this.attachStatTooltip(statText, def.title, def.desc);
@@ -539,7 +539,7 @@ export class CalendarComponent {
             const statText = year.append("g")
                 .attr("text-anchor", "start")
                 .selectAll()
-                .data(([year, values]) => [year])
+                .data(([year]) => [year])
                 .join("text")
                     .attr("x", 0)
                     .attr("y", statY + i * statRowH);
