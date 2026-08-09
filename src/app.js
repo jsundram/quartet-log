@@ -301,7 +301,7 @@ export class App {
                 this.showLoadingState();
                 const result = await this.dataService.fetchCSV();
                 this.renderInitial(result);
-                this.updateDataStatus(result.timestamp, result.source);
+                this.updateDataStatus(result.timestamp, result.source, result);
                 this.finishBoot();
             }
         } catch (error) {
@@ -338,7 +338,7 @@ export class App {
                 this._rerenderData();
             }
         }
-        this.updateDataStatus(result.timestamp, result.source);
+        this.updateDataStatus(result.timestamp, result.source, result);
     }
 
     // In-place re-render of every data-dependent view from the current
@@ -453,7 +453,11 @@ export class App {
             .style("color", "var(--color-text-error)");
     }
 
-    updateDataStatus(timestamp, source) {
+    // `flags` may be the DataService result object itself — only the named
+    // properties are read. `cacheWriteFailed` means the fresh data on screen
+    // could not be persisted (localStorage quota): the NEXT launch will boot
+    // from an older cache, so say so instead of silently styling it as fresh.
+    updateDataStatus(timestamp, source, { cacheWriteFailed = false } = {}) {
         // Empty dataset: showNoDataState already owns the status line, and
         // data.at(-1) below would throw.
         if (!this.data?.length) return;
@@ -461,14 +465,18 @@ export class App {
             this.data[this.data.length-1].timestamp
         );
 
-        const updateText = source === 'cache'
+        let updateText = source === 'cache'
             ? `Data Loaded from cache. Age: ${this.dataService.formatTimeSince(timestamp).replace("ago", "old")}`
             : `Data updated ${this.dataService.formatTimeSince(timestamp)}`;
+        if (cacheWriteFailed) {
+            updateText += ' (storage full — offline copy may be stale)';
+        }
 
+        const warn = cacheWriteFailed || source === 'cache';
         d3.select('#update')
             .text(`${updateText}; last session ${lastSession}`)
             .style("margin-left", "10px")
-            .style("color", source === 'cache' ? "var(--color-text-error)" : "var(--color-text-tertiary)");
+            .style("color", warn ? "var(--color-text-error)" : "var(--color-text-tertiary)");
     }
 
     filterData(filterType) {

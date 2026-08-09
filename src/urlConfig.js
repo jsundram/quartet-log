@@ -35,16 +35,30 @@ export function clearDataUrl() {
 }
 
 /**
- * Clear cached CSV data from localStorage
+ * Clear cached CSV data from localStorage.
+ *
+ * The DataService cache is keyed by the sheet URL itself (envelope format),
+ * historically with a sibling `<url>_timestamp` key (legacy two-key format).
+ * Match cache keys with the same predicate that admits data URLs in the first
+ * place (isValidGoogleSheetsUrl) so every acceptable host form is covered —
+ * the old substring check ('docs.google.com') missed other *.google.com hosts
+ * — and only remove `_timestamp` keys whose base key is such a URL, instead
+ * of blanket-deleting every `*_timestamp` key in storage.
+ *
+ * Exported for tests; app code reaches it via setDataUrl/clearDataUrl.
  */
-function clearCachedData() {
-    // Remove all keys that start with cache prefix or are URLs
+export function clearCachedData() {
+    const TS_SUFFIX = '_timestamp';
+    const isCacheKey = (key) =>
+        key.startsWith(CACHE_KEY_PREFIX) ||
+        isValidGoogleSheetsUrl(key) ||
+        (key.endsWith(TS_SUFFIX) &&
+            isValidGoogleSheetsUrl(key.slice(0, -TS_SUFFIX.length)));
+
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(CACHE_KEY_PREFIX) ||
-            key.includes('docs.google.com') ||
-            key.endsWith('_timestamp'))) {
+        if (key && isCacheKey(key)) {
             keysToRemove.push(key);
         }
     }
