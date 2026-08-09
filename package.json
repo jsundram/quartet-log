@@ -7,14 +7,18 @@
     },
     "scripts": {
         "pretest": "node scripts/ensure_aliases.mjs",
-        "test": "TZ=America/New_York node --test test/*.mjs"
+        "test": "TZ=America/New_York node --test test/*.mjs",
+        "lint": "eslint ."
     },
     "config": {
         "pandoc_version": "3.6.2",
         "pandoc_deb_sha256": "6b5e9104a7b1f64f3dfdf0ac547585ff9d462d6a0669d88208996821b96e62bc"
     },
     "devDependencies": {
-        "esbuild": "0.28.1"
+        "@eslint/js": "^9.39.5",
+        "esbuild": "0.28.1",
+        "eslint": "^9.39.5",
+        "globals": "^17.9.0"
     },
     "dependencies": {
         "d3": "^7.9.0"

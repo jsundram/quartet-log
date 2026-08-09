@@ -278,7 +278,7 @@ export class NavigationComponent {
             const option = dropdown.append("div")
                 .attr("class", "player-option");
 
-            const checkbox = option.append("input")
+            option.append("input")
                 .attr("type", "checkbox")
                 .attr("id", `player-${player}`)
                 .attr("checked", this.selectedPlayers.has(player) ? "checked" : null)

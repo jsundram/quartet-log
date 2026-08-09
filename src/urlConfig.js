@@ -134,7 +134,7 @@ export function isValidGoogleSheetsUrl(url) {
         }
 
         return true;
-    } catch (e) {
+    } catch {
         return false;
     }
 }

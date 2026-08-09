@@ -507,7 +507,7 @@ export function fillForward(data, abbreviations = PLAYER_ABBREVIATIONS) {
                 const sameSession = hours >= 0 && hours < SESSION_WINDOW_HOURS;
                 if (sameSession && refersToPrevEntry(entry, prevEntry)) {
                     row[column] = prevEntry;
-                } else if (abbreviations.hasOwnProperty(entry)) {
+                } else if (Object.prototype.hasOwnProperty.call(abbreviations, entry)) {
                     prevEntry = abbreviations[entry];
                     row[column] = prevEntry;
                 } else {
@@ -567,8 +567,8 @@ export function extractUniquePlayers(data) {
 
     // Filter to the dropdown-worthy regulars only
     const filteredPlayers = Array.from(playerCounts.entries())
-        .filter(([player, count]) => count >= PLAYER_DROPDOWN_MIN_ENTRIES)
-        .map(([player, count]) => player)
+        .filter(([, count]) => count >= PLAYER_DROPDOWN_MIN_ENTRIES)
+        .map(([player]) => player)
         .sort();
 
     return filteredPlayers;

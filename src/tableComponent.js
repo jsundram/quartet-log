@@ -112,7 +112,7 @@ export class TableComponent {
 
         // Convert map to array of play records
         const flatData = Array.from(composerData.filteredPlays.entries())
-            .flatMap(([title, plays]) => plays);
+            .flatMap(([, plays]) => plays);
 
         // Sort data (comparator is pure + tested; see makeRowComparator)
         const sortedData = [...flatData].sort(
