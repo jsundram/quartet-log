@@ -11,6 +11,7 @@ import { TableComponent } from './tableComponent.js';
 import { hasDataUrl, setDataUrl, getDataUrl, isValidGoogleSheetsUrl, consumeDataParam, buildMobileSetupLink } from './urlConfig.js';
 import { initTheme, subscribe as subscribeTheme } from './themeManager.js';
 import { PullToRefresh } from './pullToRefresh.js';
+import { escapeHtml } from './escapeHtml.js';
 
 // Background-style auto refresh: while the app is visible we re-fetch the
 // sheet every FOREGROUND_POLL_MS, and we also re-fetch on visibilitychange
@@ -576,7 +577,7 @@ export class App {
         if (isUrlError) {
             // Show setup view to let user reconfigure
             d3.select('#update')
-                .html(`Error loading data: ${error.message}. <a href="#" id="reconfigureLink">Re-enter data URL</a>`)
+                .html(`Error loading data: ${escapeHtml(error.message)}. <a href="#" id="reconfigureLink">Re-enter data URL</a>`)
                 .style("margin-left", "10px")
                 .style("color", "var(--color-text-error)");
 

@@ -1,5 +1,6 @@
 import * as d3 from "d3";
 import { getCssColor, getPartColor } from './config.js';
+import { escapeHtml } from './escapeHtml.js';
 import {
     buildNetworkData,
     disambiguateLabels,
@@ -490,13 +491,13 @@ export class MusicianNetworkComponent {
             .map(p => `${p === 'OTHER' ? 'Other' : p} ×${parts[p]}`)
             .join(' · ');
         const breakdownLi = breakdown ? `<li>${breakdown}</li>` : '';
-        return `<h4>${n.name}</h4><ul><li>${n.count} piece${n.count === 1 ? '' : 's'}</li>${breakdownLi}<li>${partners} co-player${partners === 1 ? '' : 's'} shown</li></ul>`;
+        return `<h4>${escapeHtml(n.name)}</h4><ul><li>${n.count} piece${n.count === 1 ? '' : 's'}</li>${breakdownLi}<li>${partners} co-player${partners === 1 ? '' : 's'} shown</li></ul>`;
     }
 
     _edgeTooltipHtml(e) {
         const a = e.source.name ?? e.source;
         const b = e.target.name ?? e.target;
-        return `<h4>${a} · ${b}</h4><ul><li>${e.weight} pieces together</li></ul>`;
+        return `<h4>${escapeHtml(a)} · ${escapeHtml(b)}</h4><ul><li>${e.weight} pieces together</li></ul>`;
     }
 
     // ---------------- Matrix ----------------
@@ -652,9 +653,9 @@ export class MusicianNetworkComponent {
 
     _cellTooltipHtml(c) {
         if (c.weight === 0) {
-            return `<h4>${c.a} · ${c.b}</h4><ul><li>No pieces together</li></ul>`;
+            return `<h4>${escapeHtml(c.a)} · ${escapeHtml(c.b)}</h4><ul><li>No pieces together</li></ul>`;
         }
-        return `<h4>${c.a} · ${c.b}</h4><ul><li>${c.weight} piece${c.weight === 1 ? '' : 's'} together</li></ul>`;
+        return `<h4>${escapeHtml(c.a)} · ${escapeHtml(c.b)}</h4><ul><li>${c.weight} piece${c.weight === 1 ? '' : 's'} together</li></ul>`;
     }
 
     // ---------------- Chord ----------------
@@ -743,7 +744,7 @@ export class MusicianNetworkComponent {
             const a = ordered[d.source.index].name;
             const b = ordered[d.target.index].name;
             const w = matrix[d.source.index][d.target.index];
-            return `<h4>${a} · ${b}</h4><ul><li>${w} piece${w === 1 ? '' : 's'} together</li></ul>`;
+            return `<h4>${escapeHtml(a)} · ${escapeHtml(b)}</h4><ul><li>${w} piece${w === 1 ? '' : 's'} together</li></ul>`;
         });
 
         // Outer arcs + labels.

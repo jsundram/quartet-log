@@ -2,6 +2,38 @@ import * as d3 from "d3";
 import { getBegin, CALENDAR_CONFIG, getCssColor } from './config.js';
 import { peopleKeysFor, computeAggregateStats, longestRunInfo, formatStreakStart } from './dataProcessor.js';
 import { isCurrentlyDark } from './themeManager.js';
+import { escapeHtml } from './escapeHtml.js';
+
+// Body of a day tooltip (date heading, piece count, plays table). Pure and
+// exported for tests: every sheet-derived cell (composer, work title, part,
+// player names) is escaped.
+export function buildDayTooltipHtml(d, formatDate, sessionData) {
+    const pieces = d.value === 1 ? "piece" : "pieces";
+    let html = `<h4>${escapeHtml(formatDate(d.date))}</h4>`;
+    html += `<p>${d.value} ${pieces} played</p>`;
+
+    if (sessionData && sessionData.length > 0) {
+        html += `<table class="calendar-tooltip-table">`;
+        html += `<thead><tr><th>Composer</th><th>Work</th><th>Part</th><th>Players</th></tr></thead>`;
+        html += `<tbody>`;
+        sessionData.forEach(session => {
+            const composer = session.composer || '';
+            const work = session.work?.title || session.workTitle || '';
+            const part = session.part || '';
+            const players = [session.player1, session.player2, session.player3]
+                .filter(p => p)
+                .join(', ');
+            html += `<tr>`;
+            html += `<td>${escapeHtml(composer)}</td>`;
+            html += `<td>${escapeHtml(work)}</td>`;
+            html += `<td>${escapeHtml(part)}</td>`;
+            html += `<td>${escapeHtml(players)}</td>`;
+            html += `</tr>`;
+        });
+        html += `</tbody></table>`;
+    }
+    return html;
+}
 
 // Year math for the per-year stat tooltips. UTC-based to match the way the
 // calendar groups days (d.date.getUTCFullYear()), so "what year" / "what day
@@ -731,33 +763,8 @@ export class CalendarComponent {
     showTooltip(event, d, formatDate, sessions) {
         if (d.value === 0) return; // Don't show tooltip for days with no activity
 
-        const pieces = d.value === 1 ? "piece" : "pieces";
-        let html = `<span class="tooltip-close">&times;</span>`;
-        html += `<h4>${formatDate(d.date)}</h4>`;
-        html += `<p>${d.value} ${pieces} played</p>`;
-
-        // Get session data for this date
-        const sessionData = sessions.get(d.date.getTime());
-        if (sessionData && sessionData.length > 0) {
-            html += `<table class="calendar-tooltip-table">`;
-            html += `<thead><tr><th>Composer</th><th>Work</th><th>Part</th><th>Players</th></tr></thead>`;
-            html += `<tbody>`;
-            sessionData.forEach(session => {
-                const composer = session.composer || '';
-                const work = session.work?.title || session.workTitle || '';
-                const part = session.part || '';
-                const players = [session.player1, session.player2, session.player3]
-                    .filter(p => p)
-                    .join(', ');
-                html += `<tr>`;
-                html += `<td>${composer}</td>`;
-                html += `<td>${work}</td>`;
-                html += `<td>${part}</td>`;
-                html += `<td>${players}</td>`;
-                html += `</tr>`;
-            });
-            html += `</tbody></table>`;
-        }
+        const html = `<span class="tooltip-close">&times;</span>`
+            + buildDayTooltipHtml(d, formatDate, sessions.get(d.date.getTime()));
 
         this.tooltipDiv
             .html(html)

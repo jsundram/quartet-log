@@ -2,6 +2,29 @@ import * as d3 from "d3";
 import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog.js';
 import { getBegin, getPartColor, getCssColor } from './config.js';
 import { createEmptyRow, computeAggregateStats, formatStreakStart } from './dataProcessor.js';
+import { escapeHtml } from './escapeHtml.js';
+
+// Body of a work tooltip. Pure and exported for tests: every sheet-derived
+// value (composer, title, location, part, players, comments) is escaped —
+// comments especially are free-form user text.
+export function buildWorkTooltipHtml(d) {
+    const ts = d.timestamp ? d.timestamp.toLocaleDateString() : "Unplayed";
+    const url = generateQuartetRouletteUrl(d);
+
+    const petersVol = d.composer === 'Haydn' ? getPetersVolume(d.work) : null;
+    const petersSuffix = petersVol ? `: Peters ${escapeHtml(petersVol)}` : '';
+    // target="_blank" is load-bearing on iOS homescreen webclips: without
+    // it, taps on the link from inside the standalone webapp can fail to
+    // navigate to quartetroulette.com. rel pairs with it for security.
+    let html = `<h4><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(d.composer)} - ${escapeHtml(d.work.title)}</a>${petersSuffix}</h4>`;
+    html += "<ul>";
+    html += `<li>${ts}${d.location ? " - " + escapeHtml(d.location) : ""}</li>`;
+    if (d.part) html += `<li>${escapeHtml(d.part)}</li>`;
+    if (d.player1) html += `<li>${escapeHtml([d.player1, d.player2, d.player3].join(", "))}</li>`;
+    if (d.comments?.trim()) html += `<li>${escapeHtml(d.comments)}</li>`;
+    html += "</ul>";
+    return html;
+}
 
 // Weighted random suggestion over a tab's works: weight = days since the
 // work's last play in the current filtered view (never-played falls back to
@@ -423,22 +446,7 @@ export class TabComponent {
     showTooltip(event, d) {
         if (!d) return;
 
-        const ts = d.timestamp ? d.timestamp.toLocaleDateString() : "Unplayed";
-        const url = generateQuartetRouletteUrl(d);
-
-        let html = `<span class="tooltip-close">&times;</span>`;
-        const petersVol = d.composer === 'Haydn' ? getPetersVolume(d.work) : null;
-        const petersSuffix = petersVol ? `: Peters ${petersVol}` : '';
-        // target="_blank" is load-bearing on iOS homescreen webclips: without
-        // it, taps on the link from inside the standalone webapp can fail to
-        // navigate to quartetroulette.com. rel pairs with it for security.
-        html += `<h4><a href="${url}" target="_blank" rel="noopener noreferrer">${d.composer} - ${d.work.title}</a>${petersSuffix}</h4>`;
-        html += "<ul>";
-        html += `<li>${ts}${d.location ? " - " + d.location : ""}</li>`;
-        if (d.part) html += `<li>${d.part}</li>`;
-        if (d.player1) html += `<li>${[d.player1, d.player2, d.player3].join(", ")}</li>`;
-        if (d.comments?.trim()) html += `<li>${d.comments}</li>`;
-        html += "</ul>";
+        const html = `<span class="tooltip-close">&times;</span>` + buildWorkTooltipHtml(d);
 
         this.tooltipDiv
             .html(html)
