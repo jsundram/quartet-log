@@ -1,3 +1,4 @@
+// @ts-check
 // Player-name tables — STUB (no real data).
 //
 // The real tables map short names in the sheet to ~40 real people's full

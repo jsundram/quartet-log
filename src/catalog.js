@@ -1,16 +1,32 @@
+// @ts-check
 import * as d3 from "d3";
+
+/** @typedef {import('./dataProcessor.js').Row} Row */
+/** @typedef {import('./dataProcessor.js').Work} Work */
+
+/**
+ * The catalog's per-composer work lists: composer → array of work titles,
+ * except the special MISC key, which is an array of single-key objects
+ * ({ composer: titles[] }) — see getComposersForTab/getWorksForTab.
+ * @typedef {Record<string, string[]> & { MISC: Record<string, string[]>[] }} WorkCatalog
+ */
+
 // This will be populated when catalog loads
+/** @type {Set<string>|null} */
 export let COMPOSERS = null;
+/** @type {WorkCatalog|null} */
 export let ALL_WORKS = null;
 // Old Peters Edition volume lookup for Haydn quartets. Keys are like
 // "017_1" for Op.17#1, or "042"/"103" when there's no opus number.
 // Values are 1..4 (volume) or null (not in any Peters volume).
+/** @type {Record<string, number|null>|null} */
 export let HAYDN_PETERS = null;
 
 // Default composer for initial tab display
 export const DEFAULT_COMPOSER = 'Haydn';
 
 // URL generation patterns for each composer
+/** @type {Record<string, (d: Row) => string>} */
 const COMPOSER_URL_PATTERNS = {
     'Bartok': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
     'Beethoven': d => `${d.composer.toLowerCase()}-opus-${d.work.catalog}${d.work.number ? "-" + d.work.number : ""}/`,
@@ -31,9 +47,18 @@ const COMPOSER_URL_PATTERNS = {
     'Smetana': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
     'Tchaikovsky': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
     'Verdi': d => `${d.composer.toLowerCase()}-quartet/`,
-    'MISC': 1  // quiet generateQuartetRouletteUrl's missing-pattern warning
+    // Quiet loadWorkCatalog's missing-pattern warning. Was the number 1,
+    // which satisfied the truthiness check there but would have CRASHED
+    // generateQuartetRouletteUrl (`(1)?.(d)` throws — optional chaining only
+    // guards null/undefined, not non-functions) had any row carried the
+    // composer "MISC". A no-op pattern keeps both callers safe.
+    'MISC': () => ''
 };
 
+/**
+ * @param {Row} d
+ * @returns {string}
+ */
 export function generateQuartetRouletteUrl(d) {
         const base = 'https://quartetroulette.com/';
         return base + (COMPOSER_URL_PATTERNS[d.composer]?.(d) || '');
@@ -50,11 +75,13 @@ const WORKS_VERSION = typeof __WORKS_VERSION__ === "undefined" ? "dev" : __WORKS
 
 export async function loadWorkCatalog() {
     try {
-        [ALL_WORKS, HAYDN_PETERS] = await Promise.all([
+        const [works, peters] = await Promise.all([
             d3.json(`all_works.json?v=${WORKS_VERSION}`),
             d3.json('haydn_peters.json'),
         ]);
-        COMPOSERS = new Set(Object.keys(ALL_WORKS));
+        ALL_WORKS = works;
+        HAYDN_PETERS = peters;
+        COMPOSERS = new Set(Object.keys(works));
 
         // Validate that we have URL patterns for all composers
         COMPOSERS.forEach(composer => {
@@ -72,6 +99,10 @@ const PETERS_ROMAN = ['', 'I', 'II', 'III', 'IV'];
 
 // Returns the Roman-numeral Peters volume for a Haydn work, or null.
 // Key format: 3-digit zero-padded opus, optional "_N" for the number within.
+/**
+ * @param {Work|null|undefined} work
+ * @returns {string|null}
+ */
 export function getPetersVolume(work) {
     if (!HAYDN_PETERS || !work || work.catalog == null) return null;
     const opus = String(work.catalog).padStart(3, '0');
@@ -80,8 +111,18 @@ export function getPetersVolume(work) {
     return vol ? PETERS_ROMAN[vol] : null;
 }
 
+// The catalog after loadWorkCatalog has resolved. The tab helpers below all
+// run against a mounted UI, which only exists post-load; the throw turns a
+// violated assumption into a clear error instead of a bare TypeError on null.
+/** @returns {WorkCatalog} */
+function loadedCatalog() {
+    if (!ALL_WORKS) throw new Error('Work catalog not loaded — call loadWorkCatalog() first');
+    return ALL_WORKS;
+}
+
 // Helper functions for handling MISC tab
 
+/** @param {string} tabName */
 export function isMiscTab(tabName) {
     return tabName === 'MISC';
 }
@@ -90,31 +131,45 @@ export function isMiscTab(tabName) {
 // a flat data table across whatever passes the Date / Part / Player filters.
 export const ALL_TAB = 'ALL';
 
+/** @param {string} tabName */
 export function isAllTab(tabName) {
     return tabName === ALL_TAB;
 }
 
+/**
+ * @param {string} tabName
+ * @returns {string[]}
+ */
 export function getComposersForTab(tabName) {
     if (!isMiscTab(tabName)) {
         return [tabName];
     }
     // MISC is an array of objects, each with one key (the composer name)
-    return ALL_WORKS.MISC.map(obj => Object.keys(obj)[0]);
+    return loadedCatalog().MISC.map(obj => Object.keys(obj)[0]);
 }
 
+/**
+ * @param {string} tabName
+ * @returns {string[]}
+ */
 export function getWorksForTab(tabName) {
     if (!isMiscTab(tabName)) {
-        return ALL_WORKS[tabName];
+        return loadedCatalog()[tabName];
     }
     // Flatten the MISC structure and prepend composer names to avoid title collisions
     // e.g., "Quartet" becomes "Debussy-Quartet" and "Ravel-Quartet"
-    return ALL_WORKS.MISC.flatMap(obj => {
+    return loadedCatalog().MISC.flatMap(obj => {
         const composer = Object.keys(obj)[0];
         const works = obj[composer];
         return works.map(work => `${composer}-${work}`);
     });
 }
 
+/**
+ * @param {string} tabName
+ * @param {string} workTitle
+ * @returns {string}
+ */
 export function getComposerForWork(tabName, workTitle) {
     if (!isMiscTab(tabName)) {
         return tabName;
@@ -125,6 +180,11 @@ export function getComposerForWork(tabName, workTitle) {
     return workTitle.substring(0, dashIndex);
 }
 
+/**
+ * @param {string} tabName
+ * @param {string} workTitle
+ * @returns {string}
+ */
 export function getOriginalWorkTitle(tabName, workTitle) {
     if (!isMiscTab(tabName)) {
         return workTitle;

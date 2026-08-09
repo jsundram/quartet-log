@@ -12,6 +12,7 @@
 //
 // Pure functions are exported for tests; the CLI entry point at the bottom
 // does the file I/O.  Usage: node scripts/gen_sw.mjs <deployDir>
+// @ts-check
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,11 +23,16 @@ import { pathToFileURL } from 'node:url';
 // probe's target), CNAME (GitHub Pages config, never fetched by the app),
 // and sourcemaps (dev-only, huge).
 const EXCLUDE = new Set(['sw.js', 'version.json', 'CNAME']);
+/** @param {string} name */
 const isExcluded = (name) => EXCLUDE.has(name) || name.endsWith('.map');
 
 // The precache list: "./" and "./index.html" first (the navigation fallback
 // entries the fetch handler looks up), then everything else sorted for a
 // deterministic manifest.
+/**
+ * @param {string[]} fileNames
+ * @returns {string[]}
+ */
 export function buildShellList(fileNames) {
     const rest = fileNames
         .filter((n) => !isExcluded(n) && n !== 'index.html')
@@ -39,6 +45,10 @@ export function buildShellList(fileNames) {
 // asset change — icon, manifest, catalog, code — produces a new version.
 // Keeps the "ql-" prefix: app.js identifies the installed SW cache by that
 // prefix, and _checkVersion compares V strings for equality only.
+/**
+ * @param {Iterable<[name: string, contentHash: string]>} entries
+ * @returns {string}
+ */
 export function computeVersion(entries) {
     const h = createHash('sha256');
     for (const [name, contentHash] of [...entries].sort((a, b) => a[0] < b[0] ? -1 : 1)) {
@@ -50,6 +60,11 @@ export function computeVersion(entries) {
 // Substitute the template's two tokens. The template stays valid, lintable
 // JS: __SW_VERSION__ sits inside a string literal and "__SW_SHELL__" is the
 // sole element of a real array literal.
+/**
+ * @param {string} template
+ * @param {{ version: string, shell: string[] }} tokens
+ * @returns {string}
+ */
 export function generateSW(template, { version, shell }) {
     for (const token of ['"__SW_SHELL__"', '__SW_VERSION__']) {
         if (!template.includes(token)) throw new Error(`template is missing token ${token}`);
@@ -61,13 +76,15 @@ export function generateSW(template, { version, shell }) {
     return out;
 }
 
+/** @param {string} deployDir */
 function main(deployDir) {
     const files = readdirSync(deployDir, { withFileTypes: true })
         .filter((d) => d.isFile())
         .map((d) => d.name);
     const hashed = files
         .filter((n) => !isExcluded(n))
-        .map((n) => [n, createHash('sha256').update(readFileSync(join(deployDir, n))).digest('hex')]);
+        .map((n) => /** @type {[string, string]} */ (
+            [n, createHash('sha256').update(readFileSync(join(deployDir, n))).digest('hex')]));
     const version = computeVersion(hashed);
     const shell = buildShellList(files);
     const template = readFileSync(new URL('../static/sw.js', import.meta.url), 'utf8');

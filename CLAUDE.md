@@ -27,6 +27,13 @@ npm test
 ```
 Uses Node's built-in `node:test` runner against `test/*.mjs`. No external test deps. Tests cover `src/dataProcessor.js` helpers (alias normalization, partial-movement filtering, aggregate stats, etc.).
 
+**Lint & typecheck:**
+```bash
+npm run lint       # eslint flat config (eslint.config.js): @eslint/js recommended + env-correct globals
+npm run typecheck  # tsc --noEmit over JSDoc types (tsconfig.json); pretypecheck materializes src/aliases.js
+```
+Both run in PR CI after the tests. eslint covers `src/`, `scripts/`, `test/`, and `static/sw.js` (serviceworker globals); the four components under the concurrent tooltip refactor have a config-scoped `no-unused-vars` suppression (TODO in `eslint.config.js`). Typechecking is opt-in per file via a leading `// @ts-check` comment — currently the data layer (`dataProcessor`, `dataService`, `config`, `catalog`, `csvFormat`, `urlConfig`, `escapeHtml`, `aliases.stub`) and the build scripts (`gen_sw.mjs`, `ensure_aliases.mjs`). The canonical row shape is the `Row` typedef in `src/dataProcessor.js`; reuse it via `import('./dataProcessor.js').Row` in JSDoc. `tsconfig.json` keeps `strict` on but `noImplicitAny` off so imports from unannotated modules (UI components, d3) flow as `any` — see the comment there. Build-time defines (`__WORKS_VERSION__`) are declared in `types/globals.d.ts`.
+
 **Deploy:**
 Push to `main` → GitHub Actions workflow (`.github/workflows/deploy.yml`) runs `npm test`, builds, deploys to GitHub Pages. Site lives at https://log.quartetroulette.com.
 
@@ -41,7 +48,7 @@ The SW's `fetch` handler early-returns for its own `/sw.js` and for `/version.js
 - pandoc (with `gfm+attributes+implicit_figures` extensions) — version and .deb sha256 single-sourced in `package.json` `"config"`; the deploy workflow reads and checksum-verifies them
 - fswatch (optional, for dev mode)
 
-**CI:** `.github/workflows/test.yml` runs `npm ci` + `npm test` on every PR to `main`; `deploy.yml` (push to `main`) tests, builds, and deploys. All actions in both workflows are pinned to commit SHAs.
+**CI:** `.github/workflows/test.yml` runs `npm ci` + `npm test` + `npm run lint` + `npm run typecheck` on every PR to `main`; `deploy.yml` (push to `main`) tests, builds, and deploys. All actions in both workflows are pinned to commit SHAs.
 
 ## Architecture Overview
 

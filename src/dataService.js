@@ -1,15 +1,32 @@
+// @ts-check
 import * as d3 from "d3";
 import { getDataUrl } from './urlConfig.js';
 import { processRow, prepareRows, fillForward, normalizePlayerNames } from './dataProcessor.js';
+
+/** @typedef {import('./dataProcessor.js').Row} Row */
+
+/**
+ * A fetch/cache result handed to the App.
+ * @typedef {Object} FetchResult
+ * @property {Row[]} parsed
+ * @property {number|null} timestamp - fetch time (ms epoch), null if unknown
+ * @property {'fresh'|'cache'} source
+ * @property {boolean} [changed] - fetchFresh only: raw data differs from cache
+ * @property {boolean} [cacheWriteFailed] - fresh rows could not be persisted
+ */
 
 export class DataService {
     // `fetchRows` and `timeoutMs` (the network-vs-cache race timeout in
     // fetchCSV, default 5s) are injectable for tests; production callers use
     // `new DataService()`.
+    /**
+     * @param {{ fetchRows?: (url: string) => Promise<Row[]>, timeoutMs?: number }} [options]
+     */
     constructor({ fetchRows, timeoutMs = 5000 } = {}) {
         this.data = null;
         this._fetchRows = fetchRows || (url => d3.csv(url, processRow));
         this._timeoutMs = timeoutMs;
+        /** @type {Promise<FetchResult>|null} */
         this._inflightFresh = null;
     }
 
@@ -29,6 +46,10 @@ export class DataService {
     //   rows           — cached rows with row.timestamp rehydrated to Date
     //   timestamp      — fetch time (ms epoch), or null if missing/corrupt
     //   serializedData — JSON of the rows alone, for fetchFresh's `changed` diff
+    /**
+     * @param {string} dataUrl
+     * @returns {{ rows: Row[], timestamp: number|null, serializedData: string }|null}
+     */
     _readCacheEntry(dataUrl) {
         const raw = localStorage.getItem(dataUrl);
         if (!raw) return null;
@@ -45,7 +66,7 @@ export class DataService {
             // Legacy two-key format: rows under <url>, timestamp in a sibling key.
             rows = parsed;
             serializedData = raw;
-            timestamp = parseInt(localStorage.getItem(`${dataUrl}_timestamp`), 10);
+            timestamp = parseInt(localStorage.getItem(`${dataUrl}_timestamp`) ?? '', 10);
         } else if (parsed && Array.isArray(parsed.data)) {
             // Envelope format.
             rows = parsed.data;
@@ -67,6 +88,12 @@ export class DataService {
     // false when the write failed (localStorage quota exhaustion — the log only
     // grows). Callers surface the failure as a staleness signal: the in-memory
     // data is fresh, but the *next* launch will boot from an older cache.
+    /**
+     * @param {string} dataUrl
+     * @param {Row[]} rows
+     * @param {number} timestamp
+     * @returns {boolean}
+     */
     _writeCache(dataUrl, rows, timestamp) {
         try {
             localStorage.setItem(dataUrl, JSON.stringify({ data: rows, timestamp }));
@@ -78,6 +105,7 @@ export class DataService {
         }
     }
 
+    /** @returns {Promise<FetchResult>} */
     async fetchCSV() {
         const dataUrl = getDataUrl();
         if (!dataUrl) {
@@ -109,8 +137,9 @@ export class DataService {
             return network;
         }
 
+        /** @returns {FetchResult} */
         const fromCache = () => {
-            console.log(`Using cached data from ${new Date(cached.timestamp)}`);
+            console.log(`Using cached data from ${new Date(cached.timestamp ?? NaN)}`);
             return {
                 parsed: cached.rows,
                 timestamp: cached.timestamp,
@@ -136,6 +165,7 @@ export class DataService {
     // immediately instead of staring at an empty shell while the (cross-origin,
     // often slow) published Sheet is fetched. `timestamp` may be null when the
     // cached copy has no readable fetch time.
+    /** @returns {FetchResult|null} */
     readCache() {
         const dataUrl = getDataUrl();
         if (!dataUrl) return null;
@@ -165,6 +195,7 @@ export class DataService {
     // network trip and one result. Without this, two interleaved fetches could
     // each compute `changed` against the other's cache write and drop a
     // genuine update on the floor.
+    /** @returns {Promise<FetchResult>} */
     fetchFresh() {
         if (!this._inflightFresh) {
             this._inflightFresh = this._fetchFreshImpl().finally(() => {
@@ -174,6 +205,7 @@ export class DataService {
         return this._inflightFresh;
     }
 
+    /** @returns {Promise<FetchResult>} */
     async _fetchFreshImpl() {
         const dataUrl = getDataUrl();
         if (!dataUrl) {
@@ -202,6 +234,10 @@ export class DataService {
         return { parsed: d, timestamp, source: 'fresh', changed, cacheWriteFailed };
     }
 
+    /**
+     * @param {Row[]} rawData
+     * @returns {Row[]}
+     */
     processData(rawData) {
         // Sort by timestamp and drop invalid-date rows before anything else —
         // fillForward's session-window math and the row-0-is-earliest
@@ -218,6 +254,10 @@ export class DataService {
         return processedData.filter(d => !d.work.incomplete);
     }
 
+    /**
+     * @param {number|null|undefined} previous - ms epoch of the last fetch
+     * @returns {string}
+     */
     formatTimeSince(previous) {
         const current = Date.now();
         const msPerMinute = 60 * 1000;
@@ -225,12 +265,12 @@ export class DataService {
         const msPerDay = msPerHour * 24;
         const msPerMonth = msPerDay * 30;
         const msPerYear = msPerDay * 365;
-        const elapsed = current - previous;
 
         // Guard missing (null/undefined) and unparseable timestamps: without
         // this, a cache with no readable fetch time renders as "NaN years ago"
         // (or, for null — which coerces to 0 — "56 years ago").
-        if (previous == null || !Number.isFinite(elapsed)) {
+        const elapsed = previous == null ? NaN : current - previous;
+        if (!Number.isFinite(elapsed)) {
             return 'an unknown time ago';
         }
 

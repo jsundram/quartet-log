@@ -1,8 +1,11 @@
+// @ts-check
 // Global configuration constants
 
 // BEGIN is computed from data - first day of month containing earliest data point
+/** @type {Date|null} */
 let _begin = null;
 
+/** @returns {Date} */
 export function getBegin() {
     if (!_begin) {
         throw new Error('BEGIN not initialized - call setBegin() with data first');
@@ -10,6 +13,7 @@ export function getBegin() {
     return _begin;
 }
 
+/** @param {Date} earliestDate */
 export function setBegin(earliestDate) {
     // Set to first day of the month containing the earliest date
     _begin = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
@@ -21,10 +25,16 @@ export function setBegin(earliestDate) {
 // PART_COLORS. Memoized after first read — themeManager.subscribe should
 // call invalidateColorCache() before re-rendering on a theme change so the
 // next read picks up the new resolved value.
+/** @type {Map<string, string>} */
 const _colorCache = new Map();
 
+/**
+ * @param {string} token - CSS custom property name, e.g. '--color-part-v1'
+ * @returns {string}
+ */
 export function getCssColor(token) {
-    if (_colorCache.has(token)) return _colorCache.get(token);
+    const cached = _colorCache.get(token);
+    if (cached !== undefined) return cached;
     const value = getComputedStyle(document.documentElement)
         .getPropertyValue(token)
         .trim();
@@ -36,13 +46,19 @@ export function invalidateColorCache() {
     _colorCache.clear();
 }
 
+/**
+ * @param {string|null} part
+ * @returns {string}
+ */
 export function getPartColor(part) {
-    const token = {
+    /** @type {Record<string, string>} */
+    const tokens = {
         V1: '--color-part-v1',
         V2: '--color-part-v2',
         VA: '--color-part-va',
         VC: '--color-part-vc',
-    }[part];
+    };
+    const token = part ? tokens[part] : undefined;
     return token ? getCssColor(token) : getCssColor('--color-part-fallback');
 }
 

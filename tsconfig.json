@@ -1,0 +1,26 @@
+{
+    // Type-checking floor over JSDoc (architecture review §5): tsc --noEmit,
+    // no build-step changes. checkJs is OFF globally — files opt in with a
+    // leading `// @ts-check` comment (currently the data layer + build
+    // scripts), so only annotated files plus whatever they import are
+    // checked. Run via `npm run typecheck`.
+    "compilerOptions": {
+        "allowJs": true,
+        "checkJs": false,
+        "noEmit": true,
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "types": ["node"],
+        "strict": true,
+        // Pragmatic escape from full `strict`: the UI components and d3 have
+        // no type declarations, so with noImplicitAny on, every import from
+        // them (and every un-annotated callback param) would error inside the
+        // annotated files. With it off, untyped values flow as `any` while
+        // strictNullChecks & co stay on. Tighten when more files opt in.
+        "noImplicitAny": false,
+        "skipLibCheck": true
+    },
+    "include": ["src/**/*.js", "scripts/**/*.mjs", "types/**/*.d.ts"]
+}

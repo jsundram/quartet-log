@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Ensure src/aliases.js exists so every entry point (dev build, prod build,
 // npm test, audit script) can import it. If the personal copy is absent
 // (fresh clone, CI without the PLAYER_ALIASES_JS secret), copy the

@@ -1,3 +1,4 @@
+// @ts-check
 // URL configuration management for localStorage-based data source
 
 const STORAGE_KEY = 'quartetlog_data_url';
@@ -12,6 +13,7 @@ export function hasDataUrl() {
 
 /**
  * Get the configured data URL from localStorage
+ * @returns {string|null}
  */
 export function getDataUrl() {
     return localStorage.getItem(STORAGE_KEY);
@@ -19,6 +21,7 @@ export function getDataUrl() {
 
 /**
  * Save a data URL to localStorage and clear any old cached data
+ * @param {string} url
  */
 export function setDataUrl(url) {
     // Clear old cache before setting new URL
@@ -49,6 +52,7 @@ export function clearDataUrl() {
  */
 export function clearCachedData() {
     const TS_SUFFIX = '_timestamp';
+    /** @param {string} key */
     const isCacheKey = (key) =>
         key.startsWith(CACHE_KEY_PREFIX) ||
         isValidGoogleSheetsUrl(key) ||
@@ -69,6 +73,8 @@ export function clearCachedData() {
  * Build a mobile-setup link from a data URL: <origin><pathname>?data=<encoded>.
  * encodeURIComponent ensures the embedded Google Sheets URL (which has its
  * own ?gid=…&single=true&output=csv) survives parsing on the receiving end.
+ * @param {string} dataUrl
+ * @returns {string}
  */
 export function buildMobileSetupLink(dataUrl) {
     const base = window.location.origin + window.location.pathname;
@@ -109,6 +115,8 @@ export function consumeDataParam() {
 
 /**
  * Validate that a URL is a valid Google Sheets CSV export URL
+ * @param {unknown} url
+ * @returns {boolean}
  */
 export function isValidGoogleSheetsUrl(url) {
     if (!url || typeof url !== 'string') {

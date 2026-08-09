@@ -1,3 +1,4 @@
+// @ts-check
 // Canonical CSV export format, shared by the in-app "Download Data" button
 // (src/app.js downloadCSV) and scripts/fetch_processed.mjs so the two writers
 // cannot drift apart again. That drift already happened once: both writers
@@ -15,6 +16,10 @@ export const CSV_HEADERS = [
 
 // RFC-4180 field quoting: wrap in double quotes when the value contains a
 // comma, quote, or newline; embedded quotes double. null/undefined → ''.
+/**
+ * @param {unknown} field
+ * @returns {string}
+ */
 export function escapeField(field) {
     if (field === null || field === undefined) return '';
     const s = String(field);
@@ -24,7 +29,12 @@ export function escapeField(field) {
 // "M/D/YYYY H:mm:ss" in local time — the same shape the Google Form writes
 // into the sheet's Timestamp column, so exported rows round-trip through
 // processRow's `new Date(...)` unchanged.
+/** @param {number} n */
 const pad2 = n => String(n).padStart(2, '0');
+/**
+ * @param {Date} d
+ * @returns {string}
+ */
 export function formatTimestamp(d) {
     return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()} ` +
         `${d.getHours()}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
@@ -32,9 +42,16 @@ export function formatTimestamp(d) {
 
 // One processed row (the processRow output shape) → raw field values in
 // CSV_HEADERS order.
+/**
+ * @param {import('./dataProcessor.js').Row} d
+ * @returns {(string|null)[]}
+ */
 export function rowToFields(d) {
     return [
-        formatTimestamp(d.timestamp),
+        // Exported rows always come from the sheet, so timestamp is a real
+        // Date (nulls exist only on createEmptyRow placeholders, which are
+        // never serialized).
+        formatTimestamp(/** @type {Date} */ (d.timestamp)),
         d.composer,
         d.work.title,
         d.part,
@@ -49,6 +66,10 @@ export function rowToFields(d) {
 
 // Serialize processed rows to full CSV text: header line + one line per row,
 // '\n'-separated, no trailing newline.
+/**
+ * @param {import('./dataProcessor.js').Row[]} data
+ * @returns {string}
+ */
 export function serializeRows(data) {
     return [CSV_HEADERS, ...data.map(rowToFields)]
         .map(fields => fields.map(escapeField).join(','))
