@@ -21,10 +21,14 @@ If `.dev-data-url` exists (gitignored, one line), the dev build prints a clickab
 ```
 Runs `npm test` first; aborts on failure. Outputs minified bundle to `./last_deploy/`.
 
-**Tests:**
+**Tests / checks:**
 ```bash
-npm test
+npm test            # unit tests (node:test over test/*.mjs)
+npm run lint        # eslint flat config (eslint.config.js)
+npm run typecheck   # tsc --noEmit over // @ts-check'd files (data layer)
+npm run test:e2e    # Playwright boot smoke (build with ./build.sh --prod first)
 ```
+All four run in PR CI (`test.yml`); the Playwright job builds the site and boots it against a fixture CSV (`e2e/smoke.spec.js`). A `pretest`/`pretypecheck` hook materializes `src/aliases.js` from the stub on fresh clones.
 Uses Node's built-in `node:test` runner against `test/*.mjs`. No external test deps. Tests cover `src/dataProcessor.js` helpers (alias normalization, partial-movement filtering, aggregate stats, etc.).
 
 **Lint & typecheck:**
@@ -68,7 +72,7 @@ Hash routing lives in `NavigationComponent`: menu clicks set `window.location.ha
 ### Component map
 
 **Orchestration:**
-- `App` (`src/app.js`) — owns data, instantiates and wires components, runs `filterData()`.
+- `App` (`src/app.js`) — owns data, instantiates and wires components, runs `filterData()`. The former app.js megafile is split: `setupView.js` (URL setup screen + `flashLabel`), `updateChecker.js` (shell-version probe via `version.json` + `forceUpdate`), `statusBar.js` (every `#update` message: loading/freshness/offline/storage-full/no-data/error), `csvExporter.js` (Download Data), `filterEngine.js` (pure Home filter pipeline). Re-init (error → re-enter URL) is idempotent: every `initializeUI` step rebuilds instead of stacking (menu listeners wired once with teardown handles kept).
 
 **Data layer:**
 - `DataService` (`src/dataService.js`) — CSV fetch + localStorage cache. `processData` calls `prepareRows` (sort by timestamp, drop invalid-date rows) then `fillForward` then `normalizePlayerNames`, then filters out partial-movement entries (titles containing `:`). Three fetch entry points: `fetchCSV()` (network races a 5s timeout, falls back to cached copy — used only for the first-ever launch with no cache); `readCache()` (synchronous localStorage read, returns `null` if empty — drives the cache-first boot paint); `fetchFresh()` (network-only, no fallback; writes the cache and returns a `changed` flag by diffing the new serialization against the stored one, so the caller can skip a re-render when the sheet is byte-identical). Both network paths reject a valid-but-empty (0-row) response instead of caching it — persisting `[]` would poison the cache-first boot (`readCache()` would serve `[]` and `fillForward()` would throw on every subsequent launch); `fetchCSV` falls back to cache, `fetchFresh` throws so `revalidate()` keeps the painted UI.
@@ -82,13 +86,17 @@ Hash routing lives in `NavigationComponent`: menu clicks set `window.location.ha
   - `parseOthers`, `stripParens`, `classOf`, `canonicalize` (helpers)
   - `extractUniquePlayers` — for the Player dropdown
 - `csvFormat` (`src/csvFormat.js`) — pure shared CSV-export format: `CSV_HEADERS` (canonical header list — the Others column is spelled `Others?` to match the sheet and `processRow`), `escapeField`, `formatTimestamp`, `rowToFields`, `serializeRows`. Imported by BOTH writers (`App.downloadCSV` and `scripts/fetch_processed.mjs`) so they can't drift; readers (`processRow`, `scripts/audit_aliases.py`) also accept the legacy `Others` header from pre-fix exports.
-- `tableComponent` (`src/tableComponent.js`) — sortable HTML data tables. `getColumnsForComposer` includes the composer column for `MISC` and `ALL` only.
+- `tableComponent` (`src/tableComponent.js`) — sortable HTML data tables. `getColumnsForComposer` includes the composer column for `MISC` and `ALL` only. Sort comparator is the pure exported `makeRowComparator` (work.title sorts by catalog-then-number, not string order).
+- `statDefs` (`src/statDefs.js`) — `buildAggregateStatDefs(agg, windowPhrase)`: the five stat definitions (label/short/value/tooltip copy), single-sourced for the ALL tab, Dashboard KPI tiles, and Calendar recent-stats header.
+- `breakpoints` (`src/breakpoints.js`) — `MOBILE_BREAKPOINT`, `MAX_DESIGN_WIDTH`, `isMobileWidth`, `isTouchPrimary`; the chart components' shared responsive constants (their `sizing()` knob tables stay per-component).
+- `tooltip` (`src/tooltip.js`) — THE tooltip implementation (see below).
 
 **UI:**
 - `NavigationComponent` (`src/navigationComponent.js`) — hamburger menu (native dismiss: outside-click + Escape), segmented Part buttons (V1/V2/VA/ANY), Player multiselect dropdown, view switching + hash routing. Delegates the date range to `DateFilterWidget`.
 - `DateFilterWidget` (`src/dateFilterWidget.js`) — reusable segmented date range picker (`All` / `YTD` / `1Y` / `6M` / `Custom`). Class-based selectors scoped to mount point so multiple instances can coexist; Home and Dashboard each have their own.
-- `TabComponent` (`src/tabComponent.js`) — per-composer tab content + ALL tab. `updateTabContent` early-returns to `updateAllTabContent` for the special ALL tab. Random-button suggestion respects current filters (uses `filteredPlays`).
+- `TabComponent` (`src/tabComponent.js`) — per-composer tab content + ALL tab. `updateTabContent` early-returns to `updateAllTabContent` for the special ALL tab. Random-button suggestion respects current filters (pure `pickRandomWork`, rebound on every update); grouping is the pure `groupPlaysByWork`. `activeTab` on the instance is the source of truth (`.active-tab` classes are reflections); `onTabShown` hook drives lazy rendering (below).
 - `CalendarComponent` (`src/calendarComponent.js`) — calendar grid, legend, per-year stats column, "Last 365 days" header (uses `renderRecentStats` → `computeAggregateStats`). Legend SVG and grid are width-coupled via CSS.
+- `MusicianNetworkComponent` (`src/musicianNetworkComponent.js`) — state machine + chrome (tabs, slider via pure `computeSliderSync`, fullscreen, name toggle, tooltip builders); the three views render via `networkGraphRenderer.js` / `networkMatrixRenderer.js` / `networkChordRenderer.js`, each taking a plain ctx object.
 - `DashboardComponent` (`src/dashboardComponent.js`) — owns `{ selectedPart, selectedComposer }` plus its own `DateFilterWidget`. Re-renders both charts on any mutation (cheap at this data size). Cross-filter rule: each chart applies every filter except its own dimension. Charts measure live container width and render at 1:1 pixel scale (viewBox = pixel dims) so mobile gets bigger fonts/bars instead of scaled-down ones; re-renders on window resize and on `notifyShown()` (fires when the view first becomes visible after init while hidden).
 
 ### Initialization sequence
@@ -110,10 +118,7 @@ Boot is **cache-first** so a returning visitor (especially an installed PWA agai
 - `"date"` — date range changed
 - `"player"` — player selection changed
 
-App's `filterData(filterType)` reads all three filters, computes `filteredData`, and pushes it to every composer tab (plus the ALL tab):
-```js
-[...COMPOSERS, ALL_TAB].forEach(c => tabComponent.updateTabContent(c, part, filteredData, this.data));
-```
+App's `filterData(filterType)` reads all three filters (part from `navigationComponent.selectedPart` — state, never the DOM), computes `filteredData` via `filterEngine.filterRows`, renders ONLY the visible tab, and marks the rest dirty; `TabComponent.showTab` → `onTabShown` lazily renders a dirty tab when it becomes visible. User-visible behavior is identical to rendering all ~21 tabs, at 1/21 the work.
 
 The Player dropdown refreshes only on `"date"` / `"part"` changes (not `"player"`), shows players with ≥20 entries in the filtered dataset, and preserves the current selection even if it would drop below 20.
 
@@ -152,7 +157,7 @@ Per-year stats column shows five numbers (Pieces, Unique Pieces, People played w
 
 **Re-render contract**: calendar rebuilds (`rerender()`, App's `_rerenderData`) remove only `.calendar-gen`-tagged nodes from `#calendar`, so the static `<h1>` in index.html survives. Anything `createCalendar` appends must carry the `calendar-gen` class.
 
-**Tooltips**: the shared `.tooltip` CSS clamps to the viewport (`max-width`/`max-height` + scroll; sticky close button so it can't scroll away), and `positionTooltip` computes in client coordinates before converting to page coordinates, so day tooltips stay fully on-screen on phones and inside the fullscreen overlay.
+**Tooltips**: one implementation, `src/tooltip.js` — all components render into the single body-level `#tooltip` div via `tooltip.show/attach`, positioned by the pure `clampToViewport` (client coords, flip-then-clamp, converted to page coords) so tooltips stay on-screen on phones and inside the fullscreen overlays. Tap-outside dismissal is one document listener with an ownership model: trigger elements are registered via `tooltip.own()`/`attach()` (WeakSet, matched by ancestry) — never a class-name allowlist. The shared `.tooltip` CSS still provides the viewport max-width/height + scroll + sticky close button.
 
 ### Configuration files
 
