@@ -10,3 +10,4 @@ md/*.html
 archive/*.csv
 alias-output.txt
 .dev-data-url
+node_modules/

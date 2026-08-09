@@ -1,5 +1,6 @@
 #!/bin/bash
-# deps: esbuild, pandoc (versions pinned in package.json / CI workflow)
+# deps: esbuild (devDependency — version pinned in package.json/lockfile),
+#       pandoc (version + .deb checksum pinned in package.json "config"),
 #       fswatch (optional, for live-reload of static assets in dev mode)
 #
 # Fail loudly: any failed command (pandoc, cp, sed, mv, esbuild) must fail
@@ -19,6 +20,10 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
+
+# Prefer the locked esbuild from node_modules over any global install so
+# local builds match CI byte-for-byte (`npm ci`/`npm install` puts it there).
+export PATH="$PWD/node_modules/.bin:$PATH"
 
 # Preflight: fail fast with a clear message instead of partway through the
 # build with a confusing one. fswatch is optional (dev nicety, checked later).

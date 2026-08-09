@@ -35,11 +35,13 @@ Push to `main` → GitHub Actions workflow (`.github/workflows/deploy.yml`) runs
 
 The SW's `fetch` handler early-returns for its own `/sw.js` (never intercept/cache it) so the version check below can always read the live copy off the server. The hamburger menu has a hidden `#ver` row that `App._checkVersion()` (run on boot and every foreground resume) reveals: it reads the installed version from the `ql-` cache key and the latest from `./sw.js?_=<ts>` (`no-store`), and when they differ shows an accented "Update available" (`.menu-item--update`) that taps through to `App.forceUpdate()` — drop all caches + reload, forcing a clean shell reinstall. This is the one-tap escape hatch for a wedged iOS home-screen install (network-first already auto-updates the happy path). Adapted from the [pwa-starter](https://github.com/jsundram/pwa-starter) update tag; unlike that repo's monotonic `app-vN`, ours compares content-hash `V` strings for equality.
 
-**Dependencies (system):**
-- Node 20+ (for `node:test`)
-- esbuild 0.24.2
-- pandoc 3.6.2 (with `gfm+attributes+implicit_figures` extensions)
+**Dependencies:**
+- Node 26 (pinned in `.nvmrc` + `engines`; CI reads `.nvmrc`)
+- esbuild — devDependency, exact version in `package.json`/`package-lock.json`; `npm install` puts it in `node_modules/.bin`, which `build.sh` prefers over any global install
+- pandoc (with `gfm+attributes+implicit_figures` extensions) — version and .deb sha256 single-sourced in `package.json` `"config"`; the deploy workflow reads and checksum-verifies them
 - fswatch (optional, for dev mode)
+
+**CI:** `.github/workflows/test.yml` runs `npm ci` + `npm test` on every PR to `main`; `deploy.yml` (push to `main`) tests, builds, and deploys. All actions in both workflows are pinned to commit SHAs.
 
 ## Architecture Overview
 

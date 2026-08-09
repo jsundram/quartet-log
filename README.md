@@ -25,11 +25,13 @@ See [setup.html](https://log.quartetroulette.com/setup.html) for detailed instru
 ## Development
 
 **Prerequisites:**
-- esbuild 0.24.2
-- pandoc 3.6.2
+- Node (version in `.nvmrc`)
+- esbuild — installed via `npm install` (exact version in `package.json`)
+- pandoc — version + checksum in `package.json` `"config"`
 
 **Run locally:**
 ```bash
+npm install
 ./build.sh
 ```
 This starts a dev server with watch mode at `http://localhost:8000`.
