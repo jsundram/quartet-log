@@ -220,7 +220,6 @@ export class App {
     // synchronously here so the first paint shows real data, not an empty shell.
     renderInitial(result) {
         this.data = this.dataService.processData(result.parsed);
-        window.data = this.data;
         this._lastFetchAt = result.timestamp;
         // Every row can get filtered out (all partial movements and/or invalid
         // timestamps): don't build the UI off data[0] / data.at(-1) — say so.
@@ -338,8 +337,7 @@ export class App {
                 this.renderInitial(result);
             } else {
                 this.data = this.dataService.processData(result.parsed);
-                window.data = this.data;
-                this._rerenderData();
+                        this._rerenderData();
             }
         }
         this.updateDataStatus(result.timestamp, result.source, result);
@@ -359,7 +357,7 @@ export class App {
         }
         setBegin(this.data[0].timestamp);
         // Only remove component-generated nodes — the static <h1> and
-        // #daytooltip in index.html stay (matches CalendarComponent.rerender).
+        // in index.html stays (matches CalendarComponent.rerender).
         d3.select('#calendar').selectAll(':scope > .calendar-gen').remove();
         this.calendarComponent.createCalendar(this.data);
         this.dashboardComponent.setData(this.data);

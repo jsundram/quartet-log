@@ -9,7 +9,6 @@ import {
     normalizePlayerNames,
     peopleKeysFor,
     computeAggregateStats,
-    longestConsecutiveRun,
     longestRunInfo,
     formatStreakStart,
     normalizeDashboardPart,
@@ -468,17 +467,17 @@ describe('computeAggregateStats', () => {
     });
 });
 
-describe('longestConsecutiveRun', () => {
+describe('longestRunInfo().length (longest consecutive run)', () => {
     it('returns 0 for empty input', () => {
-        assert.equal(longestConsecutiveRun([]), 0);
+        assert.equal(longestRunInfo([]).length, 0);
     });
 
     it('finds the longest run and ignores order and duplicates', () => {
-        assert.equal(longestConsecutiveRun([5, 1, 2, 9, 3, 2, 10, 11]), 3); // 1,2,3
+        assert.equal(longestRunInfo([5, 1, 2, 9, 3, 2, 10, 11]).length, 3); // 1,2,3
     });
 
     it('treats a single day as a run of 1', () => {
-        assert.equal(longestConsecutiveRun([42]), 1);
+        assert.equal(longestRunInfo([42]).length, 1);
     });
 });
 

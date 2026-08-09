@@ -77,7 +77,7 @@ export class CalendarComponent {
     // with whatever color values the CSS now resolves to (the d3 SVG fills
     // and the canvas-rendered legend gradient are both baked at build time
     // so they need a fresh pass). Only removes nodes this component created
-    // (.calendar-gen) — the static <h1> and #daytooltip in index.html stay.
+    // (.calendar-gen) — the static <h1> in index.html stays.
     rerender() {
         if (!this.data) return;
         d3.select("#calendar").selectAll(":scope > .calendar-gen").remove();

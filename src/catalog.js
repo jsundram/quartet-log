@@ -31,7 +31,7 @@ const COMPOSER_URL_PATTERNS = {
     'Smetana': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
     'Tchaikovsky': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
     'Verdi': d => `${d.composer.toLowerCase()}-quartet/`,
-    'MISC': 1  // quiet the warning on line 44
+    'MISC': 1  // quiet generateQuartetRouletteUrl's missing-pattern warning
 };
 
 export function generateQuartetRouletteUrl(d) {

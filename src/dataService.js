@@ -1,6 +1,5 @@
 import * as d3 from "d3";
 import { getDataUrl } from './urlConfig.js';
-import { ALL_WORKS} from './catalog.js';
 import { processRow, prepareRows, fillForward, normalizePlayerNames } from './dataProcessor.js';
 
 export class DataService {
@@ -204,10 +203,6 @@ export class DataService {
     }
 
     processData(rawData) {
-        if (!ALL_WORKS) {
-            throw new Error('Work catalog not initialized');
-        }
-
         // Sort by timestamp and drop invalid-date rows before anything else —
         // fillForward's session-window math and the row-0-is-earliest
         // assumption (setBegin) both require chronological order.

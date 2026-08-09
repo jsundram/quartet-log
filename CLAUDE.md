@@ -69,8 +69,8 @@ Hash routing lives in `NavigationComponent`: menu clicks set `window.location.ha
   - `parseWork`, `processRow`, `prepareRows` (sort by timestamp + drop invalid-date rows; run before `fillForward` so session-window math sees chronological order), `fillForward`, `createEmptyRow`
   - `normalizePlayerNames` (applies `PLAYER_ALIASES` per slot class)
   - `peopleKeysFor(d)` — canonical-name keys for unique-people counting
-  - `computeAggregateStats(rows)` — `{ pieces, uniquePieces, uniquePeople, daysPlayed, maxStreak }`; used by Calendar's "Last 365 days", the Dashboard KPI tiles, and the ALL tab. `maxStreak` is the longest run of consecutive playing days (via `longestConsecutiveRun` over DST-safe day ordinals), scoped to the passed-in slice
-  - `longestConsecutiveRun(days)` — longest run of consecutive integer day ordinals in a Set/array; returns 0 for empty
+  - `computeAggregateStats(rows)` — `{ pieces, uniquePieces, uniquePeople, daysPlayed, maxStreak }`; used by Calendar's "Last 365 days", the Dashboard KPI tiles, and the ALL tab. `maxStreak` is the longest run of consecutive playing days (via `longestRunInfo` over DST-safe day ordinals), scoped to the passed-in slice
+  - `longestRunInfo(days)` — `{ length, count, start }` for the longest run of consecutive integer day ordinals in a Set/array
   - `normalizeDashboardPart(part)` — folds `VA1`/`VA2`/`VA…` → `VA` for the Dashboard pie/bar
   - `parseOthers`, `stripParens`, `classOf`, `canonicalize` (helpers)
   - `extractUniquePlayers` — for the Player dropdown

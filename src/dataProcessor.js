@@ -119,12 +119,7 @@ function dayOrdinal(ts) {
 }
 
 // Longest run of consecutive day ordinals in `days` (a Set or array of
-// integer day numbers, as produced by dayOrdinal). Returns 0 for empty input.
-export function longestConsecutiveRun(days) {
-    return longestRunInfo(days).length;
-}
-
-// Like longestConsecutiveRun, but also reports how many distinct runs tie
+// integer day numbers, as produced by dayOrdinal), plus how many distinct runs tie
 // for the longest and where the most recent of them begins. Returns
 // { length, count, start } with `start` in the same units as the input
 // (null for empty input). Feeds the streak tooltips.
@@ -461,7 +456,7 @@ export function processRow(d) {
 // Two consecutive rows in the same column count as one "session" when they
 // are less than this many hours apart. Within a session, shorthand entries
 // (empty cells, name prefixes) refer back to the previous entry.
-const SESSION_WINDOW_HOURS = 4;
+export const SESSION_WINDOW_HOURS = 4;
 
 // Does `entry` refer to the same person/place as `prevEntry` (the last full
 // value seen in this column)? True when:
@@ -539,6 +534,11 @@ export function createEmptyRow(composer, title) {
     };
 }
 
+// Minimum entries for a player to appear in the Player filter dropdown: the
+// dropdown is for filtering by the people you play with REGULARLY; below
+// this floor it fills up with one-off guests and reading-party stands.
+export const PLAYER_DROPDOWN_MIN_ENTRIES = 20;
+
 export function extractUniquePlayers(data) {
     const playerCounts = new Map();
 
@@ -563,9 +563,9 @@ export function extractUniquePlayers(data) {
         });
     });
 
-    // Filter to only include players with 20+ entries
+    // Filter to the dropdown-worthy regulars only
     const filteredPlayers = Array.from(playerCounts.entries())
-        .filter(([player, count]) => count >= 20)
+        .filter(([player, count]) => count >= PLAYER_DROPDOWN_MIN_ENTRIES)
         .map(([player, count]) => player)
         .sort();
 

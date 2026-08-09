@@ -71,9 +71,12 @@ export class TabComponent {
             const cls = e.target.classList;
             if (cls?.contains('work-label') || cls?.contains('play-square')) return;
             // Musician-network elements re-open the tooltip on click; let them through.
-            if (cls?.contains('network-node') || cls?.contains('network-edge')
+            // (network-node / network-arc were once listed here too, but
+            // clicks on those land on class-less hit-layer paths, so the
+            // entries never matched — node clicks already stopPropagation.)
+            if (cls?.contains('network-edge')
                 || cls?.contains('matrix-cell') || cls?.contains('matrix-label')
-                || cls?.contains('network-arc') || cls?.contains('network-chord')) return;
+                || cls?.contains('network-chord')) return;
             // Dashboard stat tiles and the ALL tab's stat cells show their
             // explainer tooltip on click; the click target is a child span,
             // so match via closest().

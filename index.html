@@ -136,15 +136,12 @@
         <div id="tabContent"></div>
     </div>
 
-    <!-- Body-level so it stays visible across all SPA views (Home/Dashboard).
-         Calendar has its own #daytooltip inside #calendar because that view's
-         tooltip is structurally different and never coexists with this one. -->
+    <!-- Body-level so it stays visible across all SPA views, including the
+         calendar (whose day tooltips render into this same shared div). -->
     <div class="tooltip" id="tooltip"></div>
 
     <div id="calendar" style="display: none">
         <h1 style="text-align: center">Quartet Days</h1>
-        <div class="tooltip" id="daytooltip"></div>
-
         <!-- Calendar will be rendered here -->
     </div>
 
