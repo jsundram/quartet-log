@@ -178,6 +178,39 @@ test("ignoreSearch: precached all_works.json answers the versioned request offli
   assert.equal(bodyOf(r), "CACHED_WORKS");
 });
 
+// ---- catalog JSON: stale-while-revalidate (pwa-starter e88a743) -------------
+// Boot blocks on these files before first paint; a cached copy is correct by
+// construction (V hashes every asset), so it's served instantly — no warm-bound
+// wait on lie-fi — with a background refresh keyed by the bare pathname.
+test("cached catalog JSON on lie-fi → served instantly, revalidation still fired", async () => {
+  fetchMode = "slow";
+  CACHE.set(keyOf(b("all_works.json")), makeResponse("CACHED_WORKS"));
+  const r = await start(req(b("all_works.json?v=abc123")));   // no tick(): zero timer waits
+  assert.equal(bodyOf(r), "CACHED_WORKS");
+  assert.equal(fetchCalls, 1, "background revalidation must still hit the network");
+});
+
+test("JSON revalidation replaces the precached entry under the bare pathname", async () => {
+  CACHE.set(keyOf(b("all_works.json")), makeResponse("STALE_WORKS"));
+  const r = await start(req(b("all_works.json?v=new")));
+  assert.equal(bodyOf(r), "STALE_WORKS");                     // this load: the cached copy
+  await flush();
+  assert.equal(                                               // next load: the fresh one
+    bodyOf(CACHE.get(keyOf(b("all_works.json")))),
+    "NET:" + keyOf(b("all_works.json?v=new")));
+  assert.equal(CACHE.has(keyOf(b("all_works.json?v=new"))), false,
+    "stored under ?v= it would lose every ignoreSearch match to the bare entry");
+});
+
+test("uncached JSON on lie-fi → cold-bounded 504, not a hang", async () => {
+  fetchMode = "slow";
+  const p = start(req(b("haydn_peters.json")));
+  await tick(14999);
+  assert.equal(await isPending(p), true, "cold bound applies — nothing cached to serve earlier");
+  await tick(2);
+  assert.equal((await p).status, 504);
+});
+
 // ---- lie-fi: the bounds this port exists for -------------------------------
 test("warm lie-fi nav → cached copy at the 3s bound, not a hang", async () => {
   fetchMode = "slow";

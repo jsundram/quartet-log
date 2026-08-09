@@ -137,12 +137,39 @@ self.addEventListener("fetch", e => {
   // never see a new deploy. Let both always go straight to network.
   if (u.pathname.endsWith("/sw.js") || u.pathname.endsWith("/version.json")) return;
 
-  // HTML + JSON + navigations are network-first so a fresh deploy or a fresh
-  // catalog shows up the moment you're online; they fall back to cache offline.
-  // ignoreSearch lets the precached all_works.json satisfy the app's
-  // versioned all_works.json?v=<hash> request. Content-hashed JS/CSS and images
-  // are immutable, so they're cache-first for speed.
-  const live = e.request.mode === "navigate" || u.pathname.endsWith("/") || /\.(html|json)$/.test(u.pathname);
+  // Same-origin JSON (the work catalogs): stale-while-revalidate, ported from
+  // pwa-starter e88a743. Boot blocks on these files before first paint, and a
+  // cached copy is correct by construction — all_works.json is
+  // content-addressed (?v=<hash>, satisfied via ignoreSearch from the bare
+  // precached entry) and V hashes every asset — so serve the cache instantly
+  // (a cold boot on lie-fi skips the warm bound entirely) and refresh in the
+  // background. The refresh writes under the BARE pathname so it replaces the
+  // precached entry; stored under ?v=<hash> it would lose every future
+  // ignoreSearch match to the older bare entry and pile up per-hash copies.
+  if (u.pathname.endsWith(".json")) {
+    e.respondWith((async () => {
+      const cached = await cacheMatch(e.request);
+      const net = fetch(e.request).then(resp => { cachePut(u.origin + u.pathname, resp); return resp; });
+      if (cached) {
+        e.waitUntil(net.catch(() => {}));
+        return cached;
+      }
+      try {
+        // Nothing cached (first run, or an evicted cache): the network is the
+        // only real answer — cold-bounded like the live branch, never a hang.
+        return await withTimeout(net, NET_TIMEOUT_COLD_MS);
+      } catch {
+        e.waitUntil(net.catch(() => {}));
+        return offlineFallback(e.request);
+      }
+    })());
+    return;
+  }
+
+  // HTML + navigations are network-first so a fresh deploy shows up the
+  // moment you're online; they fall back to cache offline. Content-hashed
+  // JS/CSS and images are immutable, so they're cache-first for speed.
+  const live = e.request.mode === "navigate" || u.pathname.endsWith("/") || u.pathname.endsWith(".html");
 
   if (live) {
     e.respondWith((async () => {
