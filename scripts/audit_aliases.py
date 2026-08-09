@@ -290,19 +290,24 @@ def main() -> None:
     # Final paste-ready PLAYER_ALIASES block
     print("\n=== PLAYER_ALIASES proposal (paste into src/aliases.js — gitignored; NEVER into a tracked file) ===\n")
     print("export const PLAYER_ALIASES = {")
-    # Re-emit the seed first
+    # Re-emit the seed first, folding in any newly proposed classes for
+    # existing keys (seed mappings win on conflict — proposals are heuristic).
     for k in sorted(EXISTING_ALIASES):
-        body = ", ".join(f'{cls}: "{n}"' for cls, n in sorted(EXISTING_ALIASES[k].items()))
+        merged = {**proposals.get(k, {}), **EXISTING_ALIASES[k]}
+        body = ", ".join(f'{cls}: "{n}"' for cls, n in sorted(merged.items()))
         print(f'    "{k}": {{ {body} }},')
     for k in sorted(proposals):
         if k in EXISTING_ALIASES:
-            merged = {**EXISTING_ALIASES[k], **proposals[k]}
-            body = ", ".join(f'{cls}: "{n}"' for cls, n in sorted(merged.items()))
-            # already emitted above; skip duplicate
             continue
         body = ", ".join(f'{cls}: "{n}"' for cls, n in sorted(proposals[k].items()))
         print(f'    "{k}": {{ {body} }},')
     print("};")
+
+    if proposals:
+        print(
+            "\nAfter updating src/aliases.js, sync the deploy secret so the next\n"
+            "deploy uses the new tables:  ./scripts/push_aliases.sh"
+        )
 
 
 if __name__ == "__main__":
