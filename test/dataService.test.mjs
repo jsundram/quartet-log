@@ -190,7 +190,6 @@ test("clearCachedData removes exactly the sheet-cache keys", () => {
     ls.setItem(`${docsUrl}_timestamp`, "1");
     ls.setItem(otherHostUrl, "[]");
     ls.setItem(`${otherHostUrl}_timestamp`, "2");
-    ls.setItem("quartetlog_cache_old", "x");           // legacy prefixed key
 
     // Unrelated keys that must survive — including *_timestamp keys that do
     // not belong to a sheet cache (the old code blanket-deleted these), and a
@@ -205,7 +204,6 @@ test("clearCachedData removes exactly the sheet-cache keys", () => {
     assert.equal(ls.getItem(`${docsUrl}_timestamp`), null);
     assert.equal(ls.getItem(otherHostUrl), null);
     assert.equal(ls.getItem(`${otherHostUrl}_timestamp`), null);
-    assert.equal(ls.getItem("quartetlog_cache_old"), null);
 
     assert.equal(ls.getItem("theme"), "dark");
     assert.equal(ls.getItem("session_timestamp"), "999");

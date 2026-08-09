@@ -2,7 +2,6 @@
 // URL configuration management for localStorage-based data source
 
 const STORAGE_KEY = 'quartetlog_data_url';
-const CACHE_KEY_PREFIX = 'quartetlog_cache_';
 
 /**
  * Check if a URL is configured
@@ -54,7 +53,6 @@ export function clearCachedData() {
     const TS_SUFFIX = '_timestamp';
     /** @param {string} key */
     const isCacheKey = (key) =>
-        key.startsWith(CACHE_KEY_PREFIX) ||
         isValidGoogleSheetsUrl(key) ||
         (key.endsWith(TS_SUFFIX) &&
             isValidGoogleSheetsUrl(key.slice(0, -TS_SUFFIX.length)));
