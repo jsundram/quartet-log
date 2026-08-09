@@ -1,4 +1,5 @@
-import { getCssColor, getPartColor } from './config';
+import * as d3 from "d3";
+import { getCssColor, getPartColor } from './config.js';
 import {
     buildNetworkData,
     disambiguateLabels,
@@ -6,7 +7,7 @@ import {
     defaultMinPiecesForGraph,
     computePartBreakdownPerMusician,
     predominantPart,
-} from './dataProcessor';
+} from './dataProcessor.js';
 
 // Tabbed view of the musician co-occurrence network: a force-directed
 // graph and an adjacency matrix over the same top-N node set.

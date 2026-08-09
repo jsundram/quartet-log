@@ -64,9 +64,6 @@ copy_assets() {
     cp static/data/all_works.json "$DEPLOY/"
     cp static/data/haydn_peters.json "$DEPLOY/"
 
-    # wget -O d3.v7.min.js https://unpkg.com/d3@7.9.0/dist/d3.min.js
-    cp static/js/d3.v7.min.js "$DEPLOY/"
-
     # Favicon files (including manifest)
     cp -r static/favicon/* "$DEPLOY/"
 

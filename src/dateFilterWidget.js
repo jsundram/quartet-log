@@ -1,4 +1,5 @@
-import { getBegin } from './config';
+import * as d3 from "d3";
+import { getBegin } from './config.js';
 
 // Segmented date-range filter (All / YTD / 1Y / 6M / Custom) plus inline
 // Custom date inputs. Owns its own state and uses class-based selectors

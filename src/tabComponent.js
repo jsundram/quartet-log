@@ -1,6 +1,7 @@
-import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog';
-import { getBegin, getPartColor, getCssColor } from './config';
-import { createEmptyRow, computeAggregateStats, formatStreakStart } from './dataProcessor';
+import * as d3 from "d3";
+import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog.js';
+import { getBegin, getPartColor, getCssColor } from './config.js';
+import { createEmptyRow, computeAggregateStats, formatStreakStart } from './dataProcessor.js';
 
 export class TabComponent {
     constructor(tableComponent) {

@@ -1,7 +1,8 @@
-import { getPartColor, getCssColor } from './config';
-import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computePartBreakdownPerComposer, computeAggregateStats, formatStreakStart } from './dataProcessor';
-import { DateFilterWidget } from './dateFilterWidget';
-import { MusicianNetworkComponent } from './musicianNetworkComponent';
+import * as d3 from "d3";
+import { getPartColor, getCssColor } from './config.js';
+import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computePartBreakdownPerComposer, computeAggregateStats, formatStreakStart } from './dataProcessor.js';
+import { DateFilterWidget } from './dateFilterWidget.js';
+import { MusicianNetworkComponent } from './musicianNetworkComponent.js';
 
 // Dashboard view: a set of crossfilter charts that all share the same date
 // range plus a registry of dimensions. Each chart "owns" one dimension and

@@ -1,6 +1,7 @@
-import { getDataUrl } from './urlConfig';
-import { ALL_WORKS} from './catalog';
-import { processRow, fillForward, normalizePlayerNames } from './dataProcessor';
+import * as d3 from "d3";
+import { getDataUrl } from './urlConfig.js';
+import { ALL_WORKS} from './catalog.js';
+import { processRow, fillForward, normalizePlayerNames } from './dataProcessor.js';
 
 export class DataService {
     constructor() {

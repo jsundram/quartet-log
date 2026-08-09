@@ -1,3 +1,4 @@
+import * as d3 from "d3";
 // This will be populated when catalog loads
 export let COMPOSERS = null;
 export let ALL_WORKS = null;
@@ -42,7 +43,10 @@ export function generateQuartetRouletteUrl(d) {
 // --define (see build.sh). Appended as a query string so iOS homescreen
 // webclips and other aggressive caches refetch after deploys that change
 // the catalog. haydn_peters.json is treated as static and doesn't need it.
-const WORKS_VERSION = __WORKS_VERSION__;
+// The typeof guard keeps the module importable under plain Node (tests),
+// where no bundler defines the constant; esbuild's --define rewrites the
+// identifier inside typeof too, so the bundle still gets the baked value.
+const WORKS_VERSION = typeof __WORKS_VERSION__ === "undefined" ? "dev" : __WORKS_VERSION__;
 
 export async function loadWorkCatalog() {
     try {

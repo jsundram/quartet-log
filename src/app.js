@@ -1,15 +1,16 @@
-import { COMPOSERS, ALL_TAB, DEFAULT_COMPOSER, loadWorkCatalog } from './catalog';
-import { setBegin, invalidateColorCache } from './config';
-import { DataService } from './dataService';
-import { extractUniquePlayers } from './dataProcessor';
-import { NavigationComponent } from './navigationComponent';
-import { TabComponent } from './tabComponent';
-import { CalendarComponent } from './calendarComponent';
-import { DashboardComponent } from './dashboardComponent';
-import { TableComponent } from './tableComponent';
-import { hasDataUrl, setDataUrl, getDataUrl, isValidGoogleSheetsUrl, consumeDataParam, buildMobileSetupLink } from './urlConfig';
-import { initTheme, subscribe as subscribeTheme } from './themeManager';
-import { PullToRefresh } from './pullToRefresh';
+import * as d3 from "d3";
+import { COMPOSERS, ALL_TAB, DEFAULT_COMPOSER, loadWorkCatalog } from './catalog.js';
+import { setBegin, invalidateColorCache } from './config.js';
+import { DataService } from './dataService.js';
+import { extractUniquePlayers } from './dataProcessor.js';
+import { NavigationComponent } from './navigationComponent.js';
+import { TabComponent } from './tabComponent.js';
+import { CalendarComponent } from './calendarComponent.js';
+import { DashboardComponent } from './dashboardComponent.js';
+import { TableComponent } from './tableComponent.js';
+import { hasDataUrl, setDataUrl, getDataUrl, isValidGoogleSheetsUrl, consumeDataParam, buildMobileSetupLink } from './urlConfig.js';
+import { initTheme, subscribe as subscribeTheme } from './themeManager.js';
+import { PullToRefresh } from './pullToRefresh.js';
 
 // Background-style auto refresh: while the app is visible we re-fetch the
 // sheet every FOREGROUND_POLL_MS, and we also re-fetch on visibilitychange

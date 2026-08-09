@@ -1,6 +1,7 @@
-import { clearDataUrl } from './urlConfig';
-import { DateFilterWidget } from './dateFilterWidget';
-import { getTheme, cycleTheme } from './themeManager';
+import * as d3 from "d3";
+import { clearDataUrl } from './urlConfig.js';
+import { DateFilterWidget } from './dateFilterWidget.js';
+import { getTheme, cycleTheme } from './themeManager.js';
 
 const THEME_LABEL = { auto: 'Theme: Auto', light: 'Theme: Light', dark: 'Theme: Dark' };
 

@@ -24,7 +24,6 @@ const V = "__SW_VERSION__";
 const SHELL = [
   "./", "./index.html",
   "./__BUNDLE_JS__", "./__CSS_FILE__",
-  "./d3.v7.min.js",
   "./all_works.json", "./haydn_peters.json",
   "./about.html",
   "./site.webmanifest",

@@ -1,3 +1,4 @@
+import * as d3 from "d3";
 import { getBegin, CALENDAR_CONFIG, getCssColor } from './config.js';
 import { peopleKeysFor, computeAggregateStats, longestRunInfo, formatStreakStart } from './dataProcessor.js';
 import { isCurrentlyDark } from './themeManager.js';
