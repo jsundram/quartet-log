@@ -25,21 +25,46 @@ const V = "__SW_VERSION__";
 // stale-while-revalidate against localStorage.
 const SHELL = ["__SW_SHELL__"];
 
+// Top-up-and-verify the precache: add whatever SHELL entries cache V is
+// missing, then report whether the shell is now complete. allSettled +
+// individual adds keep one failed file (say about.html on a build that didn't
+// emit it) from aborting the rest the way cache.addAll would — but that
+// forfeits addAll's atomicity, so activate only collects the previous
+// generation once this reports true (hand-ported from pwa-starter dd763ca's
+// offline family: per-file precache must land together with
+// repair-before-collect + a gated collect). Without the gate, a flaky-network
+// install could leave a partial shell AND destroy the last complete one — the
+// installed-PWA, offline-cold, missing-bundle blank-app case.
+async function ensureShell() {
+  const c = await caches.open(V);
+  const missing = [];
+  for (const u of SHELL) if (!(await c.match(u))) missing.push(u);
+  if (missing.length) {
+    await Promise.allSettled(missing.map(u => c.add(new Request(u, { cache: "reload" }))));
+    for (const u of missing) if (!(await c.match(u))) return false;
+  }
+  return true;
+}
+
 self.addEventListener("install", e => {
-  // allSettled + individual adds: a single missing optional file (say about.html
-  // on a build that didn't emit it) must not abort the whole precache the way
-  // cache.addAll would.
-  e.waitUntil(
-    caches.open(V)
-      .then(c => Promise.allSettled(SHELL.map(u => c.add(new Request(u, { cache: "reload" })))))
-      .then(() => self.skipWaiting())
-  );
+  // skipWaiting even when incomplete: the new SW may take over, because old
+  // cache generations survive until the shell verifies complete (below) and
+  // caches.match() spans all of them — offline keeps working off the previous
+  // shell in the meantime.
+  e.waitUntil(ensureShell().then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", e => {
+  // Repair-before-collect: retry whatever install couldn't fetch, and evict
+  // other generations only once the new shell verifies complete. While it
+  // doesn't, the old caches stay on as the offline fallback; online traffic
+  // tops up cache V per-request (cachePut) and forceUpdate clears everything,
+  // so a lingering extra generation is bounded and harmless.
   e.waitUntil(
-    caches.keys()
-      .then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k))))
+    ensureShell()
+      .then(complete => complete
+        ? caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k))))
+        : undefined)
       .then(() => self.clients.claim())
   );
 });

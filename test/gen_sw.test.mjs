@@ -1,8 +1,11 @@
 // Tests for scripts/gen_sw.mjs (the sw.js codegen) and for the service
 // worker's install/activate lifecycle, which the codegen's output drives:
-// install must precache exactly the generated SHELL, activate must evict
-// every cache except the current V. Complements test/sw.test.mjs, which
-// covers the fetch handler's offline/lie-fi contract.
+// install must precache exactly the generated SHELL, and activate must evict
+// every cache except the current V — but only after the shell verifies
+// complete (per-file precache forfeits addAll's atomicity; the gated collect
+// is what keeps a flaky install from destroying the last good generation).
+// Complements test/sw.test.mjs, which covers the fetch handler's
+// offline/lie-fi contract.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -93,13 +96,26 @@ function evalSW(source) {
         added: [],            // URLs precached via cache.add
         deleted: [],          // cache names deleted on activate
         existingKeys: [],     // what caches.keys() reports
+        failAdds: new Set(),  // URLs whose cache.add rejects (flaky network)
         skipWaited: false,
         claimed: false,
         listeners: {},
     };
+    // add/match share a backing store: ensureShell()'s top-up-and-verify walks
+    // match → add → match, so a match that always misses would loop the adds
+    // and (worse) report every shell as incomplete, never exercising collect.
+    const stored = new Set();
     const cacheApi = {
-        async add(req) { state.added.push(typeof req === "string" ? req : req.url); },
-        async match() { return undefined; },
+        async add(req) {
+            const url = typeof req === "string" ? req : req.url;
+            if (state.failAdds.has(url)) throw new Error("network fail: " + url);
+            state.added.push(url);
+            stored.add(url);
+        },
+        async match(req) {
+            const url = typeof req === "string" ? req : req.url;
+            return stored.has(url) ? {} : undefined;
+        },
         async put() {},
     };
     const caches = {
@@ -144,8 +160,34 @@ test("activate evicts every cache except the current V and claims clients", asyn
     const shell = buildShellList(DEPLOY_FILES);
     const { state, V } = evalSW(generateSW(TEMPLATE, { version: "ql-2222222222222222", shell }));
     state.existingKeys = ["ql-oldoldoldoldoldo", "ql-2222222222222222", "unrelated-cache"];
+    await fireAwaitable(state.listeners.install[0]);
     await fireAwaitable(state.listeners.activate[0]);
+    // The shell completed at install, so activate's repair pass adds nothing…
+    assert.equal(state.added.length, shell.length, "no duplicate adds on activate");
+    // …and the gated collect runs.
     assert.deepEqual(state.deleted.sort(), ["ql-oldoldoldoldoldo", "unrelated-cache"]);
     assert.equal(V, "ql-2222222222222222");
     assert.ok(state.claimed, "activate must claim clients");
+});
+
+// The dd763ca-family guard: per-file precache forfeits addAll's atomicity, so
+// an install that couldn't complete the shell must NOT destroy the previous
+// (complete) generation — offline falls back to it via caches.match until a
+// later repair pass completes the new one.
+test("activate keeps old caches while the shell is incomplete, collects once repaired", async () => {
+    const shell = buildShellList(DEPLOY_FILES);
+    const { state } = evalSW(generateSW(TEMPLATE, { version: "ql-3333333333333333", shell }));
+    state.existingKeys = ["ql-oldoldoldoldoldo", "ql-3333333333333333"];
+
+    state.failAdds.add("./bundle-ab12cd34.js");           // flaky network at install…
+    await fireAwaitable(state.listeners.install[0]);
+    assert.ok(state.skipWaited, "a failed add must not block skipWaiting");
+
+    await fireAwaitable(state.listeners.activate[0]);     // …still flaky at activate
+    assert.deepEqual(state.deleted, [], "incomplete shell must not evict the old generation");
+    assert.ok(state.claimed, "activate claims clients regardless");
+
+    state.failAdds.clear();                               // network recovers
+    await fireAwaitable(state.listeners.activate[0]);     // repair pass completes the shell
+    assert.deepEqual(state.deleted, ["ql-oldoldoldoldoldo"]);
 });
