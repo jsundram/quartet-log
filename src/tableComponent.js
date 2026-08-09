@@ -1,4 +1,27 @@
 import * as d3 from "d3";
+// Row comparator for the sortable data tables. Pure and exported for
+// tests. 'work.title' sorts numerically by catalog then number (opus order,
+// not string order); every other key compares values directly. `getValue`
+// resolves dotted paths ("work.catalog") against a row.
+export function makeRowComparator(sortState, getValue) {
+    return (a, b) => {
+        if (sortState.key === 'work.title') {
+            const aCatalog = getValue(a, 'work.catalog') || 0;
+            const bCatalog = getValue(b, 'work.catalog') || 0;
+            if (aCatalog !== bCatalog) {
+                return sortState.direction === 'asc' ? aCatalog - bCatalog : bCatalog - aCatalog;
+            }
+            const aNumber = getValue(a, 'work.number') || 0;
+            const bNumber = getValue(b, 'work.number') || 0;
+            return sortState.direction === 'asc' ? aNumber - bNumber : bNumber - aNumber;
+        }
+        const aValue = getValue(a, sortState.key);
+        const bValue = getValue(b, sortState.key);
+        const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+        return sortState.direction === 'asc' ? comparison : -comparison;
+    };
+}
+
 export class TableComponent {
     constructor() {
         this.allColumns = [
@@ -91,28 +114,9 @@ export class TableComponent {
         const flatData = Array.from(composerData.filteredPlays.entries())
             .flatMap(([title, plays]) => plays);
 
-        // Sort data
-        const sortedData = [...flatData].sort((a, b) => {
-            if (sortState.key === 'work.title') {
-                // 'work.title' is a string, we want to sort by catalog (int) and then number (int or null)
-                const aCatalog = this.getValue(a, 'work.catalog') || 0;
-                const bCatalog = this.getValue(b, 'work.catalog') || 0;
-                if (aCatalog !== bCatalog) {
-                    return sortState.direction === 'asc' ? aCatalog - bCatalog : bCatalog - aCatalog;
-                }
-
-                const aNumber = this.getValue(a, 'work.number') || 0;
-                const bNumber = this.getValue(b, 'work.number') || 0;
-                return sortState.direction === 'asc' ? aNumber - bNumber : bNumber - aNumber;
-            }
-            else {
-                const aValue = this.getValue(a, sortState.key);
-                const bValue = this.getValue(b, sortState.key);
-
-                const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-                return sortState.direction === 'asc' ? comparison : -comparison;
-            }
-        });
+        // Sort data (comparator is pure + tested; see makeRowComparator)
+        const sortedData = [...flatData].sort(
+            makeRowComparator(sortState, (row, key) => this.getValue(row, key)));
 
         // Update rows
         const tbody = tableContainer.select('tbody');

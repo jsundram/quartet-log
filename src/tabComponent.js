@@ -3,6 +3,7 @@ import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVol
 import { getBegin, getPartColor, getCssColor } from './config.js';
 import { createEmptyRow, computeAggregateStats, formatStreakStart } from './dataProcessor.js';
 import { escapeHtml } from './escapeHtml.js';
+import { buildAggregateStatDefs } from './statDefs.js';
 import { tooltip } from './tooltip.js';
 
 // Body of a work tooltip. Pure and exported for tests: every sheet-derived
@@ -25,6 +26,24 @@ export function buildWorkTooltipHtml(d) {
     if (d.comments?.trim()) html += `<li>${escapeHtml(d.comments)}</li>`;
     html += "</ul>";
     return html;
+}
+
+// Group play rows by (transformed) work title for one composer tab. Only
+// rows whose composer and title are in the tab's catalog lists count; every
+// catalog title is present in the result (empty array when unplayed), which
+// is what renders the zero-play rows. Pure — catalog lists are injected.
+export function groupPlaysByWork(filteredData, fullData, { composers, works, transformTitle }) {
+    const m = D => new Map(d3.groups(
+        D.filter(d => {
+            const title = transformTitle(d);
+            return composers.includes(d.composer) && works.includes(title);
+        }),
+        d => transformTitle(d)
+    ));
+    // make sure every title is present, fill in with [] if not.
+    const fm = M => new Map(works.map(t => [t, M.get(t) || []]));
+
+    return { filteredPlays: fm(m(filteredData)), allPlays: fm(m(fullData)) };
 }
 
 // Weighted random suggestion over a tab's works: weight = days since the
@@ -114,42 +133,9 @@ export class TabComponent {
 
     updateAllTabContent(composerDiv, filteredData) {
         const agg = computeAggregateStats(filteredData);
-        const streakStart = formatStreakStart(agg.maxStreakInfo);
-        // Same explainer copy as the dashboard's KPI tiles — both describe
-        // the slice matching the current filters.
-        const stats = [
-            {
-                label: 'Pieces',
-                value: agg.pieces,
-                title: 'Pieces in the current filter',
-                desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
-            },
-            {
-                label: 'Unique pieces',
-                value: agg.uniquePieces,
-                title: 'Unique pieces in the current filter',
-                desc: 'Distinct works (composer + title). Repeats of the same piece collapse to one.',
-            },
-            {
-                label: 'Unique people',
-                value: agg.uniquePeople,
-                title: 'People played with in the current filter',
-                desc: 'Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.',
-            },
-            {
-                label: 'Days played',
-                value: agg.daysPlayed,
-                title: 'Playing days in the current filter',
-                desc: 'Distinct days with at least one whole piece logged.',
-            },
-            {
-                label: 'Max streak',
-                value: agg.maxStreak,
-                title: 'Longest streak in the current filter',
-                desc: 'Longest run of consecutive days with at least one whole piece logged, within the current filter.'
-                    + (streakStart ? `<br><br>Started: ${streakStart}` : ''),
-            },
-        ];
+        // Shared defs (single-sourced with the dashboard KPI tiles and the
+        // calendar's recent-stats header).
+        const stats = buildAggregateStatDefs(agg);
 
         const wrap = composerDiv.selectAll('.all-stats')
             .data([1])
@@ -186,30 +172,15 @@ export class TabComponent {
     }
 
     processComposerData(composer, filteredData, fullData) {
-        const composers = getComposersForTab(composer);
-        const works = getWorksForTab(composer);
-
-        // For MISC tab, transform work titles to include composer prefix
-        const transformTitle = isMiscTab(composer)
-            ? d => `${d.composer}-${d.work.title}`
-            : d => d.work.title;
-
-        // group by title (with optional transformation)
-        // Filter to only include works in the catalog for this tab
-        const m = D => new Map(d3.groups(
-            D.filter(d => {
-                const title = transformTitle(d);
-                return composers.includes(d.composer) && works.includes(title);
-            }),
-            d => transformTitle(d)
-        ));
-        // make sure every title is present, fill in with [] if not.
-        const fm = M => new Map(works.map(t => [t, M.get(t) || []]));
-
-        const filteredPlays = fm(m(filteredData));
-        const allPlays = fm(m(fullData));
-
-        return { filteredPlays, allPlays };
+        // Catalog lookups here; the grouping itself is pure + tested.
+        return groupPlaysByWork(filteredData, fullData, {
+            composers: getComposersForTab(composer),
+            works: getWorksForTab(composer),
+            // For MISC tab, transform work titles to include composer prefix
+            transformTitle: isMiscTab(composer)
+                ? d => `${d.composer}-${d.work.title}`
+                : d => d.work.title,
+        });
     }
 
     updateRandomButton(composerDiv, composerData) {

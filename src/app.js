@@ -2,7 +2,7 @@ import * as d3 from "d3";
 import { COMPOSERS, ALL_TAB, DEFAULT_COMPOSER, loadWorkCatalog } from './catalog.js';
 import { setBegin, invalidateColorCache } from './config.js';
 import { DataService } from './dataService.js';
-import { extractUniquePlayers } from './dataProcessor.js';
+import { extractUniquePlayers, checkPlayersMatch } from './dataProcessor.js';
 import { serializeRows } from './csvFormat.js';
 import { NavigationComponent } from './navigationComponent.js';
 import { TabComponent } from './tabComponent.js';
@@ -513,57 +513,12 @@ export class App {
         }
 
         // Now apply player filter
-        const filteredData = datePartFiltered.filter(d => {
-            return this.checkPlayersMatch(d, selectedPlayers);
-        });
+        const filteredData = datePartFiltered.filter(d => checkPlayersMatch(d, selectedPlayers));
 
         // Update all composer tabs (plus the special ALL tab) with filtered data
         [...COMPOSERS, ALL_TAB].forEach(composer => {
             this.tabComponent.updateTabContent(composer, part, filteredData, this.data);
         });
-    }
-
-    checkPlayersMatch(d, selectedPlayers) {
-        // If no players selected, show all (equivalent to "ANY")
-        if (selectedPlayers.length === 0) return true;
-
-        // Group selected players by base name
-        // e.g., ["Alice.v1", "Alice.v2", "Bob.va"]
-        //    => { Alice: ["v1", "v2"], Bob: ["va"] }
-        const playerGroups = new Map();
-        for (const p of selectedPlayers) {
-            const [name, instrument] = p.split(".");
-            if (!playerGroups.has(name)) playerGroups.set(name, []);
-            playerGroups.get(name).push(instrument);
-        }
-
-        // For each unique player name, check if ANY of their instruments match (OR)
-        // All player names must match (AND)
-        for (const [name, instruments] of playerGroups) {
-            const anyInstrumentMatches = instruments.some(inst =>
-                this.checkSinglePlayerMatch(d, name, inst)
-            );
-            if (!anyInstrumentMatches) return false; // AND logic fails
-        }
-        return true;
-    }
-
-    checkSinglePlayerMatch(d, playerName, instrument) {
-        // Check if this player played this instrument in this record
-        if (instrument === "v1") {
-            return (d.part === "V2" && d.player1 === playerName) ||
-                   (d.part === "VA" && d.player1 === playerName);
-        } else if (instrument === "v2") {
-            return (d.part === "V1" && d.player1 === playerName) ||
-                   (d.part === "VA" && d.player2 === playerName);
-        } else if (instrument === "va") {
-            return (d.part === "V1" && d.player2 === playerName) ||
-                   (d.part === "V2" && d.player2 === playerName);
-        } else if (instrument === "vc") {
-            return d.player3 === playerName;
-        }
-
-        return false;
     }
 
     downloadCSV() {

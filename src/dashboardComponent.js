@@ -1,7 +1,9 @@
 import * as d3 from "d3";
 import { getPartColor, getCssColor } from './config.js';
 import { tooltip } from './tooltip.js';
-import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computePartBreakdownPerComposer, computeAggregateStats, formatStreakStart } from './dataProcessor.js';
+import { buildAggregateStatDefs } from './statDefs.js';
+import { MOBILE_BREAKPOINT, MAX_DESIGN_WIDTH } from './breakpoints.js';
+import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computePartBreakdownPerComposer, computeAggregateStats, stackedPartSegments } from './dataProcessor.js';
 import { DateFilterWidget } from './dateFilterWidget.js';
 import { MusicianNetworkComponent } from './musicianNetworkComponent.js';
 
@@ -28,9 +30,6 @@ const DIMENSIONS = {
     composer: { matches: (d, sel) => d.composer === sel },
     musician: { matches: (d, sel) => peopleKeysFor(d).includes(sel) },
 };
-
-const MAX_DESIGN_WIDTH = 720;
-const MOBILE_BREAKPOINT = 600;
 
 // Sizing knobs chosen per viewport so the SVG is rendered at 1:1 scale
 // (viewBox dims = pixel dims), keeping fonts + bar heights readable on
@@ -146,45 +145,9 @@ export class DashboardComponent {
         // `short` is the mobile label — the one-line tile row is tight on
         // phones, and the tap tooltip (title/desc) spells out the full name.
         const agg = computeAggregateStats(this.filteredRows(null));
-        const streakStart = formatStreakStart(agg.maxStreakInfo);
-        const stats = [
-            {
-                label: 'Pieces',
-                short: 'Pieces',
-                value: agg.pieces,
-                title: 'Pieces in the current filter',
-                desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
-            },
-            {
-                label: 'Unique pieces',
-                short: 'Unique',
-                value: agg.uniquePieces,
-                title: 'Unique pieces in the current filter',
-                desc: 'Distinct works (composer + title). Repeats of the same piece collapse to one.',
-            },
-            {
-                label: 'Unique people',
-                short: 'People',
-                value: agg.uniquePeople,
-                title: 'People played with in the current filter',
-                desc: 'Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.',
-            },
-            {
-                label: 'Days played',
-                short: 'Days',
-                value: agg.daysPlayed,
-                title: 'Playing days in the current filter',
-                desc: 'Distinct days with at least one whole piece logged.',
-            },
-            {
-                label: 'Max streak',
-                short: 'Streak',
-                value: agg.maxStreak,
-                title: 'Longest streak in the current filter',
-                desc: 'Longest run of consecutive days with at least one whole piece logged, within the current filter.'
-                    + (streakStart ? `<br><br>Started: ${streakStart}` : ''),
-            },
-        ];
+        // Shared defs (single-sourced with the ALL tab's stats row and the
+        // calendar's recent-stats header).
+        const stats = buildAggregateStatDefs(agg);
 
         // Desktop: align the row's left edge with the ranked charts' plot
         // area (where the bars start), not the screen edge — same
@@ -406,26 +369,10 @@ export class DashboardComponent {
         const textSecondary = getCssColor('--color-text-secondary');
         const otherFill = getCssColor('--color-part-fallback');
 
-        // Build the segment array for a row. Both ranked charts pass d.parts:
-        // Top Musicians breaks down by the musician's instrument, Top Composers
-        // by the user's own part. The bar stacks left-to-right in
-        // V1 → V2 → VA → VC → OTHER order. The `!d.parts` branch is a defensive
-        // fallback (single accent-colored segment) for any future caller that
-        // omits the breakdown.
-        const PART_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
-        const segmentsOf = (d) => {
-            if (!d.parts) return [{ part: null, count: d.count, x0: 0 }];
-            const result = [];
-            let cum = 0;
-            PART_ORDER.forEach(part => {
-                const c = d.parts[part] ?? 0;
-                if (c > 0) {
-                    result.push({ part, count: c, x0: cum });
-                    cum += c;
-                }
-            });
-            return result;
-        };
+        // Both ranked charts pass d.parts: Top Musicians breaks down by the
+        // musician's instrument, Top Composers by the user's own part. The
+        // bar stacks left-to-right in PART_ORDER (see dataProcessor).
+        const segmentsOf = stackedPartSegments;
         const segmentFill = (s, rowName) => {
             if (s.part === null) {
                 return rowName === sel ? barFillSelected : barFill;

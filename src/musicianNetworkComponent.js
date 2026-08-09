@@ -2,6 +2,7 @@ import * as d3 from "d3";
 import { getCssColor, getPartColor } from './config.js';
 import { escapeHtml } from './escapeHtml.js';
 import { tooltip } from './tooltip.js';
+import { MAX_DESIGN_WIDTH, isMobileWidth, isTouchPrimary } from './breakpoints.js';
 import {
     buildNetworkData,
     disambiguateLabels,
@@ -9,6 +10,8 @@ import {
     defaultMinPiecesForGraph,
     computePartBreakdownPerMusician,
     predominantPart,
+    computeSliderSync,
+    PART_ORDER,
 } from './dataProcessor.js';
 
 // Tabbed view of the musician co-occurrence network: a force-directed
@@ -19,17 +22,39 @@ import {
 // implicitly via the userKey passed in by DashboardComponent.
 
 const MIN_EDGE_WEIGHT = 2;
-const MOBILE_BREAKPOINT = 600;
-const MAX_DESIGN_WIDTH = 720;
+
+// Greedy de-overlap for chord arc labels: walk groups around the circle,
+// tracking the tangential right edge of the last shown label, and hide any
+// label whose left edge would intrude on it. Effect on dense arcs: roughly
+// alternating labels (show one, skip the next), which beats a wall of
+// overlapping text; the tooltip still has the full name for hidden arcs.
+// Pure — exported for tests. `groups` are d3.chord() groups ({startAngle,
+// endAngle}), fontFor(group) → px, labelRadius the label ring radius.
+export function chordLabelVisibility(groups, fontFor, labelRadius) {
+    const visible = new Array(groups.length).fill(true);
+    let lastShownEnd = -Infinity;
+    groups.forEach((d, i) => {
+        const font = fontFor(d);
+        const mid = (d.startAngle + d.endAngle) / 2;
+        const halfAngular = (font / 2) / labelRadius;
+        if (mid - halfAngular >= lastShownEnd) {
+            visible[i] = true;
+            lastShownEnd = mid + halfAngular;
+        } else {
+            visible[i] = false;
+        }
+    });
+    return visible;
+}
 
 function sizing(width) {
-    const mobile = width < MOBILE_BREAKPOINT;
-    // Coarse pointer = touch-primary device. Graph nodes use a Voronoi hit
-    // layer clipped to a per-node circle of this radius; touch gets a generous
-    // catchment so taps near a node still register, desktop stays tight so a
-    // click in empty space doesn't surprise-select a far-away node. Chord arcs
-    // get the radial pad on touch only.
-    const touch = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+    const mobile = isMobileWidth(width);
+    // Touch-primary: graph nodes use a Voronoi hit layer clipped to a
+    // per-node circle of nodeHitClipRadius; touch gets a generous catchment
+    // so taps near a node still register, desktop stays tight so a click in
+    // empty space doesn't surprise-select a far-away node. Chord arcs get
+    // the radial pad on touch only.
+    const touch = isTouchPrimary();
     return {
         mobile,
         touch,
@@ -157,34 +182,22 @@ export class MusicianNetworkComponent {
     // the densest setting the graph always includes the top 5 musicians.
     // Falls back to the smallest qualifying count when fewer than 5 exist.
     _syncSlider(rows) {
-        const counts = computeNodeCounts(rows);
-        const idx = Math.min(4, counts.length - 1);
-        const max = Math.max(1, counts[idx]?.count ?? 1);
-
         const selection = this.getSelectedMusician ? this.getSelectedMusician() : null;
-        // Selection-state transitions: entering or swapping selection
-        // overrides userMinCount with the 50-node default for the filtered
-        // subset; exiting selection restores the user's pre-selection value.
-        // Within a selection, dragging the slider still works normally —
-        // the dragged value is just discarded on deselect.
-        if (selection && selection !== this._lastSelection) {
-            if (this._lastSelection === null) {
-                this._preSelectionMinCount = this.userMinCount;
-            }
-            this.userMinCount = defaultMinPiecesForGraph(rows);
-        } else if (!selection && this._lastSelection !== null) {
-            if (this._preSelectionMinCount !== null) {
-                this.userMinCount = this._preSelectionMinCount;
-                this._preSelectionMinCount = null;
-            }
-        } else if (this.userMinCount === null) {
-            this.userMinCount = Math.max(1, Math.min(max, defaultMinPiecesForGraph(rows)));
-        }
-        this._lastSelection = selection;
+        // Selection-state transitions (enter/swap/exit and the first-render
+        // seed) live in the pure computeSliderSync (see dataProcessor for the
+        // rules; they're pinned by tests there).
+        const next = computeSliderSync({
+            userMinCount: this.userMinCount,
+            lastSelection: this._lastSelection,
+            preSelectionMinCount: this._preSelectionMinCount,
+        }, rows, selection);
+        this.userMinCount = next.userMinCount;
+        this._lastSelection = next.lastSelection;
+        this._preSelectionMinCount = next.preSelectionMinCount;
 
-        this._effectiveMin = Math.max(1, Math.min(max, this.userMinCount));
+        this._effectiveMin = next.effectiveMin;
         const slider = d3.select(this.mountSelector).select('#networkMinCount');
-        slider.attr('max', max);
+        slider.attr('max', next.max);
         slider.property('value', this._effectiveMin);
         this._syncSliderLabel(this._effectiveMin);
     }
@@ -349,7 +362,6 @@ export class MusicianNetworkComponent {
         // Pie-arc helpers for the node breakdown. Each non-zero part bucket
         // becomes one slice. The slices add up to the node's total piece
         // count so the pie fills the full node circle.
-        const PART_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
         const pieGen = d3.pie().value(d => d.count).sort(null);
         const slicesFor = (n) => {
             const parts = n.parts ?? { V1: 0, V2: 0, VA: 0, VC: 0, OTHER: 0 };
@@ -485,7 +497,7 @@ export class MusicianNetworkComponent {
             (e.target.name ?? e.target) === n.name
         ).length;
         const parts = n.parts ?? {};
-        const breakdown = ['V1', 'V2', 'VA', 'VC', 'OTHER']
+        const breakdown = PART_ORDER
             .filter(p => (parts[p] ?? 0) > 0)
             .map(p => `${p === 'OTHER' ? 'Other' : p} ×${parts[p]}`)
             .join(' · ');
@@ -667,7 +679,7 @@ export class MusicianNetworkComponent {
         // sorted by piece count desc within each block. The chord layout then
         // arranges them in this order around the circle so each instrument
         // family occupies a contiguous arc segment.
-        const order = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
+        const order = PART_ORDER;
         const ordered = nodes.slice().sort((a, b) => {
             const pa = predominantPart(a.parts) ?? 'OTHER';
             const pb = predominantPart(b.parts) ?? 'OTHER';
@@ -796,25 +808,7 @@ export class MusicianNetworkComponent {
             return Math.max(MIN_LABEL_FONT, Math.min(s.chordLabelFont, arcAngular * labelRadius));
         };
 
-        // Greedy de-overlap: walk groups around the circle, tracking the
-        // tangential right edge of the last shown label. Hide any label
-        // whose left edge would intrude on it. Effect on dense arcs: roughly
-        // alternating labels (show one, skip the next), which beats a wall
-        // of overlapping text. Tooltip still has the full name for hidden
-        // arcs.
-        const visible = new Array(layout.groups.length).fill(true);
-        let lastShownEnd = -Infinity;
-        layout.groups.forEach((d, i) => {
-            const font = fontFor(d);
-            const mid = (d.startAngle + d.endAngle) / 2;
-            const halfAngular = (font / 2) / labelRadius;
-            if (mid - halfAngular >= lastShownEnd) {
-                visible[i] = true;
-                lastShownEnd = mid + halfAngular;
-            } else {
-                visible[i] = false;
-            }
-        });
+        const visible = chordLabelVisibility(layout.groups, fontFor, labelRadius);
 
         arcG.append('text')
             .attr('class', 'network-arc-label')

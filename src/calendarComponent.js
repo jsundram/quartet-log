@@ -4,6 +4,7 @@ import { peopleKeysFor, computeAggregateStats, longestRunInfo, formatStreakStart
 import { isCurrentlyDark } from './themeManager.js';
 import { escapeHtml } from './escapeHtml.js';
 import { tooltip } from './tooltip.js';
+import { buildAggregateStatDefs } from './statDefs.js';
 
 // Body of a day tooltip (date heading, piece count, plays table). Pure and
 // exported for tests: every sheet-derived cell (composer, work title, part,
@@ -45,6 +46,32 @@ export function isLeapYear(year) {
 
 export function daysInYear(year) {
     return isLeapYear(year) ? 366 : 365;
+}
+
+// Per-week piece totals for one year's day-value array. 54 slots: a leap
+// year starting on Saturday spans 54 Sunday-weeks. Pure — exported for tests.
+export function calculateWeekTotals(values, timeWeek) {
+    const weekTotals = new Array(54).fill(0);
+    values.forEach(d => {
+        const weekNum = timeWeek.count(d3.utcYear(d.date), d.date);
+        if (weekNum < 54) {
+            weekTotals[weekNum] += d.value;
+        }
+    });
+    return weekTotals;
+}
+
+// Count of playing days per weekday (0=Sunday … 6=Saturday). Pure —
+// exported for tests.
+export function calculateDayOfWeekTotals(values) {
+    const dayTotals = new Array(7).fill(0);
+    values.forEach(d => {
+        if (d.value > 0) {
+            const dayOfWeek = d.date.getUTCDay();
+            dayTotals[dayOfWeek]++;
+        }
+    });
+    return dayTotals;
 }
 
 // 1-based day of year: Jan 1 → 1, Dec 31 → 365 (or 366 in leap years).
@@ -292,7 +319,7 @@ export class CalendarComponent {
         year.append("g")
             .attr("text-anchor", "middle")
             .selectAll()
-            .data(([year, values]) => this.calculateDayOfWeekTotals(values))
+            .data(([year, values]) => calculateDayOfWeekTotals(values))
             .join("text")
             .attr("x", this.cellSize * 53 + this.cellSize / 2)
             .attr("y", (d, i) => (countDay(i) + 0.5) * this.cellSize)
@@ -326,7 +353,7 @@ export class CalendarComponent {
         // Weekly totals at bottom of each column
         year.append("g")
             .selectAll()
-            .data(([, values]) => this.calculateWeekTotals(values, timeWeek))
+            .data(([, values]) => calculateWeekTotals(values, timeWeek))
             .join("text")
             .attr("x", (d, i) => i * this.cellSize + this.cellSize / 2)
             .attr("y", 7 * this.cellSize + 12)
@@ -484,7 +511,7 @@ export class CalendarComponent {
         year.append("g")
             .attr("text-anchor", "start")
             .selectAll()
-            .data(([, values]) => this.calculateWeekTotals(values, timeWeek))
+            .data(([, values]) => calculateWeekTotals(values, timeWeek))
             .join("text")
             .attr("x", 7 * cell + 4)
             .attr("y", (d, i) => (i + 0.5) * cell)
@@ -497,7 +524,7 @@ export class CalendarComponent {
         year.append("g")
             .attr("text-anchor", "middle")
             .selectAll()
-            .data(([, values]) => this.calculateDayOfWeekTotals(values))
+            .data(([, values]) => calculateDayOfWeekTotals(values))
             .join("text")
             .attr("x", (d, i) => (countDay(i) + 0.5) * cell)
             .attr("y", ROWS * cell + 12)
@@ -577,30 +604,6 @@ export class CalendarComponent {
         const w = d3.utcSunday.count(d3.utcYear(t), t);
         return `${d === 0 ? `M0,${w * cell}`
             : `M0,${(w + 1) * cell}H${d * cell}V${w * cell}`}H${7 * cell}`;
-    }
-
-    calculateWeekTotals(values, timeWeek) {
-        // 54 slots: a leap year starting on Saturday spans 54 Sunday-weeks.
-        const weekTotals = new Array(54).fill(0);
-        values.forEach(d => {
-            const weekNum = timeWeek.count(d3.utcYear(d.date), d.date);
-            if (weekNum < 54) {
-                weekTotals[weekNum] += d.value;
-            }
-        });
-        return weekTotals;
-    }
-
-    calculateDayOfWeekTotals(values) {
-        // Count days with sessions for each day of week (0=Sunday, 6=Saturday)
-        const dayTotals = new Array(7).fill(0);
-        values.forEach(d => {
-            if (d.value > 0) {
-                const dayOfWeek = d.date.getUTCDay();
-                dayTotals[dayOfWeek]++;
-            }
-        });
-        return dayTotals;
     }
 
     renderCalendarCells(year, timeWeek, countDay, color, formatDate, sessions, { cellSize = this.cellSize, vertical = false } = {}) {
@@ -765,51 +768,13 @@ export class CalendarComponent {
         const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
         const recent = data.filter(d => d.timestamp >= cutoff && d.timestamp <= now);
         const agg = computeAggregateStats(recent);
-        const streakStart = formatStreakStart(agg.maxStreakInfo);
-
         // Full labels on desktop, dashboard-style short labels on mobile (the
         // two are toggled by a CSS media query, mirroring the dashboard tiles)
         // so five metrics stay clear where there's room and stay compact on a
         // phone, where the row wraps (.recent-stats-row is flex-wrap: wrap).
-        // The tap/hover tooltip spells out the full name either way.
-        const stats = [
-            {
-                label: 'Pieces',
-                short: 'Pieces',
-                value: agg.pieces,
-                title: `Pieces in the last ${days} days`,
-                desc: "Total quartets logged in this window. Partial-movement entries don't count — only whole pieces.",
-            },
-            {
-                label: 'Unique pieces',
-                short: 'Unique',
-                value: agg.uniquePieces,
-                title: `Unique pieces in the last ${days} days`,
-                desc: "Distinct works (composer + title). Repeats of the same piece collapse to one.",
-            },
-            {
-                label: 'Unique people',
-                short: 'People',
-                value: agg.uniquePeople,
-                title: `People played with in the last ${days} days`,
-                desc: "Distinct people logged in Player 1/2/3 and the Others? column, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES.",
-            },
-            {
-                label: 'Days played',
-                short: 'Days',
-                value: agg.daysPlayed,
-                title: `Playing days in the last ${days} days`,
-                desc: 'Distinct days with at least one whole piece logged.',
-            },
-            {
-                label: 'Max streak',
-                short: 'Streak',
-                value: agg.maxStreak,
-                title: `Longest streak in the last ${days} days`,
-                desc: 'Longest run of consecutive days with at least one whole piece logged, within this window.'
-                    + (streakStart ? `<br><br>Started: ${streakStart}` : ''),
-            },
-        ];
+        // The tap/hover tooltip spells out the full name either way. Defs are
+        // single-sourced with the ALL tab and dashboard KPI tiles.
+        const stats = buildAggregateStatDefs(agg, `in the last ${days} days`);
 
         const container = parent.append('div').attr('class', 'recent-stats');
         container.append('h4').text(`Last ${days} days`);

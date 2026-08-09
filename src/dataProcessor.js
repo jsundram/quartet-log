@@ -282,12 +282,14 @@ export function partFromInstrument(instrument) {
 // Argmax over a part-breakdown vector: which instrument did this musician
 // play most? Ties broken by V1 → V2 → VA → VC → OTHER (the iteration order).
 // Used by the chord view to group musicians into instrument blocks.
-const PRED_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
+// Canonical part display/stacking order, shared by the dashboard's stacked
+// bars, the network views' grouping, and predominantPart's tie-breaking.
+export const PART_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
 export function predominantPart(parts) {
     if (!parts) return null;
     let best = null;
     let bestCount = -1;
-    for (const part of PRED_ORDER) {
+    for (const part of PART_ORDER) {
         const c = parts[part] ?? 0;
         if (c > bestCount) {
             best = part;
@@ -570,4 +572,110 @@ export function extractUniquePlayers(data) {
         .sort();
 
     return filteredPlayers;
+}
+
+// Stacked-bar segments for a ranked row's part breakdown, in PART_ORDER.
+// `d.parts` maps part → count (computePartBreakdownPer*); rows without a
+// breakdown get a single unkeyed segment (defensive fallback for callers
+// that omit it). Returns [{ part, count, x0 }] with x0 the running offset.
+export function stackedPartSegments(d) {
+    if (!d.parts) return [{ part: null, count: d.count, x0: 0 }];
+    const result = [];
+    let cum = 0;
+    PART_ORDER.forEach(part => {
+        const c = d.parts[part] ?? 0;
+        if (c > 0) {
+            result.push({ part, count: c, x0: cum });
+            cum += c;
+        }
+    });
+    return result;
+}
+
+// --- Player-filter matching (the Player dropdown's core semantics) -------
+//
+// Selections are "Name.instrument" tokens (extractUniquePlayers). A row
+// matches when EVERY selected person matches on AT LEAST ONE of their
+// selected instruments (AND across people, OR across one person's
+// instruments). Instrument slots are relative to the user's own part: e.g.
+// when the user played V1, player1 is the V2 chair (see extractUniquePlayers).
+
+export function checkSinglePlayerMatch(d, playerName, instrument) {
+    if (instrument === "v1") {
+        return (d.part === "V2" && d.player1 === playerName) ||
+               (d.part === "VA" && d.player1 === playerName);
+    } else if (instrument === "v2") {
+        return (d.part === "V1" && d.player1 === playerName) ||
+               (d.part === "VA" && d.player2 === playerName);
+    } else if (instrument === "va") {
+        return (d.part === "V1" && d.player2 === playerName) ||
+               (d.part === "V2" && d.player2 === playerName);
+    } else if (instrument === "vc") {
+        return d.player3 === playerName;
+    }
+    return false;
+}
+
+export function checkPlayersMatch(d, selectedPlayers) {
+    // No selection = "ANY".
+    if (selectedPlayers.length === 0) return true;
+
+    // Group tokens by person: ["Alice.v1","Alice.v2","Bob.va"]
+    //   => { Alice: ["v1","v2"], Bob: ["va"] }
+    const playerGroups = new Map();
+    for (const p of selectedPlayers) {
+        const [name, instrument] = p.split(".");
+        if (!playerGroups.has(name)) playerGroups.set(name, []);
+        playerGroups.get(name).push(instrument);
+    }
+
+    for (const [name, instruments] of playerGroups) {
+        const anyInstrumentMatches = instruments.some(inst =>
+            checkSinglePlayerMatch(d, name, inst)
+        );
+        if (!anyInstrumentMatches) return false;
+    }
+    return true;
+}
+
+// --- Network slider state machine ----------------------------------------
+//
+// Pure transition function for the min-pieces slider. `prev` is
+// { userMinCount, lastSelection, preSelectionMinCount } (nulls on first
+// render); `rows` the filtered dataset; `selection` the selected musician or
+// null. Returns the next state plus the derived { max, effectiveMin }.
+//
+// Rules (pinned by tests): the slider max is the 5th-ranked musician's count
+// so the top 5 always qualify; entering/swapping a selection overrides
+// userMinCount with the ~50-node default for the subset (backing up the
+// pre-selection value); exiting restores the backup; first render seeds from
+// the 50-node default; effectiveMin is userMinCount clamped to [1, max]
+// without mutating it, so widening the filter restores the user's setting.
+export function computeSliderSync(prev, rows, selection) {
+    const counts = computeNodeCounts(rows);
+    const idx = Math.min(4, counts.length - 1);
+    const max = Math.max(1, counts[idx]?.count ?? 1);
+
+    let { userMinCount, lastSelection, preSelectionMinCount } = prev;
+    if (selection && selection !== lastSelection) {
+        if (lastSelection === null) {
+            preSelectionMinCount = userMinCount;
+        }
+        userMinCount = defaultMinPiecesForGraph(rows);
+    } else if (!selection && lastSelection !== null) {
+        if (preSelectionMinCount !== null) {
+            userMinCount = preSelectionMinCount;
+            preSelectionMinCount = null;
+        }
+    } else if (userMinCount === null) {
+        userMinCount = Math.max(1, Math.min(max, defaultMinPiecesForGraph(rows)));
+    }
+
+    return {
+        userMinCount,
+        lastSelection: selection ?? null,
+        preSelectionMinCount,
+        max,
+        effectiveMin: Math.max(1, Math.min(max, userMinCount)),
+    };
 }
