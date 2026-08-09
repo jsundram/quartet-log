@@ -3,6 +3,7 @@ import { getBegin, CALENDAR_CONFIG, getCssColor } from './config.js';
 import { peopleKeysFor, computeAggregateStats, longestRunInfo, formatStreakStart } from './dataProcessor.js';
 import { isCurrentlyDark } from './themeManager.js';
 import { escapeHtml } from './escapeHtml.js';
+import { tooltip } from './tooltip.js';
 
 // Body of a day tooltip (date heading, piece count, plays table). Pure and
 // exported for tests: every sheet-derived cell (composer, work title, part,
@@ -58,11 +59,6 @@ export class CalendarComponent {
         this.width = CALENDAR_CONFIG.width;
         this.cellSize = CALENDAR_CONFIG.cellSize;
         this.height = CALENDAR_CONFIG.height;
-
-        // Create tooltip div
-        this.tooltipDiv = d3.select("body").append("div")
-            .attr("class", "tooltip")
-            .style("display", "none");
 
         // Lightbox / fullscreen mode (same pattern as MusicianNetworkComponent).
         // When on, #calendar fills the viewport via the .fullscreen CSS class
@@ -619,10 +615,10 @@ export class CalendarComponent {
             .attr("x", d => (vertical ? dow(d) : week(d)) * cellSize + 0.5)
             .attr("y", d => (vertical ? week(d) : dow(d)) * cellSize + 0.5)
             .attr("fill", d => d.value == 0 ? getCssColor('--color-bg-empty-cell') : color(d.value))
-            .style("cursor", "pointer")
-            .on("mouseenter", (event, d) => this.showTooltip(event, d, formatDate, sessions))
-            .on("mouseleave", () => this.hideTooltip())
-            .on("click", (event, d) => this.showTooltip(event, d, formatDate, sessions));
+            .call(sel => tooltip.attach(sel, (event, d) => {
+                if (d.value === 0) return null; // no tooltip for empty days
+                return buildDayTooltipHtml(d, formatDate, sessions.get(d.date.getTime()));
+            }));
     }
 
     renderMonthLabels(year, timeWeek, formatMonth) {
@@ -760,56 +756,8 @@ export class CalendarComponent {
         return canvas;
     }
 
-    showTooltip(event, d, formatDate, sessions) {
-        if (d.value === 0) return; // Don't show tooltip for days with no activity
-
-        const html = `<span class="tooltip-close">&times;</span>`
-            + buildDayTooltipHtml(d, formatDate, sessions.get(d.date.getTime()));
-
-        this.tooltipDiv
-            .html(html)
-            .style("display", "block")
-            // Clear the stat tooltip's inline 320px cap; the CSS viewport
-            // clamp governs day tooltips (widest in the app — full plays table).
-            .style("max-width", null);
-
-        // Add click handler to close button
-        this.tooltipDiv.select(".tooltip-close")
-            .on("click", () => this.hideTooltip());
-
-        this.positionTooltip(event);
-    }
-
-    positionTooltip(event) {
-        const tooltip = this.tooltipDiv.node();
-        const tRect = tooltip.getBoundingClientRect();
-        const margin = 10;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        // Work in viewport (client) coordinates so the clamping is correct
-        // even when the page is scrolled or the fullscreen overlay is up,
-        // then convert back to page coordinates for the absolute placement.
-        let left = event.clientX + margin;
-        let top = event.clientY + margin;
-        if (left + tRect.width > vw) {
-            left = event.clientX - tRect.width - margin;
-        }
-        if (top + tRect.height > vh) {
-            top = event.clientY - tRect.height - margin;
-        }
-        // Final clamp: never off-screen (CSS max-width/max-height keep the
-        // tooltip itself smaller than the viewport).
-        left = Math.max(margin, Math.min(left, vw - tRect.width - margin));
-        top = Math.max(margin, Math.min(top, vh - tRect.height - margin));
-
-        this.tooltipDiv
-            .style("left", (left + window.scrollX) + "px")
-            .style("top", (top + window.scrollY) + "px");
-    }
-
     hideTooltip() {
-        this.tooltipDiv.style("display", "none");
+        tooltip.hide();
     }
 
     renderRecentStats(parent, data, days) {
@@ -877,27 +825,9 @@ export class CalendarComponent {
     }
 
     attachStatTooltip(selection, getTitle, getDescription) {
-        const show = (event, year) => this.showStatTooltip(event, getTitle(year), getDescription(year));
-        selection
-            .style("cursor", "pointer")
-            .on("mouseenter", show)
-            .on("mouseleave", () => this.hideTooltip())
-            .on("click", show);
-    }
-
-    showStatTooltip(event, title, description) {
-        let html = `<span class="tooltip-close">&times;</span>`;
-        html += `<h4>${title}</h4>`;
-        html += `<p>${description}</p>`;
-
-        this.tooltipDiv
-            .html(html)
-            .style("display", "block")
-            .style("max-width", "320px");
-
-        this.tooltipDiv.select(".tooltip-close")
-            .on("click", () => this.hideTooltip());
-
-        this.positionTooltip(event);
+        // Stat titles/descriptions are app-authored constants (no sheet data).
+        tooltip.attach(selection,
+            (event, year) => `<h4>${getTitle(year)}</h4><p>${getDescription(year)}</p>`,
+            { maxWidth: '320px' });
     }
 }

@@ -3,6 +3,7 @@ import { COMPOSERS, ALL_WORKS, ALL_TAB, generateQuartetRouletteUrl, getPetersVol
 import { getBegin, getPartColor, getCssColor } from './config.js';
 import { createEmptyRow, computeAggregateStats, formatStreakStart } from './dataProcessor.js';
 import { escapeHtml } from './escapeHtml.js';
+import { tooltip } from './tooltip.js';
 
 // Body of a work tooltip. Pure and exported for tests: every sheet-derived
 // value (composer, title, location, part, players, comments) is escaped —
@@ -56,34 +57,7 @@ export function pickRandomWork(filteredPlays, now, begin, random) {
 
 export class TabComponent {
     constructor(tableComponent) {
-        this.tooltipDiv = d3.select("#tooltip");
         this.tableComponent = tableComponent;
-
-        // Tap/click outside the tooltip dismisses it. Pairs with the touch-
-        // friendly mouseout gating on .work-label and .play-square — without
-        // a tap-outside path, touch users could only dismiss via the × button.
-        // Taps on the triggering elements don't dismiss because their own
-        // mouseover/click handlers re-show (or replace) the tooltip content.
-        document.addEventListener('click', (e) => {
-            const tooltipNode = this.tooltipDiv.node();
-            if (!tooltipNode || tooltipNode.style.display === 'none') return;
-            if (tooltipNode.contains(e.target)) return;
-            const cls = e.target.classList;
-            if (cls?.contains('work-label') || cls?.contains('play-square')) return;
-            // Musician-network elements re-open the tooltip on click; let them through.
-            // (network-node / network-arc were once listed here too, but
-            // clicks on those land on class-less hit-layer paths, so the
-            // entries never matched — node clicks already stopPropagation.)
-            if (cls?.contains('network-edge')
-                || cls?.contains('matrix-cell') || cls?.contains('matrix-label')
-                || cls?.contains('network-chord')) return;
-            // Dashboard stat tiles and the ALL tab's stat cells show their
-            // explainer tooltip on click; the click target is a child span,
-            // so match via closest().
-            if (e.target.closest?.('#dashboardStats .stat-tile')) return;
-            if (e.target.closest?.('.all-stat')) return;
-            this.hideTooltip();
-        });
     }
 
     createTabs() {
@@ -197,11 +171,10 @@ export class TabComponent {
             });
         cells.select('.all-stat-label').text(d => `${d.label}:`);
         cells.select('.all-stat-value').text(d => d.value);
-        cells
-            .style('cursor', 'pointer')
-            .on('mouseenter', (event, d) => this.showStatTooltip(event, d))
-            .on('mouseleave', () => this.hideTooltip())
-            .on('click', (event, d) => this.showStatTooltip(event, d));
+        // Explainer tooltip; stat titles/descriptions are app-authored
+        // constants (no sheet data).
+        tooltip.attach(cells, (event, d) => `<h4>${d.title}</h4><p>${d.desc}</p>`,
+            { maxWidth: '320px' });
 
         // Reuse the existing data table by wrapping the flat array in the
         // shape updateDataTable expects.
@@ -305,8 +278,8 @@ export class TabComponent {
         // No mouseout/mouseleave handler: auto-dismissing on cursor-leaves-
         // label kills the path to clicking the link inside the tooltip
         // (mouseout fires when the cursor moves from .work-label into the
-        // tooltip). Dismissal is handled uniformly by the document click-
-        // outside listener (set up in the constructor) and the × button.
+        // tooltip). Dismissal is the tooltip module's click-outside listener
+        // and the × button; own() below registers the labels as triggers.
         labelContainer.selectAll(".work-label")
             .data([label])
             .join("div")
@@ -330,7 +303,8 @@ export class TabComponent {
                 const originalTitle = getOriginalWorkTitle(composer, label);
 
                 this.showTooltip(event, all?.at(index) || createEmptyRow(realComposer, originalTitle));
-            });
+            })
+            .call(sel => tooltip.own(sel));
     }
 
     updatePlaySquares(row, entries) {
@@ -354,11 +328,12 @@ export class TabComponent {
                 this.showTooltip(event, d);
             })
             .on("mouseout", (event, d) => {
-                // Reset hover-highlight bg; tooltip dismissal is the document
-                // click-outside handler's job (see constructor).
+                // Reset hover-highlight bg; tooltip dismissal is the tooltip
+                // module's click-outside listener (squares are own()ed below).
                 d3.select(event.currentTarget)
                     .style("background-color", this.getColorForPart(d.part));
-            });
+            })
+            .call(sel => tooltip.own(sel));
 
         squares.exit().remove();
 
@@ -435,58 +410,13 @@ export class TabComponent {
         return getPartColor(part);
     }
 
-    // Explainer tooltip for the ALL tab's stat cells (same title/desc shape
-    // as the dashboard's KPI tiles).
-    showStatTooltip(event, stat) {
-        this.tooltipDiv
-            .html(`<span class="tooltip-close">&times;</span><h4>${stat.title}</h4><p>${stat.desc}</p>`)
-            .style('display', 'block')
-            .style('max-width', '320px');
-        this.tooltipDiv.select('.tooltip-close').on('click', () => this.hideTooltip());
-        this.positionTooltip(event);
-    }
-
     showTooltip(event, d) {
         if (!d) return;
-
-        const html = `<span class="tooltip-close">&times;</span>` + buildWorkTooltipHtml(d);
-
-        this.tooltipDiv
-            .html(html)
-            .style("display", "block")
-            // Clear the stat tooltip's inline 320px cap; the CSS viewport
-            // clamp governs work tooltips.
-            .style("max-width", null);
-
-        // Add click handler to close button
-        this.tooltipDiv.select(".tooltip-close")
-            .on("click", () => this.hideTooltip());
-
-        this.positionTooltip(event);
-    }
-
-    positionTooltip(event) {
-        const tooltip = this.tooltipDiv.node();
-        const tRect = tooltip.getBoundingClientRect();
-        const margin = 10;
-
-        let left = event.pageX + margin;
-        let top = event.pageY + margin;
-
-        // Adjust position to keep tooltip within viewport
-        if (left + tRect.width > window.innerWidth) {
-            left = Math.max(margin, event.pageX - tRect.width - margin);
-        }
-        if (top + tRect.height > window.innerHeight) {
-            top = Math.max(margin, event.pageY - tRect.height - margin);
-        }
-
-        this.tooltipDiv
-            .style("left", left + "px")
-            .style("top", top + "px");
+        // Wide tooltip: no max-width cap — the CSS viewport clamp governs.
+        tooltip.show(event, buildWorkTooltipHtml(d));
     }
 
     hideTooltip() {
-        this.tooltipDiv.style("display", "none");
+        tooltip.hide();
     }
 }

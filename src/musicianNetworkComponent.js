@@ -1,6 +1,7 @@
 import * as d3 from "d3";
 import { getCssColor, getPartColor } from './config.js';
 import { escapeHtml } from './escapeHtml.js';
+import { tooltip } from './tooltip.js';
 import {
     buildNetworkData,
     disambiguateLabels,
@@ -61,7 +62,6 @@ export class MusicianNetworkComponent {
         this.getSelectedMusician = opts.getSelectedMusician;
         this.activeView = 'graph';
         this.mountSelector = null;
-        this.tooltipDiv = null;
         // The slider has two values:
         //   userMinCount   — what the user set; only changes on slider input.
         //   _effectiveMin  — userMinCount clamped to the current filtered max;
@@ -94,7 +94,6 @@ export class MusicianNetworkComponent {
 
     init(mountSelector) {
         this.mountSelector = mountSelector;
-        this.tooltipDiv = d3.select('#tooltip');
 
         const root = d3.select(mountSelector);
         root.selectAll('.network-tab-btn').on('click', (event) => {
@@ -872,27 +871,19 @@ export class MusicianNetworkComponent {
     }
 
     // ---------------- Tooltip plumbing ----------------
+    // All rendering/positioning/dismissal lives in the shared tooltip module.
 
     // Hover + click → tooltip. Used for elements that don't represent a
-    // single musician (graph edges, matrix cells).
+    // single musician (graph edges, matrix cells, chords).
     _attachTooltip(selection, getHtml) {
-        const show = (event, d) => this._showTooltip(event, getHtml(event, d));
-        selection
-            .style('cursor', 'pointer')
-            .on('mouseenter', show)
-            .on('mouseleave', () => this._hideTooltip())
-            .on('click', show);
+        tooltip.attach(selection, getHtml);
     }
 
     // Hover → tooltip (desktop only); click is handled separately by
     // _attachClickToggle. Used for graph nodes and matrix axis labels so
     // clicking toggles the dashboard's musician selection.
     _attachHoverTooltip(selection, getHtml) {
-        const show = (event, d) => this._showTooltip(event, getHtml(event, d));
-        selection
-            .style('cursor', 'pointer')
-            .on('mouseenter', show)
-            .on('mouseleave', () => this._hideTooltip());
+        tooltip.attach(selection, getHtml, { click: false });
     }
 
     _attachClickToggle(selection, getName) {
@@ -903,34 +894,8 @@ export class MusicianNetworkComponent {
         });
     }
 
-    _showTooltip(event, html) {
-        this.tooltipDiv
-            .html(`<span class="tooltip-close">&times;</span>${html}`)
-            .style('display', 'block')
-            // Clear the inline 320px cap the dashboard/ALL-tab stat tooltips
-            // set on the shared #tooltip div.
-            .style('max-width', null);
-        this.tooltipDiv.select('.tooltip-close')
-            .on('click', () => this._hideTooltip());
-        this._positionTooltip(event);
-    }
-
-    _positionTooltip(event) {
-        const node = this.tooltipDiv.node();
-        const rect = node.getBoundingClientRect();
-        const margin = 10;
-        let left = event.pageX + margin;
-        let top = event.pageY + margin;
-        if (left + rect.width > window.innerWidth) {
-            left = Math.max(margin, event.pageX - rect.width - margin);
-        }
-        if (top + rect.height > window.innerHeight) {
-            top = Math.max(margin, event.pageY - rect.height - margin);
-        }
-        this.tooltipDiv.style('left', left + 'px').style('top', top + 'px');
-    }
 
     _hideTooltip() {
-        this.tooltipDiv.style('display', 'none');
+        tooltip.hide();
     }
 }

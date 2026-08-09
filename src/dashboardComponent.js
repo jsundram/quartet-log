@@ -1,5 +1,6 @@
 import * as d3 from "d3";
 import { getPartColor, getCssColor } from './config.js';
+import { tooltip } from './tooltip.js';
 import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computePartBreakdownPerComposer, computeAggregateStats, formatStreakStart } from './dataProcessor.js';
 import { DateFilterWidget } from './dateFilterWidget.js';
 import { MusicianNetworkComponent } from './musicianNetworkComponent.js';
@@ -208,39 +209,10 @@ export class DashboardComponent {
             });
         cells.select('.stat-tile-label').text(d => s.mobile ? d.short : d.label);
         cells.select('.stat-tile-value').text(d => d.value);
-        cells
-            .style('cursor', 'pointer')
-            .on('mouseenter', (event, d) => this.showStatTooltip(event, d))
-            .on('mouseleave', () => this.hideStatTooltip())
-            .on('click', (event, d) => this.showStatTooltip(event, d));
-    }
-
-    // Tooltip plumbing for the stats row, using the body-level #tooltip div
-    // (shared with the network component; the two never show simultaneously).
-    showStatTooltip(event, stat) {
-        const tooltip = d3.select('#tooltip');
-        tooltip
-            .html(`<span class="tooltip-close">&times;</span><h4>${stat.title}</h4><p>${stat.desc}</p>`)
-            .style('display', 'block')
-            .style('max-width', '320px');
-        tooltip.select('.tooltip-close').on('click', () => this.hideStatTooltip());
-
-        const node = tooltip.node();
-        const rect = node.getBoundingClientRect();
-        const margin = 10;
-        let left = event.pageX + margin;
-        let top = event.pageY + margin;
-        if (left + rect.width > window.innerWidth) {
-            left = Math.max(margin, event.pageX - rect.width - margin);
-        }
-        if (top + rect.height > window.innerHeight) {
-            top = Math.max(margin, event.pageY - rect.height - margin);
-        }
-        tooltip.style('left', left + 'px').style('top', top + 'px');
-    }
-
-    hideStatTooltip() {
-        d3.select('#tooltip').style('display', 'none');
+        // Explainer tooltip on hover/tap; stat.title/desc are app-authored
+        // constants (no sheet data), so no escaping is needed here.
+        tooltip.attach(cells, (event, d) => `<h4>${d.title}</h4><p>${d.desc}</p>`,
+            { maxWidth: '320px' });
     }
 
     // ---------------- Part stacked bar ----------------
