@@ -399,7 +399,7 @@ export function partFromInstrument(instrument) {
 // Used by the chord view to group musicians into instrument blocks.
 // Canonical part display/stacking order, shared by the dashboard's stacked
 // bars, the network views' grouping, and predominantPart's tie-breaking.
-export const PART_ORDER = ['V1', 'V2', 'VA', 'VC', 'OTHER'];
+export const PART_ORDER = /** @type {const} */ (['V1', 'V2', 'VA', 'VC', 'OTHER']);
 /**
  * @param {Partial<Record<'V1'|'V2'|'VA'|'VC'|'OTHER', number>>|null|undefined} parts
  * @returns {'V1'|'V2'|'VA'|'VC'|'OTHER'|null}

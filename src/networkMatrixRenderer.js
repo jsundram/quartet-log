@@ -27,7 +27,7 @@ export function renderMatrix(ctx) {
     // the toggle.
     const { width: containerWidth, s, state, selected, showNames } = ctx;
     const root = d3.select('#dashboardMusicianNetworkMatrix');
-    const { nodes, edges, labels, maxEdgeWeight } = state;
+    const { nodes, edges, labels } = state;
     const n = nodes.length;
 
     const labelGutter = s.matrixLabelGutter;
