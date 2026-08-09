@@ -71,7 +71,7 @@ test("generateSW substitution", async (t) => {
         assert.doesNotMatch(out, /__SW_[A-Z]+__/);
     });
 
-    await t.test('keeps the literal `const V = "..."` line the app.js update probe regex-parses', () => {
+    await t.test('substitutes the version into the `const V = "..."` line (the cache name; version.json is the update probe)', () => {
         assert.match(out, /const V = "ql-0123456789abcdef"/);
     });
 

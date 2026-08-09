@@ -78,6 +78,9 @@ export function generateSW(template, { version, shell }) {
 
 /** @param {string} deployDir */
 function main(deployDir) {
+    // Top-level files only: the build emits a flat deploy dir today. If a
+    // future build step emits a subdirectory, its files would be silently
+    // un-precached and un-hashed — switch to a recursive walk at that point.
     const files = readdirSync(deployDir, { withFileTypes: true })
         .filter((d) => d.isFile())
         .map((d) => d.name);
