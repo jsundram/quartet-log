@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { processRow, prepareRows, fillForward, normalizePlayerNames } from '../src/dataProcessor.js';
+import { serializeRows } from '../src/csvFormat.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const URL_FILE = resolve(REPO_ROOT, '.dev-data-url');
@@ -70,33 +71,8 @@ fillForward(processed);
 normalizePlayerNames(processed);
 const data = processed.filter(d => !d.work.incomplete);
 
-// Match the UI download format from src/app.js#downloadCSV: "M/D/YYYY H:mm:ss"
-// in local time, headers in the same order.
-const headers = ['Timestamp', 'Composer', 'Work Title', 'Which Part', 'Player 1', 'Player 2', 'Player 3', 'Others', 'Location', 'Comments'];
-const pad2 = n => String(n).padStart(2, '0');
-const formatTimestamp = d =>
-    `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()} ${d.getHours()}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-const escapeField = f => {
-    if (f === null || f === undefined) return '';
-    const s = String(f);
-    return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
-const lines = [headers.map(escapeField).join(',')];
-for (const d of data) {
-    lines.push([
-        formatTimestamp(d.timestamp),
-        d.composer,
-        d.work.title,
-        d.part,
-        d.player1,
-        d.player2,
-        d.player3,
-        d.others,
-        d.location,
-        d.comments,
-    ].map(escapeField).join(','));
-}
-
-writeFileSync(OUT_FILE, lines.join('\n') + '\n');
+// Headers, field order, timestamp format, and escaping come from the shared
+// csvFormat module — the same code path as the in-app "Download Data" button
+// (src/app.js downloadCSV), so the two writers can't drift apart.
+writeFileSync(OUT_FILE, serializeRows(data) + '\n');
 console.error(`Wrote ${data.length} rows to ${OUT_FILE}`);

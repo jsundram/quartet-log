@@ -426,13 +426,18 @@ export function prepareRows(rows) {
 // Sheet columns processRow reads. Checked up front so a renamed/missing
 // column in the sheet fails with a clear error naming the column, instead of
 // a bare TypeError (or worse, silent undefineds for the unguarded reads).
+// The Others column is handled separately: the live sheet's header is
+// "Others?", but exports written before the header fix (csvFormat.js) used
+// "Others" — accept either spelling so old exports still re-ingest.
 const REQUIRED_COLUMNS = [
     'Timestamp', 'Composer', 'Work Title', 'Which Part',
-    'Player 1', 'Player 2', 'Player 3', 'Others?', 'Location', 'Comments',
+    'Player 1', 'Player 2', 'Player 3', 'Location', 'Comments',
 ];
 
 export function processRow(d) {
     const missing = REQUIRED_COLUMNS.filter(c => d[c] === undefined);
+    const others = d["Others?"] ?? d["Others"];
+    if (others === undefined) missing.push('Others?');
     if (missing.length) {
         throw new Error(`Row is missing expected column(s): ${missing.join(', ')}`);
     }
@@ -444,7 +449,7 @@ export function processRow(d) {
         "player1": d["Player 1"].trim(),
         "player2": d["Player 2"].trim(),
         "player3": d["Player 3"].trim(),
-        "others": d["Others?"].trim(),
+        "others": others.trim(),
         "location": d.Location.trim(),
         "comments": d.Comments.trim()
     };

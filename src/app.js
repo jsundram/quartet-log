@@ -3,6 +3,7 @@ import { COMPOSERS, ALL_TAB, DEFAULT_COMPOSER, loadWorkCatalog } from './catalog
 import { setBegin, invalidateColorCache } from './config.js';
 import { DataService } from './dataService.js';
 import { extractUniquePlayers } from './dataProcessor.js';
+import { serializeRows } from './csvFormat.js';
 import { NavigationComponent } from './navigationComponent.js';
 import { TabComponent } from './tabComponent.js';
 import { CalendarComponent } from './calendarComponent.js';
@@ -550,43 +551,11 @@ export class App {
             return;
         }
 
-        // Format timestamp to match original format: "M/D/YYYY H:mm:ss" in local time
-        const formatTimestamp = d3.timeFormat("%-m/%-d/%Y %-H:%M:%S");
-
-        // CSV headers
-        const headers = ['Timestamp', 'Composer', 'Work Title', 'Which Part', 'Player 1', 'Player 2', 'Player 3', 'Others', 'Location', 'Comments'];
-
-        // Convert data to CSV rows
-        const rows = this.data.map(d => {
-            return [
-                formatTimestamp(d.timestamp),
-                d.composer,
-                d.work.title,
-                d.part,
-                d.player1,
-                d.player2,
-                d.player3,
-                d.others,
-                d.location,
-                d.comments
-            ];
-        });
-
-        // Escape CSV fields that contain commas, quotes, or newlines
-        const escapeField = (field) => {
-            if (field === null || field === undefined) return '';
-            const str = String(field);
-            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-                return `"${str.replace(/"/g, '""')}"`;
-            }
-            return str;
-        };
-
-        // Build CSV content
-        const csvContent = [
-            headers.map(escapeField).join(','),
-            ...rows.map(row => row.map(escapeField).join(','))
-        ].join('\n');
+        // Headers, field order, timestamp format, and escaping all come from
+        // the shared csvFormat module (also used by scripts/fetch_processed.mjs)
+        // so the written header is the reader's "Others?" and the two writers
+        // can't drift apart.
+        const csvContent = serializeRows(this.data);
 
         // Create blob and trigger download
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

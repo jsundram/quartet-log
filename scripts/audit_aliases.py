@@ -132,7 +132,9 @@ def collect_appearances(rows: list[dict]) -> dict[tuple[str, str], list[list[str
             raw = (row.get(f"Player {i + 1}") or "").strip()
             if raw and raw != "-":
                 people.append((expand_abbrev(strip_parens(raw)), SLOT_CLASS[i]))
-        for name, instr in parse_others(row.get("Others?") or ""):
+        # The canonical header is "Others?" (see src/csvFormat.js), but
+        # exports written before the header fix used "Others" — accept both.
+        for name, instr in parse_others(row.get("Others?") or row.get("Others") or ""):
             cls = class_of(instr)
             if name and cls:
                 people.append((expand_abbrev(name), cls))

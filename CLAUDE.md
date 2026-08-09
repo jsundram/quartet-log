@@ -74,6 +74,7 @@ Hash routing lives in `NavigationComponent`: menu clicks set `window.location.ha
   - `normalizeDashboardPart(part)` — folds `VA1`/`VA2`/`VA…` → `VA` for the Dashboard pie/bar
   - `parseOthers`, `stripParens`, `classOf`, `canonicalize` (helpers)
   - `extractUniquePlayers` — for the Player dropdown
+- `csvFormat` (`src/csvFormat.js`) — pure shared CSV-export format: `CSV_HEADERS` (canonical header list — the Others column is spelled `Others?` to match the sheet and `processRow`), `escapeField`, `formatTimestamp`, `rowToFields`, `serializeRows`. Imported by BOTH writers (`App.downloadCSV` and `scripts/fetch_processed.mjs`) so they can't drift; readers (`processRow`, `scripts/audit_aliases.py`) also accept the legacy `Others` header from pre-fix exports.
 - `tableComponent` (`src/tableComponent.js`) — sortable HTML data tables. `getColumnsForComposer` includes the composer column for `MISC` and `ALL` only.
 
 **UI:**
@@ -124,7 +125,7 @@ Classes: `upper` (V1, V2, VA, VLA — violin/viola alias as one person) and `cel
 **Audit script** (`scripts/audit_aliases.py`) reads an exported CSV (default `archive/data.csv`, gitignored) and surfaces candidate aliases by lowercased first-token grouping + teammate-overlap. Reads `PLAYER_ALIASES` live from `src/config.js` via a `node -e` subshell — single source of truth, no manual sync.
 
 **Fetch scripts** (both read source URL from `.dev-data-url`, both gitignore their outputs):
-- `scripts/fetch_processed.mjs` — fetches the sheet, runs the same `fillForward` + `normalizePlayerNames` + drop-incompletes pipeline as the in-browser "Download Data" button, writes `archive/data.csv` in the matching CSV format. This is the file `audit_aliases.py` defaults to.
+- `scripts/fetch_processed.mjs` — fetches the sheet, runs the same `prepareRows` + `fillForward` + `normalizePlayerNames` + drop-incompletes pipeline as the in-browser "Download Data" button, writes `archive/data.csv` via the same shared writer (`src/csvFormat.js`). This is the file `audit_aliases.py` defaults to.
 - `scripts/fetch_raw.sh` — `curl`s the raw published CSV verbatim to `archive/data-raw.csv` (no JS processing, partial-movements included, names un-normalized).
 
 ### Calendar specifics
