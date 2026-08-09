@@ -102,6 +102,9 @@ export class TabComponent {
 
     showTab(composer) {
         this.activeTab = composer;
+        // Lazy-render hook: the app re-renders this tab now if a filter
+        // change happened while it was hidden.
+        if (this.onTabShown) this.onTabShown(composer);
         // Hide all tabs and remove active class from all tab buttons
         d3.selectAll(".tab").classed("active-tab", false);
         d3.selectAll("#tabs button").classed("active-tab-button", false);

@@ -40,6 +40,11 @@ export class App {
         this.dashboardComponent = new DashboardComponent();
         this.pullToRefresh = new PullToRefresh({ onRefresh: () => this.revalidate() });
         this.setupView = new SetupView({ onSubmit: () => this.initialize() });
+        // Lazy tab rendering (see filterData): tabs whose content is stale
+        // under the latest filter, rendered only when they become visible.
+        this._dirtyTabs = new Set();
+        this._pendingFilter = null;
+        this.tabComponent.onTabShown = (composer) => this._renderTabIfDirty(composer);
         this.data = null;
         this._lastFetchAt = 0;
         this._booted = false;
@@ -308,10 +313,19 @@ export class App {
             this.navigationComponent.populatePlayerDropdown(extractUniquePlayers(datePartFiltered));
         }
 
-        // Update all composer tabs (plus the special ALL tab) with filtered data
-        [...COMPOSERS, ALL_TAB].forEach(composer => {
-            this.tabComponent.updateTabContent(composer, part, filtered, this.data);
-        });
+        // Render ONLY the visible tab now; mark the rest dirty and render
+        // them on demand when the user switches to them (~21 hidden tab
+        // renders per filter change previously — now exactly one).
+        this._pendingFilter = { part, filtered };
+        this._dirtyTabs = new Set([...COMPOSERS, ALL_TAB]);
+        this._renderTabIfDirty(this.tabComponent.activeTab ?? DEFAULT_COMPOSER);
+    }
+
+    _renderTabIfDirty(composer) {
+        if (!this._pendingFilter || !this._dirtyTabs.has(composer)) return;
+        const { part, filtered } = this._pendingFilter;
+        this.tabComponent.updateTabContent(composer, part, filtered, this.data);
+        this._dirtyTabs.delete(composer);
     }
 }
 
