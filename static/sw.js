@@ -1,35 +1,29 @@
 // Service worker: offline app shell.
 //
-// This is a TEMPLATE. build.sh (--prod only) copies it to the deploy root and
-// substitutes three tokens with the content-hashed filenames produced by that
-// build:
-//   __SW_VERSION__  → "ql-<bundlehash>-<csshash>" (the cache name)
-//   __BUNDLE_JS__   → bundle-<hash>.js
-//   __CSS_FILE__    → viz-<hash>.css
+// This is a TEMPLATE. scripts/gen_sw.mjs (run by build.sh --prod) writes the
+// deployable copy, substituting two tokens: the version placeholder inside
+// `const V` becomes "ql-<hash>" — a hash over the CONTENT of every precached
+// asset (it doubles as the cache name) — and the placeholder entry in SHELL
+// becomes the precache list, generated from the deploy directory's actual
+// contents.
 //
-// Because the hashes change whenever the code, the CSS, or the catalog data
-// change (the catalog version is baked into bundle.js via esbuild --define, so
-// a data change changes the bundle hash too), V changes on every meaningful
-// deploy. A new V is what evicts the stale cache on `activate` — so there's no
-// hand-bumped version constant to forget: the build's content hashes drive it.
+// Because V covers every asset, ANY deploy that changes anything — code, CSS,
+// catalog data, an icon, the manifest — produces a new V, which evicts the
+// stale cache on `activate`. No hand-bumped version constant, no
+// hand-maintained file list to forget. It also writes version.json next to
+// sw.js so clients can probe the deployed version without parsing this file.
 //
 // Dev builds don't emit this file; app.js only registers a SW off localhost, so
 // esbuild's live-reload server is never intercepted.
 
 const V = "__SW_VERSION__";
 
-// Everything the app needs to boot offline. Cross-origin data (the Google
-// Sheets CSV) is deliberately NOT here — it passes straight to the network and
-// the app does its own stale-while-revalidate against localStorage.
-const SHELL = [
-  "./", "./index.html",
-  "./__BUNDLE_JS__", "./__CSS_FILE__",
-  "./all_works.json", "./haydn_peters.json",
-  "./about.html",
-  "./site.webmanifest",
-  "./apple-touch-icon.png", "./favicon-32x32.png", "./favicon-16x16.png",
-  "./android-chrome-192x192.png", "./android-chrome-512x512.png", "./maskable-512x512.png",
-];
+// Everything the app needs to boot offline — generated from the deploy
+// directory's contents, so nothing the build emits can be missing from it.
+// Cross-origin data (the published Google Sheets CSV) is deliberately never
+// precached — it passes straight to the network and the app does its own
+// stale-while-revalidate against localStorage.
+const SHELL = ["__SW_SHELL__"];
 
 self.addEventListener("install", e => {
   // allSettled + individual adds: a single missing optional file (say about.html
@@ -112,12 +106,11 @@ self.addEventListener("fetch", e => {
   // straight to network, never touch the cache.
   if (u.origin !== location.origin) return;
 
-  // Never intercept or cache the SW script itself. app.js's update check probes
-  // ./sw.js?_=<ts> (no-store) to read the live version off the server; because
-  // .js is otherwise cache-first with ignoreSearch below, a probe would get a
-  // previously-cached sw.js served back and the version check would never see a
-  // new deploy. Let it always go straight to network.
-  if (u.pathname.endsWith("/sw.js")) return;
+  // Never intercept or cache the SW script itself or version.json. The update
+  // check probes them (no-store) to read the live version off the server;
+  // interception would hand back a previously-cached copy and the check would
+  // never see a new deploy. Let both always go straight to network.
+  if (u.pathname.endsWith("/sw.js") || u.pathname.endsWith("/version.json")) return;
 
   // HTML + JSON + navigations are network-first so a fresh deploy or a fresh
   // catalog shows up the moment you're online; they fall back to cache offline.

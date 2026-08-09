@@ -143,21 +143,13 @@ if [[ "$PROD" == true ]]; then
     grep -q "$NEW_CSS" "$DEPLOY/index.html" || { echo "Error: css reference not rewritten in index.html" >&2; exit 1; }
     echo "Content-hashed: $NEW_BUNDLE, $NEW_CSS"
 
-    # Generate the service worker from static/sw.js, injecting the hashed shell
-    # filenames + a cache version derived from those hashes. Because the hashes
-    # move whenever code / CSS / catalog data change, the SW cache name (V)
-    # changes on every meaningful deploy and evicts the stale cache on activate
-    # — no hand-bumped version constant to forget. Prod-only: dev serves the
-    # unhashed files off esbuild's live server and registers no SW.
-    BHASH="${NEW_BUNDLE#bundle-}"; BHASH="${BHASH%.js}"
-    CHASH="${NEW_CSS#viz-}"; CHASH="${CHASH%.css}"
-    SW_VERSION="ql-${BHASH}-${CHASH}"
-    sed \
-        -e "s|__SW_VERSION__|$SW_VERSION|g" \
-        -e "s|__BUNDLE_JS__|$NEW_BUNDLE|g" \
-        -e "s|__CSS_FILE__|$NEW_CSS|g" \
-        static/sw.js > "$DEPLOY/sw.js"
-    echo "Service worker: $DEPLOY/sw.js ($SW_VERSION)"
+    # Generate the service worker + version.json from static/sw.js via
+    # scripts/gen_sw.mjs: the precache list comes from $DEPLOY's actual
+    # contents and the cache version V hashes every precached asset, so any
+    # deploy that changes anything evicts the stale cache on activate.
+    # Prod-only: dev serves the unhashed files off esbuild's live server and
+    # registers no SW.
+    node scripts/gen_sw.mjs "$DEPLOY"
 
     echo -e "\nBuild complete. Files in deploy directory:"
     ls -la "$DEPLOY"
