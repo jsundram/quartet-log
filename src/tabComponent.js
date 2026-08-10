@@ -161,11 +161,15 @@ export class TabComponent {
             .data(stats, d => d.label)
             .join(enter => {
                 const cell = enter.append('div').attr('class', 'all-stat');
-                cell.append('span').attr('class', 'all-stat-label');
+                // Both labels are rendered; CSS shows exactly one per
+                // viewport (same pattern as the calendar's recent stats).
+                cell.append('span').attr('class', 'all-stat-label all-stat-label--long');
+                cell.append('span').attr('class', 'all-stat-label all-stat-label--short');
                 cell.append('span').attr('class', 'all-stat-value');
                 return cell;
             });
-        cells.select('.all-stat-label').text(d => `${d.label}:`);
+        cells.select('.all-stat-label--long').text(d => `${d.label}:`);
+        cells.select('.all-stat-label--short').text(d => `${d.short}:`);
         cells.select('.all-stat-value').text(d => d.value);
         // Explainer tooltip; stat titles/descriptions are app-authored
         // constants (no sheet data).

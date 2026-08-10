@@ -787,6 +787,13 @@ body.calendar-fullscreen-open {
     color: var(--color-text-secondary);
 }
 
+/* Full labels by default; the mobile media query below swaps in the short
+   ones (both spans are rendered by updateAllTabContent), mirroring the
+   calendar's recent-stats row. */
+.all-stat-label--short {
+    display: none;
+}
+
 .all-stat-value {
     font-weight: bold;
 }
@@ -868,8 +875,9 @@ body.calendar-fullscreen-open {
 /* Mobile (mirrors MOBILE_BREAKPOINT in dashboardComponent.js): all five
    tiles share one full-width line — equal flex shares, compressed type,
    ellipsis on labels for very narrow phones. renderStats() drops the
-   plot-area indent at this width. The calendar's "Last 365 days" row also
-   swaps to its short labels at this same breakpoint. */
+   plot-area indent at this width. The calendar's "Last 365 days" row and
+   the ALL tab's stats row also swap to their short labels at this same
+   breakpoint. */
 @media only screen and (max-width: 599px) {
     .stat-tiles {
         flex-wrap: nowrap;
@@ -900,6 +908,14 @@ body.calendar-fullscreen-open {
     }
 
     .recent-stat-label--short {
+        display: inline;
+    }
+
+    .all-stat-label--long {
+        display: none;
+    }
+
+    .all-stat-label--short {
         display: inline;
     }
 }
