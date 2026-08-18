@@ -259,6 +259,15 @@
         "14",
         "15"
     ],
+    "5+": [
+        {"Mozart": ["K174", "K406", "K515", "K516", "K593", "K614"]},
+        {"Brahms": ["18", "36", "88", "111"]},
+        {"Mendelssohn": ["18", "87"]},
+        {"Dvorak": ["97"]},
+        {"Schubert": ["D956"]},
+        {"Tchaikovsky": ["Souvenir"]},
+        {"Strauss": ["Capriccio sextet"]}
+    ],
     "MISC": [
         {"Britten": ["1", "2", "3"]},
         {"Debussy": ["Quartet"]},

@@ -1,4 +1,5 @@
 import * as d3 from "d3";
+import { ALL_TAB, isMultiComposerTab } from './catalog.js';
 // Row comparator for the sortable data tables. Pure and exported for
 // tests. 'work.title' sorts numerically by catalog then number (opus order,
 // not string order); every other key compares values directly. `getValue`
@@ -40,9 +41,10 @@ export class TableComponent {
     }
 
     getColumnsForComposer(composer) {
-        // MISC and ALL span multiple composers, so they keep the composer
-        // column. Single-composer tabs drop it (it would always be the same).
-        if (composer === 'MISC' || composer === 'ALL') {
+        // Multi-composer tabs (MISC, 5+) and ALL span multiple
+        // composers, so they keep the composer column. Single-composer tabs
+        // drop it (it would always be the same).
+        if (composer === ALL_TAB || isMultiComposerTab(composer)) {
             return this.allColumns;
         }
         return this.allColumns.filter(col => col.key !== 'composer');

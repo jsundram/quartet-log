@@ -12,6 +12,7 @@ import {
     computeSliderSync, computeNodeCounts,
 } from "../src/dataProcessor.js";
 import { makeRowComparator } from "../src/tableComponent.js";
+import { partMatches } from "../src/filterEngine.js";
 import { calculateWeekTotals, calculateDayOfWeekTotals } from "../src/calendarComponent.js";
 import { groupPlaysByWork } from "../src/tabComponent.js";
 import { chordLabelVisibility } from "../src/musicianNetworkComponent.js";
@@ -85,6 +86,39 @@ test("player-filter matching", async (t) => {
         assert.equal(checkPlayersMatch(row, ['Alice.v1', 'Alice.v2', 'Carol.vc']), true);
         // Alice matches but Mallory does not → false
         assert.equal(checkPlayersMatch(row, ['Alice.v2', 'Mallory.vc']), false);
+    });
+
+    await t.test("quintet VA2 rows use the VA slot mapping (v1/v2/vc)", () => {
+        const va2Row = { part: 'VA2', player1: 'Alice', player2: 'Bob', player3: 'Carol' };
+        assert.equal(checkSinglePlayerMatch(va2Row, 'Alice', 'v1'), true);
+        assert.equal(checkSinglePlayerMatch(va2Row, 'Bob', 'v2'), true);
+        assert.equal(checkSinglePlayerMatch(va2Row, 'Carol', 'vc'), true);
+        assert.equal(checkSinglePlayerMatch(va2Row, 'Alice', 'va'), false);
+    });
+
+    await t.test("rows with unknown parts never match a slot", () => {
+        const bare = { part: null, player1: 'Alice', player2: 'Bob', player3: 'Carol' };
+        assert.equal(checkSinglePlayerMatch(bare, 'Carol', 'vc'), false);
+    });
+});
+
+test("partMatches (Part button fold)", async (t) => {
+    await t.test("ANY matches everything", () => {
+        assert.equal(partMatches('ANY', 'V1'), true);
+        assert.equal(partMatches('ANY', null), true);
+    });
+
+    await t.test("V1/V2 match exactly", () => {
+        assert.equal(partMatches('V1', 'V1'), true);
+        assert.equal(partMatches('V1', 'V2'), false);
+        assert.equal(partMatches('V2', 'VA2'), false);
+    });
+
+    await t.test("VA folds explicit second-viola (VA2) rows in", () => {
+        assert.equal(partMatches('VA', 'VA'), true);
+        assert.equal(partMatches('VA', 'VA2'), true);
+        assert.equal(partMatches('VA', 'V1'), false);
+        assert.equal(partMatches('VA', null), false);
     });
 });
 

@@ -1,5 +1,6 @@
 import * as d3 from "d3";
-import { COMPOSERS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMiscTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getOriginalWorkTitle } from './catalog.js';
+import { COMPOSERS, ALL_TAB, generateQuartetRouletteUrl, getPetersVolume, isMultiComposerTab, isAllTab, getComposersForTab, getWorksForTab, getComposerForWork, getDisplayLabel, getOriginalWorkTitle } from './catalog.js';
+import { partMatches } from './filterEngine.js';
 import { getBegin, getPartColor, getCssColor } from './config.js';
 import { createEmptyRow, computeAggregateStats } from './dataProcessor.js';
 import { escapeHtml } from './escapeHtml.js';
@@ -18,7 +19,13 @@ export function buildWorkTooltipHtml(d) {
     // target="_blank" is load-bearing on iOS homescreen webclips: without
     // it, taps on the link from inside the standalone webapp can fail to
     // navigate to quartetroulette.com. rel pairs with it for security.
-    let html = `<h4><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(d.composer)} - ${escapeHtml(d.work.title)}</a>${petersSuffix}</h4>`;
+    // Non-quartet rep (the 5+ tab) gets a plain header — the URL
+    // builder returns null when quartetroulette has no page for the work.
+    const header = `${escapeHtml(d.composer)} - ${escapeHtml(d.work.title)}`;
+    const linked = url
+        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${header}</a>`
+        : header;
+    let html = `<h4>${linked}${petersSuffix}</h4>`;
     html += "<ul>";
     html += `<li>${ts}${d.location ? " - " + escapeHtml(d.location) : ""}</li>`;
     if (d.part) html += `<li>${escapeHtml(d.part)}</li>`;
@@ -110,7 +117,9 @@ export class TabComponent {
         d3.selectAll("#tabs button").classed("active-tab-button", false);
 
         // Show selected tab and add active class to the tab button
-        d3.select(`#${composer}`).classed("active-tab", true);
+        // getElementById, not a #-selector: tab names like "5+" contain
+        // characters that are invalid in an unescaped CSS id selector.
+        d3.select(document.getElementById(composer)).classed("active-tab", true);
         d3.select(`#tabs button[data-composer='${composer}']`).classed("active-tab-button", true);
 
         // Scroll the active tab button into view
@@ -121,7 +130,8 @@ export class TabComponent {
     }
 
     updateTabContent(composer, part, filteredData, fullData) {
-        const composerDiv = d3.select("#" + composer);
+        // getElementById for the same "5+"-safety reason as showTab.
+        const composerDiv = d3.select(document.getElementById(composer));
 
         // ALL tab has no works / random button / catalog completeness line —
         // just aggregate stats + a flat data table over the filtered slice.
@@ -190,8 +200,9 @@ export class TabComponent {
         return groupPlaysByWork(filteredData, fullData, {
             composers: getComposersForTab(composer),
             works: getWorksForTab(composer),
-            // For MISC tab, transform work titles to include composer prefix
-            transformTitle: isMiscTab(composer)
+            // Multi-composer tabs (MISC, 5+) prefix titles with the
+            // composer to avoid collisions
+            transformTitle: isMultiComposerTab(composer)
                 ? d => `${d.composer}-${d.work.title}`
                 : d => d.work.title,
         });
@@ -269,12 +280,14 @@ export class TabComponent {
             .data([label])
             .join("div")
             .attr("class", "work-label")
-            .text(d => d)
+            // Display text only — the datum stays the full (prefixed) title,
+            // which keys the plays maps and the tooltip lookup below.
+            .text(d => getDisplayLabel(composer, d))
             .on("mouseover", (event, d) => {
                 // Want to find the last time that this piece was played on this part
                 // before the filter start date and set that as a tooltip for the
                 // piece label.
-                const all = allPlays.get(d).filter(d => ["ANY", d.part].includes(part));
+                const all = allPlays.get(d).filter(d => partMatches(part, d.part));
                 const ts = filteredPlays.get(d).at(0)?.timestamp;
                 let index = -1;
                 if (ts !== undefined) {
@@ -361,9 +374,9 @@ export class TabComponent {
         const latest = latestEntry.timestamp;
         const days = d3.timeDay.count(latest, Date.now());
 
-        // For MISC tab, use "MISC" as composer name and show prefixed work title
-        const composerName = isMiscTab(tabName) ? tabName : (latestEntry.composer || "played");
-        const piece = isMiscTab(tabName)
+        // Multi-composer tabs use the tab name and show the prefixed title
+        const composerName = isMultiComposerTab(tabName) ? tabName : (latestEntry.composer || "played");
+        const piece = isMultiComposerTab(tabName)
             ? `${latestEntry.composer}-${latestEntry.work.title}`
             : latestEntry.work.title;
 

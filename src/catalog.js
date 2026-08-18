@@ -6,9 +6,12 @@ import * as d3 from "d3";
 
 /**
  * The catalog's per-composer work lists: composer → array of work titles,
- * except the special MISC key, which is an array of single-key objects
- * ({ composer: titles[] }) — see getComposersForTab/getWorksForTab.
- * @typedef {Record<string, string[]> & { MISC: Record<string, string[]>[] }} WorkCatalog
+ * except multi-composer tabs (MISC, 5+), whose value is an array of
+ * single-key objects ({ composer: titles[] }) — see getComposersForTab/
+ * getWorksForTab. The tab set is data-driven: adding another multi-composer
+ * tab is a JSON-only change.
+ * @typedef {string[] | Record<string, string[]>[]} CatalogEntry
+ * @typedef {Record<string, CatalogEntry>} WorkCatalog
  */
 
 // This will be populated when catalog loads
@@ -52,14 +55,32 @@ const COMPOSER_URL_PATTERNS = {
     // generateQuartetRouletteUrl (`(1)?.(d)` throws — optional chaining only
     // guards null/undefined, not non-functions) had any row carried the
     // composer "MISC". A no-op pattern keeps both callers safe.
-    'MISC': () => ''
+    'MISC': () => '',
+    '5+': () => ''
 };
+
+// Does quartetroulette.com have a page for this row's work? The site covers
+// quartets only, i.e. the works in the composer's own tab list plus MISC —
+// works that exist solely in other multi-composer tabs (5+) would
+// 404. Permissive when the catalog hasn't loaded (tests build tooltips
+// without it); in the app every tooltip renders post-load.
+/** @param {Row} d */
+function hasQuartetRoulettePage(d) {
+    if (!ALL_WORKS) return true;
+    const own = ALL_WORKS[d.composer];
+    if (Array.isArray(own) && own.some(w => w === d.work.title)) return true;
+    const misc = ALL_WORKS.MISC;
+    return Array.isArray(misc) && misc.some(obj =>
+        /** @type {Record<string, string[]>} */ (obj)[d.composer]?.includes(d.work.title));
+}
 
 /**
  * @param {Row} d
- * @returns {string}
+ * @returns {string|null} the quartetroulette.com link, or null when the
+ *   site has no page for this work (non-quartet rep — callers skip the link)
  */
 export function generateQuartetRouletteUrl(d) {
+        if (!hasQuartetRoulettePage(d)) return null;
         const base = 'https://quartetroulette.com/';
         return base + (COMPOSER_URL_PATTERNS[d.composer]?.(d) || '');
 }
@@ -79,20 +100,32 @@ export async function loadWorkCatalog() {
             d3.json(`all_works.json?v=${WORKS_VERSION}`),
             d3.json('haydn_peters.json'),
         ]);
-        ALL_WORKS = works;
-        HAYDN_PETERS = peters;
-        COMPOSERS = new Set(Object.keys(works));
-
-        // Validate that we have URL patterns for all composers
-        COMPOSERS.forEach(composer => {
-            if (!COMPOSER_URL_PATTERNS[composer]) {
-                console.warn(`Missing URL pattern for composer: ${composer}`);
-            }
-        });
+        installCatalog(works, peters);
     } catch (error) {
         console.error('Error loading work catalog:', error);
         throw error;
     }
+}
+
+// The assignment half of loadWorkCatalog, split out as a seam: production
+// boot fetches then installs; tests install a fixture catalog directly so
+// the tab helpers below are exercisable under node:test (mirrors the
+// injected-`aliases` pattern in dataProcessor). Pass nulls to reset.
+/**
+ * @param {WorkCatalog|null} works
+ * @param {Record<string, number|null>|null} [peters]
+ */
+export function installCatalog(works, peters = null) {
+    ALL_WORKS = works;
+    HAYDN_PETERS = peters;
+    COMPOSERS = works ? new Set(Object.keys(works)) : null;
+
+    // Validate that we have URL patterns for all composers
+    COMPOSERS?.forEach(composer => {
+        if (!COMPOSER_URL_PATTERNS[composer]) {
+            console.warn(`Missing URL pattern for composer: ${composer}`);
+        }
+    });
 }
 
 const PETERS_ROMAN = ['', 'I', 'II', 'III', 'IV'];
@@ -120,11 +153,15 @@ function loadedCatalog() {
     return ALL_WORKS;
 }
 
-// Helper functions for handling MISC tab
+// Helper functions for handling multi-composer tabs (MISC, 5+)
 
+// Shape-based: a tab is multi-composer when its catalog entry is an array
+// of { composer: titles[] } objects rather than plain title strings. Safe
+// pre-load (returns false), so DOM-free callers (tests) don't throw.
 /** @param {string} tabName */
-export function isMiscTab(tabName) {
-    return tabName === 'MISC';
+export function isMultiComposerTab(tabName) {
+    const entry = ALL_WORKS?.[tabName];
+    return Array.isArray(entry) && entry.length > 0 && typeof entry[0] !== 'string';
 }
 
 // The ALL tab is built outside the work catalog and shows aggregate stats +
@@ -141,11 +178,13 @@ export function isAllTab(tabName) {
  * @returns {string[]}
  */
 export function getComposersForTab(tabName) {
-    if (!isMiscTab(tabName)) {
+    if (!isMultiComposerTab(tabName)) {
         return [tabName];
     }
-    // MISC is an array of objects, each with one key (the composer name)
-    return loadedCatalog().MISC.map(obj => Object.keys(obj)[0]);
+    // Multi-composer entries are arrays of objects, each with one key (the
+    // composer name)
+    const entry = /** @type {Record<string, string[]>[]} */ (loadedCatalog()[tabName]);
+    return entry.map(obj => Object.keys(obj)[0]);
 }
 
 /**
@@ -153,12 +192,14 @@ export function getComposersForTab(tabName) {
  * @returns {string[]}
  */
 export function getWorksForTab(tabName) {
-    if (!isMiscTab(tabName)) {
-        return loadedCatalog()[tabName];
+    if (!isMultiComposerTab(tabName)) {
+        return /** @type {string[]} */ (loadedCatalog()[tabName]);
     }
-    // Flatten the MISC structure and prepend composer names to avoid title collisions
-    // e.g., "Quartet" becomes "Debussy-Quartet" and "Ravel-Quartet"
-    return loadedCatalog().MISC.flatMap(obj => {
+    // Flatten the multi-composer structure and prepend composer names to
+    // avoid title collisions, e.g. "Quartet" becomes "Debussy-Quartet" and
+    // "Ravel-Quartet" in MISC.
+    const entry = /** @type {Record<string, string[]>[]} */ (loadedCatalog()[tabName]);
+    return entry.flatMap(obj => {
         const composer = Object.keys(obj)[0];
         const works = obj[composer];
         return works.map(work => `${composer}-${work}`);
@@ -171,13 +212,31 @@ export function getWorksForTab(tabName) {
  * @returns {string}
  */
 export function getComposerForWork(tabName, workTitle) {
-    if (!isMiscTab(tabName)) {
+    if (!isMultiComposerTab(tabName)) {
         return tabName;
     }
-    // Work titles for MISC are prefixed with composer: "Debussy-Quartet"
+    // Work titles for multi-composer tabs are prefixed: "Debussy-Quartet"
     const dashIndex = workTitle.indexOf('-');
     if (dashIndex === -1) return tabName; // fallback
     return workTitle.substring(0, dashIndex);
+}
+
+// What the work-row label should SHOW. Data stays keyed by the full
+// prefixed title; this only affects the rendered text. In a multi-composer
+// tab, a composer with exactly one work displays as just the composer —
+// "Tchaikovsky-Souvenir" reads as "Tchaikovsky" and the full title lives in
+// the tooltip. Composers with several works keep the prefixed form.
+/**
+ * @param {string} tabName
+ * @param {string} workTitle
+ * @returns {string}
+ */
+export function getDisplayLabel(tabName, workTitle) {
+    if (!isMultiComposerTab(tabName)) return workTitle;
+    const composer = getComposerForWork(tabName, workTitle);
+    const entry = /** @type {Record<string, string[]>[]} */ (loadedCatalog()[tabName]);
+    const works = entry.find(obj => Object.keys(obj)[0] === composer)?.[composer];
+    return works?.length === 1 ? composer : workTitle;
 }
 
 /**
@@ -186,7 +245,7 @@ export function getComposerForWork(tabName, workTitle) {
  * @returns {string}
  */
 export function getOriginalWorkTitle(tabName, workTitle) {
-    if (!isMiscTab(tabName)) {
+    if (!isMultiComposerTab(tabName)) {
         return workTitle;
     }
     // Strip the composer prefix: "Debussy-Quartet" → "Quartet"

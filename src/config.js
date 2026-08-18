@@ -56,6 +56,7 @@ export function getPartColor(part) {
         V1: '--color-part-v1',
         V2: '--color-part-v2',
         VA: '--color-part-va',
+        VA2: '--color-part-va2',
         VC: '--color-part-vc',
     };
     const token = part ? tokens[part] : undefined;

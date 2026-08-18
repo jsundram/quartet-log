@@ -25,6 +25,8 @@ import {
     fillForward,
     processRow,
     parseWork,
+    extractUniquePlayers,
+    PLAYER_DROPDOWN_MIN_ENTRIES,
 } from '../src/dataProcessor.js';
 
 // Hand-built rows for the network helpers. Reflects the real data model:
@@ -850,18 +852,20 @@ describe('computePartBreakdownPerMusician', () => {
         assert.deepEqual(breakdown.get('Greta'), { V1: 0, V2: 0, VA: 1, VC: 0, OTHER: 0 });
     });
 
-    it('skips rows with non-canonical user parts (e.g. quintet VA2)', () => {
+    it('maps quintet VA2 rows like VA: violins and cello in the slots', () => {
         const rows = [
-            r('VA2', 'Alice', 'Bob', 'Carol'),
-            r('V1', 'Alice', null, null), // Alice=V2 here
+            r('VA2', 'Alice', 'Bob', 'Carol'), // Alice=V1, Bob=V2, Carol=VC
+            r('V1', 'Alice', null, null),      // Alice=V2 here
         ];
         const breakdown = computePartBreakdownPerMusician(rows);
-        // VA2 row contributes nothing for player1/2/3 (slot mapping undefined),
-        // so Alice's only credit is V2 from the V1 row.
-        assert.deepEqual(breakdown.get('Alice'), { V1: 0, V2: 1, VA: 0, VC: 0, OTHER: 0 });
-        // Bob and Carol from the VA2 row never get registered.
-        assert.equal(breakdown.get('Bob'), undefined);
-        assert.equal(breakdown.get('Carol'), undefined);
+        assert.deepEqual(breakdown.get('Alice'), { V1: 1, V2: 1, VA: 0, VC: 0, OTHER: 0 });
+        assert.deepEqual(breakdown.get('Bob'),   { V1: 0, V2: 1, VA: 0, VC: 0, OTHER: 0 });
+        assert.deepEqual(breakdown.get('Carol'), { V1: 0, V2: 0, VA: 0, VC: 1, OTHER: 0 });
+    });
+
+    it('skips slot credit for rows with unknown user parts', () => {
+        const rows = [r(null, 'Alice', 'Bob', 'Carol')];
+        assert.equal(computePartBreakdownPerMusician(rows).size, 0);
     });
 
     it('sums to per-musician piece count (parity with computeNodeCounts)', () => {
@@ -1227,5 +1231,44 @@ describe('parseWork', () => {
         const w = parseWork('#3');
         assert.equal(w.number, 3);
         assert.equal(w.catalog, 3);
+    });
+
+    it('parses quintet catalog titles (opus / K. / D. numbers)', () => {
+        assert.equal(parseWork('K174').catalog, 174);
+        assert.equal(parseWork('D956').catalog, 956);
+        assert.deepEqual(parseWork('111'),
+            { title: '111', incomplete: false, catalog: 111, number: null });
+    });
+});
+
+describe('extractUniquePlayers', () => {
+    // Enough identical rows to clear the dropdown's regulars floor.
+    const many = (part, p1, p2, p3) =>
+        Array.from({ length: PLAYER_DROPDOWN_MIN_ENTRIES },
+            () => ({ part, player1: p1, player2: p2, player3: p3 }));
+
+    it('keys slot players by the part they played, per the user part table', () => {
+        const players = extractUniquePlayers(many('V1', 'Alice', 'Bob', 'Carol'));
+        assert.deepEqual(players, ['Alice.v2', 'Bob.va', 'Carol.vc']);
+    });
+
+    it('maps quintet VA2 rows like VA (violins + cello in the slots)', () => {
+        const players = extractUniquePlayers(many('VA2', 'Alice', 'Bob', 'Carol'));
+        assert.deepEqual(players, ['Alice.v1', 'Bob.v2', 'Carol.vc']);
+    });
+
+    it('drops sub-floor players and rows with unknown parts', () => {
+        const rows = [
+            ...many('VA', 'Alice', 'Bob', 'Carol'),
+            { part: 'VA', player1: 'Zoe', player2: null, player3: null },
+            { part: null, player1: 'Alice', player2: 'Bob', player3: 'Carol' },
+        ];
+        const players = extractUniquePlayers(rows);
+        assert.deepEqual(players, ['Alice.v1', 'Bob.v2', 'Carol.vc']);
+    });
+
+    it('never lists "-" (empty slot), no matter how often it appears', () => {
+        const players = extractUniquePlayers(many('V1', '-', 'Bob', 'Carol'));
+        assert.deepEqual(players, ['Bob.va', 'Carol.vc']);
     });
 });

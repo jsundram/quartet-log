@@ -367,13 +367,17 @@ export function defaultMinPiecesForGraph(rows, maxNodes = 50) {
 
 // What part did the person in this row's player slot play? The user's own
 // part determines the cohort: e.g. when the user plays V1, their player1 is
-// the V2 player, player2 is the VA player, player3 is the cellist. Mirrors
-// the table in extractUniquePlayers. Returns null for non-canonical user
-// parts (e.g. quintets logged as VA2) — the slot mapping is undefined there.
+// the V2 player, player2 is the VA player, player3 is the cellist. VA2 rows
+// (quintets with the user on second viola) follow the sheet convention of
+// listing the violins and cello in the slots with the other violist under
+// Others — same mapping as VA. Consumed by extractUniquePlayers,
+// checkSinglePlayerMatch, and computePartBreakdownPerMusician; undefined
+// for any other part value.
 const SLOT_TO_PART = {
     V1: ['V2', 'VA', 'VC'],
     V2: ['V1', 'VA', 'VC'],
     VA: ['V1', 'V2', 'VC'],
+    VA2: ['V1', 'V2', 'VC'],
 };
 
 // Map a free-text instrument string (from the "Others?" column) to a part
@@ -725,23 +729,14 @@ export function extractUniquePlayers(data) {
     const playerCounts = new Map();
 
     data.forEach(d => {
-        /** @type {string[]} */
-        let players = [];
-        if (d.part === "V1") {
-            if (d.player1) players.push(d.player1 + ".v2");
-            if (d.player2) players.push(d.player2 + ".va");
-            if (d.player3) players.push(d.player3 + ".vc");
-        } else if (d.part === "V2") {
-            if (d.player1) players.push(d.player1 + ".v1");
-            if (d.player2) players.push(d.player2 + ".va");
-            if (d.player3) players.push(d.player3 + ".vc");
-        } else if (d.part === "VA") {
-            if (d.player1) players.push(d.player1 + ".v1");
-            if (d.player2) players.push(d.player2 + ".v2");
-            if (d.player3) players.push(d.player3 + ".vc");
-        }
-
-        players.forEach(player => {
+        const slotParts = SLOT_TO_PART[d.part];
+        if (!slotParts) return;
+        [d.player1, d.player2, d.player3].forEach((name, i) => {
+            // "-" means "nobody in this slot" (see fillForward), so it is
+            // not a person the dropdown could filter by — same exclusion
+            // peopleKeysFor applies.
+            if (!name || name === '-') return;
+            const player = `${name}.${slotParts[i].toLowerCase()}`;
             playerCounts.set(player, (playerCounts.get(player) || 0) + 1);
         });
     });
@@ -782,19 +777,10 @@ export function stackedPartSegments(d) {
 // when the user played V1, player1 is the V2 chair (see extractUniquePlayers).
 
 export function checkSinglePlayerMatch(d, playerName, instrument) {
-    if (instrument === "v1") {
-        return (d.part === "V2" && d.player1 === playerName) ||
-               (d.part === "VA" && d.player1 === playerName);
-    } else if (instrument === "v2") {
-        return (d.part === "V1" && d.player1 === playerName) ||
-               (d.part === "VA" && d.player2 === playerName);
-    } else if (instrument === "va") {
-        return (d.part === "V1" && d.player2 === playerName) ||
-               (d.part === "V2" && d.player2 === playerName);
-    } else if (instrument === "vc") {
-        return d.player3 === playerName;
-    }
-    return false;
+    const slotParts = SLOT_TO_PART[d.part];
+    if (!slotParts) return false;
+    return [d.player1, d.player2, d.player3].some((name, i) =>
+        slotParts[i].toLowerCase() === instrument && name === playerName);
 }
 
 export function checkPlayersMatch(d, selectedPlayers) {

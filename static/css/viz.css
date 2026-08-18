@@ -50,10 +50,17 @@
     --color-destructive:       #c0392b;
     --color-highlight:         #ffcc00; /* play-square hover */
 
-    /* Part colors (instruments) */
+    /* Part colors (instruments). va2 (second viola, quintets) is a medium
+       blue — it stays in the blue/green family because it only ever
+       appears next to v1/v2/va (play squares show the user's own part;
+       the dashboard and network views fold VA2 into VA, so it never sits
+       beside vc). Theme-invariant like the others: validated OKLab ΔE vs
+       those three (normal 21.2, protan/deutan 19.0, tritan 12.7) and
+       ≥3:1 contrast on both surfaces (3.3 on white, 5.8 on #111). */
     --color-part-v1:        #1ceaf9;
     --color-part-v2:        #01c472;
     --color-part-va:        #007961;
+    --color-part-va2:       #5b8ee0;
     --color-part-vc:        #003b85;
     --color-part-fallback:  var(--gray-9);
     --color-part-v1-text:   var(--color-text-dark);  /* dark text on bright cyan */
@@ -1210,10 +1217,11 @@ body.network-fullscreen-open {
     display: grid;
     grid-template-columns: auto 1fr;
     align-items: center;
-    /*
-    margin-bottom: 5px;
-    gap: 10px;
-    */
+    /* Breathing room between the label and the first play square. Labels
+       stay content-width (ragged) on purpose: fixed-column alignment would
+       waste most of the row on tabs with one long title (e.g. 5+'s
+       "Strauss-Capriccio sextet"). */
+    column-gap: 4px;
 }
 
 /* MISC tab needs wider first column for composer-prefixed titles */

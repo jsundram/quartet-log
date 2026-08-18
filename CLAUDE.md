@@ -62,7 +62,7 @@ Vanilla JavaScript + D3.js v7 SPA. No framework. Each user configures their own 
 
 The SPA has three in-page views and one external page, all reachable from the hamburger menu:
 
-- **`#main`** (Home) — composer tabs, filterable lists, sortable per-composer data tables, ALL tab with aggregate stats + flat table.
+- **`#main`** (Home) — composer tabs, filterable lists, sortable per-composer data tables, ALL tab with aggregate stats + flat table. Tab order/content is data-driven from `all_works.json`: single-composer keys plus multi-composer tabs (`5+`, `MISC`), whose catalog entries are `{ composer: titles[] }` arrays and whose work labels are composer-prefixed (`Mozart-K515`). Adding another multi-composer tab is a JSON-only change (`isMultiComposerTab` detects the shape).
 - **`#calendar`** — GitHub-contributions-style year grid; per-year stats column; "Last 365 days" header; per-day tooltips.
 - **`#dashboard`** — cross-filter charts: stacked part bar (V1/V2/VA) + horizontal top-composers bar chart. Clicking one filters the other.
 - **`about.html`** — static markdown page (linked from menu; renders as a separate page).
@@ -86,7 +86,7 @@ Hash routing lives in `NavigationComponent`: menu clicks set `window.location.ha
   - `parseOthers`, `stripParens`, `classOf`, `canonicalize` (helpers)
   - `extractUniquePlayers` — for the Player dropdown
 - `csvFormat` (`src/csvFormat.js`) — pure shared CSV-export format: `CSV_HEADERS` (canonical header list — the Others column is spelled `Others?` to match the sheet and `processRow`), `escapeField`, `formatTimestamp`, `rowToFields`, `serializeRows`. Imported by BOTH writers (`App.downloadCSV` and `scripts/fetch_processed.mjs`) so they can't drift; readers (`processRow`, `scripts/audit_aliases.py`) also accept the legacy `Others` header from pre-fix exports.
-- `tableComponent` (`src/tableComponent.js`) — sortable HTML data tables. `getColumnsForComposer` includes the composer column for `MISC` and `ALL` only. Sort comparator is the pure exported `makeRowComparator` (work.title sorts by catalog-then-number, not string order).
+- `tableComponent` (`src/tableComponent.js`) — sortable HTML data tables. `getColumnsForComposer` includes the composer column for multi-composer tabs (`5+`, `MISC`) and `ALL` only. Sort comparator is the pure exported `makeRowComparator` (work.title sorts by catalog-then-number, not string order).
 - `statDefs` (`src/statDefs.js`) — `buildAggregateStatDefs(agg, windowPhrase)`: the five stat definitions (label/short/value/tooltip copy), single-sourced for the ALL tab, Dashboard KPI tiles, and Calendar recent-stats header.
 - `breakpoints` (`src/breakpoints.js`) — `MOBILE_BREAKPOINT`, `MAX_DESIGN_WIDTH`, `isMobileWidth`, `isTouchPrimary`; the chart components' shared responsive constants (their `sizing()` knob tables stay per-component).
 - `tooltip` (`src/tooltip.js`) — THE tooltip implementation (see below).
@@ -114,7 +114,7 @@ Boot is **cache-first** so a returning visitor (especially an installed PWA agai
 ### Filter change notifications
 
 `NavigationComponent` calls `onFilterChange(filterType)` with one of:
-- `"part"` — part buttons changed
+- `"part"` — part buttons changed (the `VA` button folds explicit second-viola `VA2` rows in via `filterEngine.partMatches`, mirroring the dashboard's `normalizeDashboardPart` fold; `VA2` rows would otherwise be reachable only through `ANY`)
 - `"date"` — date range changed
 - `"player"` — player selection changed
 
@@ -140,7 +140,7 @@ Classes: `upper` (V1, V2, VA, VLA — violin/viola alias as one person) and `cel
 - **Accepted residue**: the real names remain in git HISTORY (pre-extraction `src/config.js`) and in the SERVED BUNDLE of any deploy that has the secret. Both accepted for now — a history rewrite was explicitly declined.
 - Tests must not depend on the real tables (CI runs against the stub): `canonicalize` / `normalizePlayerNames` take an optional trailing `aliases` argument, and test fixtures inject placeholder tables (Alice/Bob/Carol-style names only — never real names).
 
-**Player slot conventions**: `player1`/`player2` are always "upper" class, `player3` is always "cello" — derived from the user's own part (V1/V2/VA). `stripParens` removes inline `(instrument)` annotations like `Alice Hart (piano)` from player slots before aliasing.
+**Player slot conventions**: `player1`/`player2` are always "upper" class, `player3` is always "cello" — derived from the user's own part (V1/V2/VA). Quintet rows logged with the user on `VA2` follow the same convention (violins in slots 1–2, cello in slot 3, the other violist under Others), so `SLOT_TO_PART` maps `VA2` like `VA`; a `VA1` part value is normalized to `VA` at `processRow` time. `stripParens` removes inline `(instrument)` annotations like `Alice Hart (piano)` from player slots before aliasing.
 
 **Others? column**: free-form, parsed by `parseOthers`. Entries are separated by `;` or `,` **at paren depth 0** (paren-aware split, so commas inside an annotation don't tear an entry in half). Each entry is `Name`, `Name (instrument)`, or `Name (instrument, comment)`. Inside the parens, the **first** comma separates the instrument code from a free-form comment — later commas stay in the comment (e.g. `Carol (v1, shadowing on II, III)` → instrument `v1`, comment ignored). The instrument string classifies via `classOf` (`vc*` → cello, else upper). The parsed list is attached as `othersList` on each row; the raw `others` string stays untouched for the CSV-download path.
 
@@ -163,8 +163,8 @@ Per-year stats column shows five numbers (Pieces, Unique Pieces, People played w
 ### Configuration files
 
 - **`src/urlConfig.js`** — `getDataUrl` / `setDataUrl` / `hasDataUrl` / `isValidGoogleSheetsUrl` / `clearDataUrl`. URL persists in localStorage.
-- **`src/config.js`** — `getBegin` / `setBegin`, `getCssColor(token)` / `getPartColor(part)` (read colors from CSS custom properties on `:root`; the canonical source for V1/V2/VA part colors lives in `static/css/viz.css` as `--color-part-{v1|v2|va}`), `invalidateColorCache()` (clear the memo, called by the theme manager on toggle), `PLAYER_ABBREVIATIONS` (single-letter → short-name expansion) and `PLAYER_ALIASES` (instrument-class-keyed) — both re-exported from the gitignored `src/aliases.js` (see "Alias privacy" above), `CALENDAR_CONFIG`.
-- **`src/catalog.js`** — `ALL_WORKS` and `HAYDN_PETERS` (loaded in parallel from `all_works.json` and `haydn_peters.json`), `COMPOSERS` set, `ALL_TAB` / `isAllTab` / `isMiscTab` helpers, `getPetersVolume(work)` for Haydn tooltip suffix, `generateQuartetRouletteUrl(d)` per-composer URL builder.
+- **`src/config.js`** — `getBegin` / `setBegin`, `getCssColor(token)` / `getPartColor(part)` (read colors from CSS custom properties on `:root`; the canonical source for part colors lives in `static/css/viz.css` as `--color-part-{v1|v2|va|va2|vc}` — `va2` is the medium-blue second-viola color for quintet rows, CVD-validated against v1/v2/va, the only colors it co-occurs with on screen), `invalidateColorCache()` (clear the memo, called by the theme manager on toggle), `PLAYER_ABBREVIATIONS` (single-letter → short-name expansion) and `PLAYER_ALIASES` (instrument-class-keyed) — both re-exported from the gitignored `src/aliases.js` (see "Alias privacy" above), `CALENDAR_CONFIG`.
+- **`src/catalog.js`** — `ALL_WORKS` and `HAYDN_PETERS` (loaded in parallel from `all_works.json` and `haydn_peters.json`; `loadWorkCatalog` fetches then hands off to `installCatalog`, the seam `test/catalog.test.mjs` uses to install fixture catalogs), `COMPOSERS` set, `ALL_TAB` / `isAllTab` / `isMultiComposerTab` helpers (the latter is shape-based: a catalog entry that's an array of `{ composer: titles[] }` objects marks a multi-composer tab — `5+`, `MISC`), `getDisplayLabel` (work-row label text: in a multi-composer tab a composer with exactly one work displays as just the composer; data stays keyed by the full prefixed title), `getPetersVolume(work)` for Haydn tooltip suffix, `generateQuartetRouletteUrl(d)` per-composer URL builder — returns `null` for works quartetroulette.com has no page for (anything outside the composer's own quartet list + MISC, i.e. the 5+ rep), and tooltips then render an unlinked header.
 - **`src/themeManager.js`** — three-state theme: `auto` (default, follows `prefers-color-scheme`) / `light` / `dark`. Persists to `localStorage.theme`, applies via `<html data-theme="…">` (no attribute for auto). API: `getTheme()`, `setTheme(t)`, `cycleTheme()`, `isCurrentlyDark()` (resolved boolean), `subscribe(fn)` (listener for changes; fires on user toggle AND on system theme flip when in auto). Initial application is split: a synchronous inline `<script>` in `index.html` / `_pandoc_template.html` sets `data-theme` before first paint to avoid FOUC; `initTheme()` re-applies and attaches the matchMedia watcher after the bundle loads.
 
 ### Theme system contract
