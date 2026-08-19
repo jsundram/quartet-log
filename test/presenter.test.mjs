@@ -20,15 +20,15 @@ import { MOBILE_BREAKPOINT, isMobileWidth } from "../src/breakpoints.js";
 
 test("buildAggregateStatDefs", async (t) => {
     const agg = {
-        pieces: 42, uniquePieces: 17, uniquePeople: 9, daysPlayed: 30, maxStreak: 5,
+        pieces: 42, uniquePieces: 17, uniqueParts: 21, uniquePeople: 9, daysPlayed: 30, maxStreak: 5,
         maxStreakInfo: { length: 5, count: 1, start: new Date(Date.UTC(2024, 2, 3)) },
     };
 
-    await t.test("returns the five defs with agg values in order", () => {
+    await t.test("returns the six defs with agg values in order", () => {
         const defs = buildAggregateStatDefs(agg);
         assert.deepEqual(defs.map(d => d.label),
-            ['Pieces', 'Unique pieces', 'Unique people', 'Days played', 'Max streak']);
-        assert.deepEqual(defs.map(d => d.value), [42, 17, 9, 30, 5]);
+            ['Pieces', 'Unique pieces', 'Unique parts', 'Unique people', 'Days played', 'Max streak']);
+        assert.deepEqual(defs.map(d => d.value), [42, 17, 21, 9, 30, 5]);
         for (const d of defs) assert.ok(d.short && d.title && d.desc);
     });
 

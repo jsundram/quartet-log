@@ -1,4 +1,4 @@
-// The five aggregate stat definitions (label, short label, value, tooltip
+// The six aggregate stat definitions (label, short label, value, tooltip
 // title + explainer), single-sourced. Three renderers show them — the ALL
 // tab's stats row, the Dashboard's KPI tiles, and the Calendar's "Last 365
 // days" header — and before this module each carried its own verbatim copy,
@@ -6,6 +6,11 @@
 // defs in CalendarComponent._yearStatDefs (different shape: per-year value
 // functions, projections).
 import { formatStreakStart } from './dataProcessor.js';
+
+// Shared with CalendarComponent._yearStatDefs — the one per-year desc that
+// isn't a year-specific rewrite, kept single-sourced so the VA2 caveat
+// can't drift.
+export const UNIQUE_PARTS_DESC = 'Distinct work + part combinations: playing the same piece on V1 and later on V2 counts twice; repeats on the same part collapse to one. Quintet/sextet second-viola (VA2) rows count separately from VA.';
 
 // `agg` is computeAggregateStats() output; `windowPhrase` names the slice in
 // the tooltip titles ("in the current filter", "in the last 365 days", …).
@@ -26,6 +31,13 @@ export function buildAggregateStatDefs(agg, windowPhrase = 'in the current filte
             value: agg.uniquePieces,
             title: `Unique pieces ${windowPhrase}`,
             desc: 'Distinct works (composer + title). Repeats of the same piece collapse to one.',
+        },
+        {
+            label: 'Unique parts',
+            short: 'Parts',
+            value: agg.uniqueParts,
+            title: `Unique parts ${windowPhrase}`,
+            desc: UNIQUE_PARTS_DESC,
         },
         {
             label: 'Unique people',

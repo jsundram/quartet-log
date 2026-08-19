@@ -245,22 +245,48 @@ export function formatStreakStart({ count, start }) {
     return count > 1 ? `${date} (${count})` : date;
 }
 
+// Canonical unique-counting keys, shared by computeAggregateStats and the
+// calendar's per-year accumulation so the two can't drift.
+/**
+ * @param {Row} d
+ * @returns {string|null} key for unique-piece counting, null if untitled
+ */
+export function workKey(d) {
+    return d.work?.title ? `${d.composer}|${d.work.title}` : null;
+}
+
+// Unique parts key on the raw part value, so a quintet played on VA and
+// again on VA2 counts as two parts of the same work (VA1 is already folded
+// into VA at processRow time).
+/**
+ * @param {Row} d
+ * @returns {string|null} key for unique-part counting, null if untitled or partless
+ */
+export function workPartKey(d) {
+    const key = workKey(d);
+    return key && d.part ? `${key}|${d.part}` : null;
+}
+
 // Aggregate stats over an arbitrary slice of piece rows. Used by the calendar
 // header ("Last 365 days"), the dashboard KPI tiles, and the ALL tab. The
 // streak is scoped to whatever slice is passed in — a run is only counted
 // within the window/filter these rows represent.
 /**
  * @param {Row[]} rows
- * @returns {{ pieces: number, uniquePieces: number, uniquePeople: number,
- *             daysPlayed: number, maxStreak: number,
+ * @returns {{ pieces: number, uniquePieces: number, uniqueParts: number,
+ *             uniquePeople: number, daysPlayed: number, maxStreak: number,
  *             maxStreakInfo: { count: number, start: Date|null } }}
  */
 export function computeAggregateStats(rows) {
     const works = new Set();
+    const parts = new Set();
     const people = new Set();
     const days = new Set();
     rows.forEach(d => {
-        if (d.work?.title) works.add(`${d.composer}|${d.work.title}`);
+        const wk = workKey(d);
+        if (wk) works.add(wk);
+        const pk = workPartKey(d);
+        if (pk) parts.add(pk);
         peopleKeysFor(d).forEach(k => people.add(k));
         if (d.timestamp) days.add(dayOrdinal(d.timestamp));
     });
@@ -268,6 +294,7 @@ export function computeAggregateStats(rows) {
     return {
         pieces: rows.length,
         uniquePieces: works.size,
+        uniqueParts: parts.size,
         uniquePeople: people.size,
         daysPlayed: days.size,
         maxStreak: streak.length,

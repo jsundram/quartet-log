@@ -1,10 +1,10 @@
 import * as d3 from "d3";
 import { getBegin, CALENDAR_CONFIG, getCssColor } from './config.js';
-import { peopleKeysFor, computeAggregateStats, longestRunInfo, formatStreakStart } from './dataProcessor.js';
+import { peopleKeysFor, workKey, workPartKey, computeAggregateStats, longestRunInfo, formatStreakStart } from './dataProcessor.js';
 import { isCurrentlyDark } from './themeManager.js';
 import { escapeHtml } from './escapeHtml.js';
 import { tooltip } from './tooltip.js';
-import { buildAggregateStatDefs } from './statDefs.js';
+import { buildAggregateStatDefs, UNIQUE_PARTS_DESC } from './statDefs.js';
 
 // Body of a day tooltip (date heading, piece count, plays table). Pure and
 // exported for tests: every sheet-derived cell (composer, work title, part,
@@ -137,15 +137,22 @@ export class CalendarComponent {
 
         // Per-year count of unique pieces (composer + work title).
         const yearUnique = new Map(years.map(([y]) => [y, new Set()]));
+        // Per-year count of unique work + part combinations (workPartKey:
+        // raw part value, so quintet VA and VA2 rows count separately).
+        const yearParts = new Map(years.map(([y]) => [y, new Set()]));
         // Per-year count of unique people played with (post-alias-normalization).
         const yearPeople = new Map(years.map(([y]) => [y, new Set()]));
         sessions.forEach((sessionList, dayTs) => {
             const year = new Date(dayTs).getUTCFullYear();
             const uniq = yearUnique.get(year);
+            const parts = yearParts.get(year);
             const people = yearPeople.get(year);
-            if (!uniq || !people) return;
+            if (!uniq || !parts || !people) return;
             sessionList.forEach(s => {
-                if (s.work?.title) uniq.add(`${s.composer}|${s.work.title}`);
+                const wk = workKey(s);
+                if (wk) uniq.add(wk);
+                const pk = workPartKey(s);
+                if (pk) parts.add(pk);
                 peopleKeysFor(s).forEach(k => people.add(k));
             });
         });
@@ -165,6 +172,7 @@ export class CalendarComponent {
             color,
             sessions,
             yearUnique,
+            yearParts,
             yearPeople
         };
 
@@ -289,7 +297,7 @@ export class CalendarComponent {
     }
 
     renderYearGroups(svg, years, config) {
-        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions, yearUnique, yearPeople } = config;
+        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions, yearUnique, yearParts, yearPeople } = config;
 
         const year = svg.selectAll("g")
             .data(years)
@@ -331,7 +339,7 @@ export class CalendarComponent {
         // Per-year stats (shifted right to make room for day-of-week totals).
         // One stacked bare number per stat; the tooltip explains which is which.
         const yearQ = new Map(years);
-        this._yearStatDefs(yearQ, yearUnique, yearPeople).forEach((def, i) => {
+        this._yearStatDefs(yearQ, yearUnique, yearParts, yearPeople).forEach((def, i) => {
             const statText = year.append("g")
                 .attr("text-anchor", "start")
                 .selectAll()
@@ -363,10 +371,10 @@ export class CalendarComponent {
             .text(d => d > 0 ? d : "");
     }
 
-    // The five per-year stats (value + tooltip content), shared by the
+    // The six per-year stats (value + tooltip content), shared by the
     // horizontal layout's right-hand column and the vertical layout's
     // below-grid rows so the numbers and explanations can't drift apart.
-    _yearStatDefs(yearQ, yearUnique, yearPeople) {
+    _yearStatDefs(yearQ, yearUnique, yearParts, yearPeople) {
         return [
             {
                 label: "pieces",
@@ -387,6 +395,12 @@ export class CalendarComponent {
                 value: year => yearUnique.get(year)?.size ?? 0,
                 title: year => `Unique pieces played in ${year}`,
                 desc: () => "Distinct works (composer + title) logged this year. Partial-movement entries don't count, so repeats of the same piece collapse to one."
+            },
+            {
+                label: "parts",
+                value: year => yearParts.get(year)?.size ?? 0,
+                title: year => `Unique parts played in ${year}`,
+                desc: () => UNIQUE_PARTS_DESC
             },
             {
                 label: "people",
@@ -443,9 +457,9 @@ export class CalendarComponent {
     // fits the viewport height on a portrait phone. One column per year,
     // most recent leftmost; the container pans horizontally across years.
     renderYearGroupsVertical(container, years, config) {
-        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions, yearUnique, yearPeople } = config;
+        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions, yearUnique, yearParts, yearPeople } = config;
         const yearQ = new Map(years);
-        const statDefs = this._yearStatDefs(yearQ, yearUnique, yearPeople);
+        const statDefs = this._yearStatDefs(yearQ, yearUnique, yearParts, yearPeople);
 
         // Chronological left-to-right (the shared `years` array is newest-
         // first for the horizontal layout's top-down stacking). The container
@@ -770,7 +784,7 @@ export class CalendarComponent {
         const agg = computeAggregateStats(recent);
         // Full labels on desktop, dashboard-style short labels on mobile (the
         // two are toggled by a CSS media query, mirroring the dashboard tiles)
-        // so five metrics stay clear where there's room and stay compact on a
+        // so six metrics stay clear where there's room and stay compact on a
         // phone, where the row wraps (.recent-stats-row is flex-wrap: wrap).
         // The tap/hover tooltip spells out the full name either way. Defs are
         // single-sourced with the ALL tab and dashboard KPI tiles.

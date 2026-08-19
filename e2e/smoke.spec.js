@@ -64,7 +64,7 @@ test('calendar view renders the year grid', async ({ page }) => {
 test('dashboard view renders KPI tiles and charts', async ({ page }) => {
     await page.evaluate(() => { window.location.hash = '#dashboard'; });
     await expect(page.locator('#dashboard')).toBeVisible();
-    await expect(page.locator('#dashboardStats .stat-tile')).toHaveCount(5);
+    await expect(page.locator('#dashboardStats .stat-tile')).toHaveCount(6);
     // The Pieces tile counts whole pieces only: 4 fixture rows minus the
     // partial movement = 4.
     await expect(page.locator('#dashboardStats .stat-tile').first()).toContainText('4');
