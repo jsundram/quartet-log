@@ -879,7 +879,7 @@ body.calendar-fullscreen-open {
     line-height: 1.2;
 }
 
-/* Mobile (mirrors MOBILE_BREAKPOINT in dashboardComponent.js): all five
+/* Mobile (mirrors MOBILE_BREAKPOINT in dashboardComponent.js): all six
    tiles share one full-width line — equal flex shares, compressed type,
    ellipsis on labels for very narrow phones. renderStats() drops the
    plot-area indent at this width. The calendar's "Last 365 days" row and
@@ -893,11 +893,14 @@ body.calendar-fullscreen-open {
 
     /* Tighter padding + smaller value than the four-tile layout used, so a
        four-digit value (the All range) still clears the tile border when
-       five share a 320px-wide row. */
+       six share the row. The vw cap keeps that true below ~390px: each
+       tile's content box is (100vw - 50px)/6 - 10px (page padding, five
+       6px gaps, border + padding), and four 600-weight digits run ~2.3ch,
+       so 4.5vw stays inside it down to 320px where 16px no longer does. */
     .stat-tile {
         flex: 1 1 0;
         min-width: 0;
-        padding: 6px 6px;
+        padding: 6px 4px;
     }
 
     .stat-tile-label {
@@ -907,7 +910,7 @@ body.calendar-fullscreen-open {
     }
 
     .stat-tile-value {
-        font-size: 16px;
+        font-size: min(16px, 4.5vw);
     }
 
     .recent-stat-label--long {

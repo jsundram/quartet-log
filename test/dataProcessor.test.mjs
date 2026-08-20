@@ -360,7 +360,7 @@ describe('computeAggregateStats', () => {
 
     it('returns zeroed stats for an empty array', () => {
         assert.deepEqual(computeAggregateStats([]), {
-            pieces: 0, uniquePieces: 0, uniquePeople: 0, daysPlayed: 0, maxStreak: 0,
+            pieces: 0, uniquePieces: 0, uniqueParts: 0, uniquePeople: 0, daysPlayed: 0, maxStreak: 0,
             maxStreakInfo: { count: 0, start: null },
         });
     });
@@ -379,6 +379,27 @@ describe('computeAggregateStats', () => {
         ];
         // (Haydn,17#1), (Haydn,17#2), (Mozart,17#1) → 3
         assert.equal(computeAggregateStats(rows).uniquePieces, 3);
+    });
+
+    it('counts unique parts per (composer, work, part), VA2 distinct from VA', () => {
+        const rows = [
+            mkRow({ part: 'V1' }),
+            mkRow({ part: 'V1' }),                                // repeat on same part collapses
+            mkRow({ part: 'V2' }),                                // same work, different part
+            mkRow({ part: 'VA' }),
+            mkRow({ part: 'VA2' }),                               // quintet second viola ≠ VA
+            mkRow({ part: 'V1', work: { title: '17#2' } }),       // different work, same part
+            mkRow({ part: 'V1', composer: 'Mozart' }),            // same title, different composer
+        ];
+        // (Haydn,17#1)×{V1,V2,VA,VA2} + (Haydn,17#2,V1) + (Mozart,17#1,V1) → 6
+        assert.equal(computeAggregateStats(rows).uniqueParts, 6);
+    });
+
+    it('rows without a part contribute pieces but not unique parts', () => {
+        const rows = [mkRow({ part: 'V1' }), mkRow({ part: null })];
+        const s = computeAggregateStats(rows);
+        assert.equal(s.pieces, 2);
+        assert.equal(s.uniqueParts, 1);
     });
 
     it('counts canonical people across player slots and othersList', () => {
@@ -1179,6 +1200,12 @@ describe('processRow', () => {
         assert.equal(processRow(rawRow({ 'Which Part': 'VA1' })).part, 'VA');
         assert.equal(processRow(rawRow({ 'Which Part': 'V2' })).part, 'V2');
         assert.equal(processRow(rawRow({ 'Which Part': 'VA' })).part, 'VA');
+    });
+
+    it('trims part before the VA1 fold — part is identity-bearing for workPartKey', () => {
+        assert.equal(processRow(rawRow({ 'Which Part': ' VA1 ' })).part, 'VA');
+        assert.equal(processRow(rawRow({ 'Which Part': 'V1 ' })).part, 'V1');
+        assert.equal(processRow(rawRow({ 'Which Part': '  ' })).part, '');
     });
 
     it('throws a clear error naming any missing/renamed columns', () => {
