@@ -37,11 +37,13 @@ test("buildWorkTooltipHtml renders hostile sheet values inert", () => {
         part: "V1",
         player1: "Alice", player2: XSS, player3: "Carol",
         comments: `nice session ${XSS}`,
+        othersList: [{ name: XSS, instrument: XSS, class: "upper" }],
     };
     const html = buildWorkTooltipHtml(d);
     assert.ok(!html.includes("<img"), "raw <img must not survive");
     assert.ok(html.includes("&lt;img src=x onerror=alert(1)&gt;"), "payload must be visible as text");
     assert.ok(html.includes("Alice"), "legit names still render");
+    assert.ok(html.includes("<li>+ "), "the Others? line still renders");
     assert.match(html, /<h4><a href="/, "structural markup intact");
 });
 

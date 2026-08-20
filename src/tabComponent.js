@@ -30,6 +30,15 @@ export function buildWorkTooltipHtml(d) {
     html += `<li>${ts}${d.location ? " - " + escapeHtml(d.location) : ""}</li>`;
     if (d.part) html += `<li>${escapeHtml(d.part)}</li>`;
     if (d.player1) html += `<li>${escapeHtml([d.player1, d.player2, d.player3].join(", "))}</li>`;
+    // Extra players from the free-form "Others?" column. Load-bearing on the
+    // 5+ tab, where the quintet/sextet's additional players live here and the
+    // three fixed slots alone misrepresent who played; harmless elsewhere,
+    // since othersList is empty for a plain quartet row. Canonicalized names
+    // (othersList), not the raw cell, so they match the slot players.
+    const others = (d.othersList ?? [])
+        .filter(o => o.name)
+        .map(o => (o.instrument ? `${o.name} (${o.instrument})` : o.name));
+    if (others.length) html += `<li>+ ${escapeHtml(others.join(", "))}</li>`;
     if (d.comments?.trim()) html += `<li>${escapeHtml(d.comments)}</li>`;
     html += "</ul>";
     return html;

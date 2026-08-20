@@ -5,7 +5,7 @@
 // "different data ⇒ different candidate pool" — can't regress silently.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickRandomWork } from "../src/tabComponent.js";
+import { pickRandomWork, buildWorkTooltipHtml } from "../src/tabComponent.js";
 
 // Fixtures use placeholder titles only (repo convention: nothing from
 // PLAYER_ALIASES / real data in test fixtures).
@@ -73,5 +73,37 @@ test("pickRandomWork", async (t) => {
     await t.test("all-zero weights (everything played today) still returns a work", () => {
         const p = pool([["Today A", [play(2024, 7, 1)]], ["Today B", [play(2024, 7, 1)]]]);
         assert.equal(pickRandomWork(p, NOW, BEGIN, 0.5).title, "Today A");
+    });
+});
+
+// The 5+ tab's quintet/sextet rows keep their extra players in the free-form
+// "Others?" column; without them the tooltip's three fixed slots understate
+// who played. Rendered from othersList (canonicalized) on every tab.
+test("buildWorkTooltipHtml others line", async (t) => {
+    const row = (othersList) => ({
+        composer: "Mozart",
+        work: { title: "K515" },
+        timestamp: new Date(2024, 2, 3),
+        part: "V1",
+        player1: "Alice", player2: "Bob", player3: "Carol",
+        othersList,
+    });
+
+    await t.test("lists Others? players with their instrument", () => {
+        const html = buildWorkTooltipHtml(row([
+            { name: "Dave", instrument: "va", class: "upper" },
+            { name: "Erin", instrument: null, class: "upper" },
+        ]));
+        assert.ok(html.includes("<li>+ Dave (va), Erin</li>"), html);
+    });
+
+    await t.test("omits the line when there are no others", () => {
+        assert.ok(!buildWorkTooltipHtml(row([])).includes("+ "));
+        assert.ok(!buildWorkTooltipHtml(row(undefined)).includes("+ "));
+    });
+
+    await t.test("keeps the slot players on their own line", () => {
+        const html = buildWorkTooltipHtml(row([{ name: "Dave", instrument: "vc", class: "cello" }]));
+        assert.ok(html.includes("<li>Alice, Bob, Carol</li>"), html);
     });
 });
