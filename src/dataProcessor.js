@@ -245,13 +245,12 @@ export function formatStreakStart({ count, start }) {
     return count > 1 ? `${date} (${count})` : date;
 }
 
-// Canonical unique-counting keys, shared by computeAggregateStats and the
-// calendar's per-year accumulation so the two can't drift.
+// Canonical unique-counting keys for computeAggregateStats.
 /**
  * @param {Row} d
  * @returns {string|null} key for unique-piece counting, null if untitled
  */
-export function workKey(d) {
+function workKey(d) {
     return d.work?.title ? `${d.composer}|${d.work.title}` : null;
 }
 
@@ -262,7 +261,7 @@ export function workKey(d) {
  * @param {Row} d
  * @returns {string|null} key for unique-part counting, null if untitled or partless
  */
-export function workPartKey(d) {
+function workPartKey(d) {
     const key = workKey(d);
     return key && d.part ? `${key}|${d.part}` : null;
 }
