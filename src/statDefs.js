@@ -1,19 +1,11 @@
 // The six aggregate stat definitions (label, short label, value, tooltip
-// title + explainer), single-sourced. Three renderers show them — the ALL
-// tab's stats row, the Dashboard's KPI tiles, and the Calendar's "Last 365
-// days" header — and before this module each carried its own verbatim copy,
-// which had already begun to drift. The per-YEAR stats column keeps its own
-// defs in CalendarComponent._yearStatDefs (different shape: per-year value
-// functions, projections).
+// title + explainer), single-sourced. Four renderers show them — the ALL
+// tab's stats row, the Dashboard's KPI tiles, the Calendar's "Last 365
+// days" header, and the Calendar's per-year stats column (which wraps
+// these per year in CalendarComponent._yearStatDefs and layers on its
+// current-year projection suffixes) — and before this module each carried
+// its own verbatim copy, which had already begun to drift.
 import { formatStreakStart } from './dataProcessor.js';
-
-// Shared with CalendarComponent._yearStatDefs — the one per-year desc that
-// isn't a year-specific rewrite, kept single-sourced so the VA2 caveat
-// can't drift. `scope` lets the calendar say "this year" like its sibling
-// descs (e.g. pass ' this year'; the leading space matters).
-export function uniquePartsDesc(scope = '') {
-    return `Distinct work + part combinations${scope}: playing the same piece on V1 and later on V2 counts twice; repeats on the same part collapse to one. Quintet/sextet second-viola (VA2) rows count separately from VA, while the VA part filter includes them — so a VA-filtered view can show more unique parts than unique pieces.`;
-}
 
 // `agg` is computeAggregateStats() output; `windowPhrase` names the slice in
 // the tooltip titles ("in the current filter", "in the last 365 days", …).
@@ -40,7 +32,7 @@ export function buildAggregateStatDefs(agg, windowPhrase = 'in the current filte
             short: 'Parts',
             value: agg.uniqueParts,
             title: `Unique parts ${windowPhrase}`,
-            desc: uniquePartsDesc(),
+            desc: 'Distinct work + part combinations: playing the same piece on V1 and later on V2 counts twice; repeats on the same part collapse to one. Quintet/sextet second-viola (VA2) rows count separately from VA, while the VA part filter includes them — so a VA-filtered view can show more unique parts than unique pieces.',
         },
         {
             label: 'Unique people',
