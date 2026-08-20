@@ -1202,6 +1202,12 @@ describe('processRow', () => {
         assert.equal(processRow(rawRow({ 'Which Part': 'VA' })).part, 'VA');
     });
 
+    it('trims part before the VA1 fold — part is identity-bearing for workPartKey', () => {
+        assert.equal(processRow(rawRow({ 'Which Part': ' VA1 ' })).part, 'VA');
+        assert.equal(processRow(rawRow({ 'Which Part': 'V1 ' })).part, 'V1');
+        assert.equal(processRow(rawRow({ 'Which Part': '  ' })).part, '');
+    });
+
     it('throws a clear error naming any missing/renamed columns', () => {
         const noComposer = rawRow();
         delete noComposer['Composer'];

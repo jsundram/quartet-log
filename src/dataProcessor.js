@@ -629,11 +629,14 @@ export function processRow(d) {
     // The guard above proved every column read below is present; narrow the
     // types for tsc (it can't see through the REQUIRED_COLUMNS loop).
     const r = /** @type {Record<string, string>} */ (d);
+    // part is identity-bearing (it keys workPartKey), so trim before the
+    // VA1 fold — stray whitespace would otherwise mint a phantom part.
+    const part = r["Which Part"].trim();
     return {
         "timestamp": new Date(r.Timestamp),
         "composer": r.Composer.trim(),
         "work": parseWork(r["Work Title"].trim()),
-        "part": r["Which Part"] == "VA1" ? "VA" : r["Which Part"],
+        "part": part == "VA1" ? "VA" : part,
         "player1": r["Player 1"].trim(),
         "player2": r["Player 2"].trim(),
         "player3": r["Player 3"].trim(),

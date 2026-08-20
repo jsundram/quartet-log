@@ -4,7 +4,7 @@ import { peopleKeysFor, workKey, workPartKey, computeAggregateStats, longestRunI
 import { isCurrentlyDark } from './themeManager.js';
 import { escapeHtml } from './escapeHtml.js';
 import { tooltip } from './tooltip.js';
-import { buildAggregateStatDefs, UNIQUE_PARTS_DESC } from './statDefs.js';
+import { buildAggregateStatDefs, uniquePartsDesc } from './statDefs.js';
 
 // Body of a day tooltip (date heading, piece count, plays table). Pure and
 // exported for tests: every sheet-derived cell (composer, work title, part,
@@ -297,7 +297,7 @@ export class CalendarComponent {
     }
 
     renderYearGroups(svg, years, config) {
-        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions, yearUnique, yearParts, yearPeople } = config;
+        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions } = config;
 
         const year = svg.selectAll("g")
             .data(years)
@@ -339,7 +339,13 @@ export class CalendarComponent {
         // Per-year stats (shifted right to make room for day-of-week totals).
         // One stacked bare number per stat; the tooltip explains which is which.
         const yearQ = new Map(years);
-        this._yearStatDefs(yearQ, yearUnique, yearParts, yearPeople).forEach((def, i) => {
+        const statDefs = this._yearStatDefs(yearQ, config);
+        // The year band is a fixed CALENDAR_CONFIG.height (10 cells) with
+        // stats at cellSize*(2 + i): rows 0..6 fit, an eighth would silently
+        // spill into the next year's band. Fail loudly in dev instead.
+        console.assert(statDefs.length <= Math.floor(this.height / this.cellSize) - 3,
+            'per-year stat column overflows its year band');
+        statDefs.forEach((def, i) => {
             const statText = year.append("g")
                 .attr("text-anchor", "start")
                 .selectAll()
@@ -374,7 +380,10 @@ export class CalendarComponent {
     // The six per-year stats (value + tooltip content), shared by the
     // horizontal layout's right-hand column and the vertical layout's
     // below-grid rows so the numbers and explanations can't drift apart.
-    _yearStatDefs(yearQ, yearUnique, yearParts, yearPeople) {
+    // Takes the render config (not positional Maps): the three unique-count
+    // Maps are interchangeable `Map<year, Set>`s, so positional args made a
+    // silent transposition possible at every call site.
+    _yearStatDefs(yearQ, { yearUnique, yearParts, yearPeople }) {
         return [
             {
                 label: "pieces",
@@ -400,7 +409,7 @@ export class CalendarComponent {
                 label: "parts",
                 value: year => yearParts.get(year)?.size ?? 0,
                 title: year => `Unique parts played in ${year}`,
-                desc: () => UNIQUE_PARTS_DESC
+                desc: () => uniquePartsDesc(' this year')
             },
             {
                 label: "people",
@@ -457,9 +466,9 @@ export class CalendarComponent {
     // fits the viewport height on a portrait phone. One column per year,
     // most recent leftmost; the container pans horizontally across years.
     renderYearGroupsVertical(container, years, config) {
-        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions, yearUnique, yearParts, yearPeople } = config;
+        const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions } = config;
         const yearQ = new Map(years);
-        const statDefs = this._yearStatDefs(yearQ, yearUnique, yearParts, yearPeople);
+        const statDefs = this._yearStatDefs(yearQ, config);
 
         // Chronological left-to-right (the shared `years` array is newest-
         // first for the horizontal layout's top-down stacking). The container

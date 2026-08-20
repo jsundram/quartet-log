@@ -18,13 +18,19 @@ const FIXTURE_CSV = [
     'Timestamp,Composer,Work Title,Which Part,Player 1,Player 2,Player 3,Others?,Location,Comments',
     // A year-old row so the calendar grid spans a real range (the calendar
     // renders from the earliest data point; the 1Y Home/Dashboard filters
-    // exclude this row, so the KPI counts below stay at 4).
+    // exclude this row from the KPI counts below).
     `${day(370, '19:00:00')},Mozart,465,V1,Alice,Bob,Carol,,Home,`,
     `${day(9, '19:00:00')},Haydn,20#2,V1,Alice,Bob,Carol,,Home,fun`,
     `${day(9, '20:00:00')},Mozart,421,V1,Alice,Bob,Carol,,Home,`,
     `${day(8, '19:00:00')},Haydn,76#3,V2,Dave,Erin,Frank,Grace (piano),Hall,`,
     `${day(7, '19:00:00')},Beethoven,18#4,VA,Alice,Dave,Carol,,Home,`,
     `${day(7, '19:30:00')},Haydn,64#5:I,VA,,,,,Home,partial movement — must be filtered`,
+    // 20#2 again on a NEW part, then a REPEAT of that (work, part), so the
+    // in-window Pieces (6) / Unique pieces (4) / Unique parts (5) KPIs are
+    // three different numbers — a tile wired to the wrong agg field can't
+    // render identically.
+    `${day(6, '19:00:00')},Haydn,20#2,VA,Alice,Dave,Carol,,Home,`,
+    `${day(5, '19:00:00')},Haydn,20#2,VA,Alice,Dave,Carol,,Home,`,
 ].join('\n');
 
 test.beforeEach(async ({ page }) => {
@@ -65,7 +71,11 @@ test('dashboard view renders KPI tiles and charts', async ({ page }) => {
     await page.evaluate(() => { window.location.hash = '#dashboard'; });
     await expect(page.locator('#dashboard')).toBeVisible();
     await expect(page.locator('#dashboardStats .stat-tile')).toHaveCount(6);
-    // The Pieces tile counts whole pieces only: 4 fixture rows minus the
-    // partial movement = 4.
-    await expect(page.locator('#dashboardStats .stat-tile').first()).toContainText('4');
+    // Whole in-window pieces only (partial movement + year-old row excluded);
+    // the fixture makes the first three KPIs pairwise distinct (see its
+    // comment), so each asserts its own wiring.
+    const tiles = page.locator('#dashboardStats .stat-tile');
+    await expect(tiles.nth(0)).toContainText('6'); // Pieces
+    await expect(tiles.nth(1)).toContainText('4'); // Unique pieces
+    await expect(tiles.nth(2)).toContainText('5'); // Unique parts
 });
