@@ -1,6 +1,6 @@
 import * as d3 from "d3";
 import { getBegin, CALENDAR_CONFIG, getCssColor } from './config.js';
-import { peopleKeysFor, workKey, workPartKey, computeAggregateStats, longestRunInfo, formatStreakStart } from './dataProcessor.js';
+import { computeAggregateStats, formatStreakStart } from './dataProcessor.js';
 import { isCurrentlyDark } from './themeManager.js';
 import { escapeHtml } from './escapeHtml.js';
 import { tooltip } from './tooltip.js';
@@ -135,27 +135,15 @@ export class CalendarComponent {
         // Group by year
         const years = d3.groups(days, d => d.date.getUTCFullYear()).reverse();
 
-        // Per-year count of unique pieces (composer + work title).
-        const yearUnique = new Map(years.map(([y]) => [y, new Set()]));
-        // Per-year count of unique work + part combinations (workPartKey:
-        // raw part value, so quintet VA and VA2 rows count separately).
-        const yearParts = new Map(years.map(([y]) => [y, new Set()]));
-        // Per-year count of unique people played with (post-alias-normalization).
-        const yearPeople = new Map(years.map(([y]) => [y, new Set()]));
-        sessions.forEach((sessionList, dayTs) => {
-            const year = new Date(dayTs).getUTCFullYear();
-            const uniq = yearUnique.get(year);
-            const parts = yearParts.get(year);
-            const people = yearPeople.get(year);
-            if (!uniq || !parts || !people) return;
-            sessionList.forEach(s => {
-                const wk = workKey(s);
-                if (wk) uniq.add(wk);
-                const pk = workPartKey(s);
-                if (pk) parts.add(pk);
-                peopleKeysFor(s).forEach(k => people.add(k));
-            });
-        });
+        // Per-year aggregate stats, derived from the same computeAggregateStats
+        // that feeds the ALL tab, Dashboard KPI tiles, and "Last 365 days"
+        // header — so the per-year numbers agree with the rest of the app by
+        // construction. Rows are bucketed into years by the same expression
+        // the grid uses for days (d3.timeDay(...).getUTCFullYear()), so the
+        // stat column can't disagree with the band it renders beside. A year
+        // slice can't span years, so the streak splits at New Year's for free.
+        const yearStats = new Map(d3.groups(data, d => d3.timeDay(d.timestamp).getUTCFullYear())
+            .map(([y, rows]) => [y, computeAggregateStats(rows)]));
 
         const container = d3.select("#calendar");
 
@@ -171,9 +159,7 @@ export class CalendarComponent {
             countDay,
             color,
             sessions,
-            yearUnique,
-            yearParts,
-            yearPeople
+            yearStats
         };
 
         // Fullscreen: transposed layout — weeks run down, days across, one
@@ -338,8 +324,7 @@ export class CalendarComponent {
 
         // Per-year stats (shifted right to make room for day-of-week totals).
         // One stacked bare number per stat; the tooltip explains which is which.
-        const yearQ = new Map(years);
-        const statDefs = this._yearStatDefs(yearQ, config);
+        const statDefs = this._yearStatDefs(config);
         // The year band is a fixed CALENDAR_CONFIG.height (10 cells) with
         // stats at cellSize*(2 + i): rows 0..6 fit, an eighth would silently
         // spill into the next year's band. Fail loudly in dev instead.
@@ -380,85 +365,71 @@ export class CalendarComponent {
     // The six per-year stats (value + tooltip content), shared by the
     // horizontal layout's right-hand column and the vertical layout's
     // below-grid rows so the numbers and explanations can't drift apart.
-    // Takes the render config (not positional Maps): the three unique-count
-    // Maps are interchangeable `Map<year, Set>`s, so positional args made a
-    // silent transposition possible at every call site.
-    _yearStatDefs(yearQ, { yearUnique, yearParts, yearPeople }) {
+    // Every value reads from config.yearStats (per-year computeAggregateStats
+    // output), so these are the same six metrics — computed by the same code
+    // — as the ALL tab, Dashboard, and "Last 365 days" header. Only the
+    // tooltip copy and the current-year projections are calendar-specific.
+    _yearStatDefs({ yearStats }) {
+        // Grid year bands can cover a data-free year; fall back to zeros.
+        const empty = computeAggregateStats([]);
+        const agg = year => yearStats.get(year) ?? empty;
         return [
             {
                 label: "pieces",
-                value: year => d3.sum(yearQ.get(year), d => d.value),
+                value: year => agg(year).pieces,
                 title: year => `Pieces played in ${year}`,
                 desc: year => {
                     const base = "Total quartets logged this year. Partial-movement entries (titles containing ':', e.g. '44#1:I') don't count — only whole pieces.";
                     const today = new Date();
                     if (year !== today.getUTCFullYear()) return base;
-                    const pieces = d3.sum(yearQ.get(year), d => d.value);
                     const elapsed = Math.max(1, dayOfYearUTC(today));
-                    const projected = Math.floor(pieces * daysInYear(year) / elapsed);
+                    const projected = Math.floor(agg(year).pieces * daysInYear(year) / elapsed);
                     return `${base}<br><br>On track for: ${projected}`;
                 }
             },
             {
                 label: "unique",
-                value: year => yearUnique.get(year)?.size ?? 0,
+                value: year => agg(year).uniquePieces,
                 title: year => `Unique pieces played in ${year}`,
                 desc: () => "Distinct works (composer + title) logged this year. Partial-movement entries don't count, so repeats of the same piece collapse to one."
             },
             {
                 label: "parts",
-                value: year => yearParts.get(year)?.size ?? 0,
+                value: year => agg(year).uniqueParts,
                 title: year => `Unique parts played in ${year}`,
                 desc: () => uniquePartsDesc(' this year')
             },
             {
                 label: "people",
-                value: year => yearPeople.get(year)?.size ?? 0,
+                value: year => agg(year).uniquePeople,
                 title: year => `People played with in ${year}`,
                 desc: () => "Distinct people logged in Player 1/2/3 and the Others? column this year, after alias normalization. Short names are resolved per-instrument via PLAYER_ALIASES, so 'Jen' on violin and 'Jen' on cello can map to different people."
             },
             {
                 label: "days",
-                value: year => d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0),
+                value: year => agg(year).daysPlayed,
                 title: year => `Playing days in ${year}`,
                 desc: year => {
                     const base = "Number of distinct days this year with at least one whole piece logged. Partial movements alone don't count as a playing day.";
-                    const playingDays = d3.sum(yearQ.get(year), d => d.value > 0 ? 1 : 0);
                     const today = new Date();
                     const denom = year === today.getUTCFullYear()
                         ? Math.max(1, dayOfYearUTC(today))
                         : daysInYear(year);
-                    const pct = (playingDays / denom * 100).toFixed(1);
+                    const pct = (agg(year).daysPlayed / denom * 100).toFixed(1);
                     return `${base}<br><br>${pct}% of days`;
                 }
             },
             {
                 label: "streak",
-                // The year's day-values array (yearQ) is a gap-free, ascending
-                // run of every calendar day, so streaks are runs of consecutive
-                // indices among the value > 0 days — longestRunInfo on those
-                // indices gives the length, tie count, and start date at once.
-                value: year => this._yearStreak(yearQ, year).length,
+                value: year => agg(year).maxStreak,
                 title: year => `Longest streak in ${year}`,
                 desc: year => {
                     const base = "Longest run of consecutive days this year with at least one whole piece logged. A streak that spans New Year's is split at the year boundary.";
-                    const started = formatStreakStart(this._yearStreak(yearQ, year));
+                    const started = formatStreakStart(agg(year).maxStreakInfo);
                     return started ? `${base}<br><br>Started: ${started}` : base;
                 }
             }
         ];
-    }
-
-    // Streak info for one year: longestRunInfo over the indices of played
-    // days in the year's gap-free day array, with the start index translated
-    // back to that day's date. The dates are read via getUTC* accessors
-    // downstream, matching how the calendar assigns days everywhere else.
-    _yearStreak(yearQ, year) {
-        const days = yearQ.get(year);
-        const played = [];
-        days.forEach((d, i) => { if (d.value > 0) played.push(i); });
-        const info = longestRunInfo(played);
-        return { ...info, start: info.start === null ? null : days[info.start].date };
     }
 
     // Fullscreen layout: the calendar transposed — days of week across the
@@ -467,8 +438,7 @@ export class CalendarComponent {
     // most recent leftmost; the container pans horizontally across years.
     renderYearGroupsVertical(container, years, config) {
         const { timeWeek, formatDay, formatMonth, formatDate, countDay, color, sessions } = config;
-        const yearQ = new Map(years);
-        const statDefs = this._yearStatDefs(yearQ, config);
+        const statDefs = this._yearStatDefs(config);
 
         // Chronological left-to-right (the shared `years` array is newest-
         // first for the horizontal layout's top-down stacking). The container
