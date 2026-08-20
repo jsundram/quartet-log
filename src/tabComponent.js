@@ -32,9 +32,11 @@ export function buildWorkTooltipHtml(d) {
     if (d.player1) html += `<li>${escapeHtml([d.player1, d.player2, d.player3].join(", "))}</li>`;
     // Extra players from the free-form "Others?" column. Load-bearing on the
     // 5+ tab, where the quintet/sextet's additional players live here and the
-    // three fixed slots alone misrepresent who played; harmless elsewhere,
-    // since othersList is empty for a plain quartet row. Canonicalized names
-    // (othersList), not the raw cell, so they match the slot players.
+    // three fixed slots alone misrepresent who played. Shown on every tab: a
+    // quartet row usually has nothing here, but when it does (a guest, a
+    // shadowing player) that's someone who played, and peopleKeysFor already
+    // counts them. Canonicalized names, not the raw cell, so they match the
+    // slot players.
     const others = (d.othersList ?? [])
         .filter(o => o.name)
         .map(o => (o.instrument ? `${o.name} (${o.instrument})` : o.name));
