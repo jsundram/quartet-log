@@ -75,6 +75,16 @@ export function calculateDayOfWeekTotals(values) {
 }
 
 // 1-based day of year: Jan 1 → 1, Dec 31 → 365 (or 366 in leap years).
+// Vertical placement of the i-th per-year stat in the right-hand column.
+// The 7 weekday rows are centered at (0.5 .. 6.5) * cellSize, so the grid's
+// midpoint is 3.5 * cellSize; the stack of `count` stats is centered on it
+// with one cell of spacing. An even count (today's six) therefore lands in
+// the six gaps BETWEEN weekday rows, an odd count on the row centers — and
+// the column stays centered as stats are added rather than drifting down.
+export function statColumnY(i, count, cellSize) {
+    return cellSize * (3.5 + i - (count - 1) / 2);
+}
+
 export function dayOfYearUTC(date) {
     const start = Date.UTC(date.getUTCFullYear(), 0, 1);
     const ms = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - start;
@@ -333,10 +343,10 @@ export class CalendarComponent {
         // Per-year stats (shifted right to make room for day-of-week totals).
         // One stacked bare number per stat; the tooltip explains which is which.
         const statDefs = this._yearStatDefs(config);
-        // The year band is a fixed CALENDAR_CONFIG.height (10 cells) with
-        // stats at cellSize*(2 + i): rows 0..6 fit, an eighth would silently
-        // spill into the next year's band. Fail loudly in dev instead.
-        console.assert(statDefs.length <= Math.floor(this.height / this.cellSize) - 3,
+        // The year band is a fixed CALENDAR_CONFIG.height (10 cells); the
+        // centered stack stays inside it up to 8 stats (a ninth would start
+        // above the grid and collide with the year label). Fail loudly in dev.
+        console.assert(statDefs.length <= 8,
             'per-year stat column overflows its year band');
         statDefs.forEach((def, i) => {
             const statText = year.append("g")
@@ -345,7 +355,7 @@ export class CalendarComponent {
                 .data(([year]) => [year])
                 .join("text")
                     .attr("x", () => this.cellSize*54 + 10)
-                    .attr("y", () => this.cellSize*(2 + i))
+                    .attr("y", () => statColumnY(i, statDefs.length, this.cellSize))
                     .attr("dy", ".31em")
                     .text(year => def.value(year));
             this.attachStatTooltip(statText, def.title, def.desc);
