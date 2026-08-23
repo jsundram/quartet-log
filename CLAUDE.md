@@ -111,6 +111,8 @@ Boot is **cache-first** so a returning visitor (especially an installed PWA agai
 
 `revalidate()` is the single re-fetch path for background refreshes too (foreground-resume, the 5-min poll, and pull-to-refresh all call it). Its change-guard means an unchanged sheet updates only the status line; `_rerenderData()` (the in-place calendar/dashboard/tabs rebuild) runs only when the data actually moved, and it preserves the current view/tab/filters.
 
+`PullToRefresh` (`src/pullToRefresh.js`, standalone-PWA only) claims a downward drag only when the page is at `scrollY === 0` **and** the touch did not start inside something that scrolls itself. The pure `startsInScroller` walks `e.target`'s ancestors to `<body>` and bails on any element whose computed `overflow-y` is `auto`/`scroll` and whose content actually overflows vertically — the open Player dropdown list, a tall tooltip, the fullscreen lightboxes. It's a structural test, not a class allowlist (same reasoning as the tooltip's ownership walk), so a new scrollable panel is covered for free; horizontal-only scrollers (the tables' `overflow-x` wrappers, which the cascade computes `overflow-y: auto` on) fail the overflow check and stay pullable. Without it, PTR `preventDefault()`s the first downward move inside the dropdown and the list can't be scrolled back up.
+
 ### Filter change notifications
 
 `NavigationComponent` calls `onFilterChange(filterType)` with one of:

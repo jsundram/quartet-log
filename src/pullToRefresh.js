@@ -9,6 +9,31 @@ const THRESHOLD = 80;  // px of pulled distance past which release triggers refr
 const MAX_PULL = 120;  // visual cap so the indicator doesn't fly off-screen
 const DAMPING = 0.5;   // pulled distance maps to half the visual offset (rubber-band feel)
 
+// True when the touch started inside an element that can consume a vertical
+// drag itself — the open player dropdown's list, a long tooltip, a
+// fullscreen lightbox. Such a gesture is a scroll, not a pull, so PTR has to
+// keep its hands off it: page scrollY is 0 the whole time (the filter bar
+// lives at the top of the page), so without this the first downward move
+// inside the list gets preventDefault()'d into a refresh pull and the list
+// simply won't scroll back up.
+//
+// Structural test rather than a class-name allowlist (same reasoning as the
+// tooltip's ownership walk), so any new scrollable panel is covered for
+// free. `styleOf` returns null for non-elements — text nodes can be a touch
+// target and getComputedStyle would throw on them. An element that only
+// scrolls horizontally (the data tables' overflow-x wrappers, which the
+// cascade computes overflow-y:auto on) fails the scrollHeight check and is
+// walked past. Pure — exported for tests.
+export function startsInScroller(target, stopAt, styleOf) {
+    for (let el = target; el && el !== stopAt; el = el.parentElement) {
+        const style = styleOf(el);
+        if (!style) continue;
+        const scrollable = style.overflowY === 'auto' || style.overflowY === 'scroll';
+        if (scrollable && el.scrollHeight - el.clientHeight > 1) return true;
+    }
+    return false;
+}
+
 export class PullToRefresh {
     constructor({ onRefresh }) {
         this.onRefresh = onRefresh;
@@ -44,9 +69,14 @@ export class PullToRefresh {
         return window.scrollY || document.documentElement.scrollTop || 0;
     }
 
+    _startedInScroller(target) {
+        return startsInScroller(target, document.body,
+            (el) => (el.nodeType === 1 ? window.getComputedStyle(el) : null));
+    }
+
     _onStart(e) {
         if (this.refreshing) return;
-        if (this._scrollTop() > 0) {
+        if (this._scrollTop() > 0 || this._startedInScroller(e.target)) {
             this.startY = null;
             return;
         }
