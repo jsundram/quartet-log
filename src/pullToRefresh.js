@@ -9,9 +9,9 @@ const THRESHOLD = 80;  // px of pulled distance past which release triggers refr
 const MAX_PULL = 120;  // visual cap so the indicator doesn't fly off-screen
 const DAMPING = 0.5;   // pulled distance maps to half the visual offset (rubber-band feel)
 
-// True when the touch started inside an element that can consume a vertical
-// drag itself — the open player dropdown's list, a long tooltip, a
-// fullscreen lightbox. Such a gesture is a scroll, not a pull, so PTR has to
+// True when the touch started inside an element that can consume the drag
+// itself — the open player dropdown's list, a long tooltip, the tab strip,
+// a fullscreen lightbox. Such a gesture is a scroll or a pan, not a pull, so PTR has to
 // keep its hands off it: page scrollY is 0 the whole time (the filter bar
 // lives at the top of the page), so without this the first downward move
 // inside the list gets preventDefault()'d into a refresh pull and the list
@@ -20,16 +20,28 @@ const DAMPING = 0.5;   // pulled distance maps to half the visual offset (rubber
 // Structural test rather than a class-name allowlist (same reasoning as the
 // tooltip's ownership walk), so any new scrollable panel is covered for
 // free. `styleOf` returns null for non-elements — text nodes can be a touch
-// target and getComputedStyle would throw on them. An element that only
-// scrolls horizontally (the data tables' overflow-x wrappers, which the
-// cascade computes overflow-y:auto on) fails the scrollHeight check and is
-// walked past. Pure — exported for tests.
+// target and getComputedStyle would throw on them.
+//
+// EITHER axis counts. A horizontal pan is not a pull, but PTR only sees the
+// vertical component of it, so a sideways swipe with a few pixels of drift
+// hits `delta > 0` in _onMove and gets frozen into a refresh. That bites the
+// tab strip and the date-range buttons (both `overflow-x: auto`, both right
+// where a pull starts) and the fullscreen calendar, whose year columns pan
+// horizontally while its height is fitted to the viewport — so it has no
+// vertical overflow to detect, and `body.calendar-fullscreen-open` pins
+// scrollY at 0 so the _scrollTop() guard misses it too. The cost is that a
+// genuinely vertical pull starting on one of those stops refreshing once it
+// overflows horizontally; the page around them stays pullable.
+//
+// Pure — exported for tests.
 export function startsInScroller(target, stopAt, styleOf) {
+    const scrolls = (overflow, scrollSize, clientSize) =>
+        (overflow === 'auto' || overflow === 'scroll') && scrollSize - clientSize > 1;
     for (let el = target; el && el !== stopAt; el = el.parentElement) {
         const style = styleOf(el);
         if (!style) continue;
-        const scrollable = style.overflowY === 'auto' || style.overflowY === 'scroll';
-        if (scrollable && el.scrollHeight - el.clientHeight > 1) return true;
+        if (scrolls(style.overflowY, el.scrollHeight, el.clientHeight)) return true;
+        if (scrolls(style.overflowX, el.scrollWidth, el.clientWidth)) return true;
     }
     return false;
 }
@@ -76,8 +88,12 @@ export class PullToRefresh {
 
     _onStart(e) {
         if (this.refreshing) return;
+        // _reset() rather than just clearing startY: a second finger landing
+        // inside a scroller mid-pull bails here, and _onEnd() early-returns
+        // on a null startY — which would strand the half-pulled indicator
+        // on screen.
         if (this._scrollTop() > 0 || this._startedInScroller(e.target)) {
-            this.startY = null;
+            this._reset();
             return;
         }
         this.startY = e.touches[0].clientY;
