@@ -40,6 +40,22 @@ export function formatTimestamp(d) {
         `${d.getHours()}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
+// Re-attach a slot's "(instrument)" annotation to the canonical name.
+// normalizePlayerNames splits them apart (stripParens on the name,
+// instrumentFromSlot into playerInstruments); writing only the name would
+// make the export lossy in exactly the way that matters — an annotated
+// pianist is indistinguishable from a violinist in the re-read file, so
+// scripts/audit_ensembles.py could never see one. Re-reading this restores
+// the same annotation, since instrumentFromSlot parses what we write here.
+/**
+ * @param {string|null} name
+ * @param {string|null|undefined} instrument
+ * @returns {string|null}
+ */
+function withInstrument(name, instrument) {
+    return name && instrument ? `${name} (${instrument})` : name;
+}
+
 // One processed row (the processRow output shape) → raw field values in
 // CSV_HEADERS order.
 /**
@@ -47,6 +63,7 @@ export function formatTimestamp(d) {
  * @returns {(string|null)[]}
  */
 export function rowToFields(d) {
+    const annotations = d.playerInstruments ?? [];
     return [
         // Exported rows always come from the sheet, so timestamp is a real
         // Date (nulls exist only on createEmptyRow placeholders, which are
@@ -55,9 +72,9 @@ export function rowToFields(d) {
         d.composer,
         d.work.title,
         d.part,
-        d.player1,
-        d.player2,
-        d.player3,
+        withInstrument(d.player1, annotations[0]),
+        withInstrument(d.player2, annotations[1]),
+        withInstrument(d.player3, annotations[2]),
         d.others,
         d.location,
         d.comments,
