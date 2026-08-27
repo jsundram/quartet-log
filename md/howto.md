@@ -71,12 +71,13 @@ the pianist is in the cello field:
 
 | Which Part | Player 1 | Player 2 | Player 3 | Others? |
 |---|---|---|---|---|
-| `V1` | the violist | the cellist `(vc)` | the pianist `(p)` | |
+| `V1` | the violist `(va)` | the cellist `(vc)` | the pianist `(p)` | |
 
 Both spellings and shorthands work — `p`, `pf` and `piano` are the same thing,
 as are `vc` and `cello`, and `va`, `vla` and `viola`. You can add a comment
 after the instrument: `Alice Hart (vc, doubling)` keeps the `vc` and ignores
-the rest.
+the rest. Parentheses that name no instrument — `(sub)`, `(guest)`, `(first
+time)` — are just notes: they're ignored, and the seat decides as usual.
 
 Pianists, clarinettists and other non-string players are counted as people you
 played with, but they're left out of the V1/V2/VA/VC part breakdowns, which
