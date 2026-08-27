@@ -32,8 +32,11 @@ from pathlib import Path
 SESSION_WINDOW_HOURS = 4  # mirrors SESSION_WINDOW_HOURS in src/dataProcessor.js
 CATALOG = Path(__file__).resolve().parent.parent / "static/data/all_works.json"
 # Parts that only exist in an ensemble larger than a quartet. A row naming one
-# of these in Others? is a quintet/sextet; the next row need not be.
-EXTRA_STRING_RE = re.compile(r"^(?:va|vla|vc|v)\s*[2-9]\b|^v[3-9]\b", re.I)
+# of these in Others? is a quintet/sextet; the next row need not be. "v2" is
+# deliberately NOT here: a quartet has a second violin seat, so an Others? "v2"
+# is a fifth body in the room rotating through, and the next quartet still has
+# nowhere to put them — exactly the drop worth reporting.
+EXTRA_STRING_RE = re.compile(r"^(?:va|vla|vc)\s*[2-9]\b|^v\s*[3-9]\b", re.I)
 # A comment scoping the entry to particular movements — "(echoing v2, on I)",
 # "(v1, shadowing on II, III)" — describes what someone did in THIS piece. It
 # is the opposite of a standing arrangement, so it must not propagate.
