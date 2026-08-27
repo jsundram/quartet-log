@@ -80,6 +80,41 @@ def class_of(instrument: str | None) -> str | None:
     return "cello" if instrument.lower().strip().startswith("vc") else "upper"
 
 
+def slot_annotation_classes(values: set[str]) -> dict[str, str]:
+    """{slot value: instrument class} for slot values carrying a parenthetical.
+
+    normalizePlayerNames classes an annotated slot by what it says it played,
+    not by which column it landed in — but only when the parenthetical names
+    an instrument, so "(sub)" stays positional. Mirroring that here would mean
+    a third Python copy of instrumentFromSlot + classOf, this one carrying an
+    instrument vocabulary that drifts the moment the JS list is edited. So ask
+    the real module instead: the set is tiny (only slots with a parenthetical),
+    which is one node call for the whole file.
+
+    Falls back to {} — i.e. positional classing, as before — if node cannot
+    answer, since this only refines a heuristic report.
+    """
+    if not values:
+        return {}
+    js = (
+        "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>"
+        "import('./src/dataProcessor.js').then(m => process.stdout.write("
+        "JSON.stringify(Object.fromEntries(JSON.parse(s).map("
+        "v => [v, m.classOf(m.instrumentFromSlot(v))])))))"
+        ".catch(e => { console.error(e.message); process.exit(1); }))"
+    )
+    try:
+        result = subprocess.run(
+            ["node", "-e", js], input=json.dumps(sorted(values)),
+            capture_output=True, text=True, check=True, cwd=REPO_ROOT,
+        )
+        return {k: v for k, v in json.loads(result.stdout).items() if v}
+    except (OSError, subprocess.CalledProcessError, ValueError) as e:
+        print(f"Note: could not class slot annotations via node ({e}); "
+              "falling back to the slot position.", file=sys.stderr)
+        return {}
+
+
 def _split_outside_parens(s: str) -> list[str]:
     """Split on ',' or ';' at paren depth 0 — mirrors splitOutsideParens
     in src/dataProcessor.js so a comma inside a "(instrument, comment)"
@@ -140,13 +175,21 @@ def load_rows(path: Path) -> list[dict]:
 def collect_appearances(rows: list[dict]) -> dict[tuple[str, str], list[list[str]]]:
     """For each (name, class) pair, return list of teammate-lists from each appearance."""
     appearances: dict[tuple[str, str], list[list[str]]] = defaultdict(list)
+    annotated = {
+        raw for row in rows for i in range(3)
+        if "(" in (raw := (row.get(f"Player {i + 1}") or "").strip())
+    }
+    slot_classes = slot_annotation_classes(annotated)
     for row in rows:
         # Build list of (name, class) seen in this row
         people: list[tuple[str, str]] = []
         for i in range(3):
             raw = (row.get(f"Player {i + 1}") or "").strip()
             if raw and raw != "-":
-                people.append((expand_abbrev(strip_parens(raw)), SLOT_CLASS[i]))
+                # An instrument annotation states the class; the column only
+                # implies it (SLOT_CLASS). Same precedence as the app.
+                cls = slot_classes.get(raw) or SLOT_CLASS[i]
+                people.append((expand_abbrev(strip_parens(raw)), cls))
         # The canonical header is "Others?" (see src/csvFormat.js), but
         # exports written before the header fix used "Others" — accept both.
         for name, instr in parse_others(row.get("Others?") or row.get("Others") or ""):
