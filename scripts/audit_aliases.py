@@ -183,6 +183,93 @@ def already_aliased(variant: str, cls: str) -> bool:
     return variant in EXISTING_ALIASES and cls in EXISTING_ALIASES[variant]
 
 
+def report_ambiguity(appearances: dict[tuple[str, str], list[list[str]]]) -> None:
+    """Flag first names that no longer identify exactly one person.
+
+    The variant grouping above answers "which short forms belong in
+    PLAYER_ALIASES". This answers the complementary question: which short
+    forms must NOT go in, because an alias maps one name to one person and
+    the sheet now holds several people who share it.
+
+    Three hazards, none of them visible in the grouping above:
+      1. A bare first name still in the sheet that two or more full names
+         could match. No alias can express "this row is Alice Hart and that
+         one is Alice Bek" — the ROWS have to be edited.
+      2. An existing alias keyed on such a name. It resolves silently, so
+         every future bare entry lands on whichever person the table names.
+      3. An alias whose canonical name appears nowhere in the sheet —
+         usually a spelling fix that was applied to the data but not here.
+
+    Caveat: hazards 1 and 2 can only fire once the second full name shows up
+    in the data. A short form that is genuinely ambiguous in real life still
+    looks unique here until someone with the same first name gets logged.
+    """
+    full_by_first: dict[str, set[str]] = defaultdict(set)
+    bare_count: Counter = Counter()
+    present: set[str] = set()
+    for (name, cls), apps in appearances.items():
+        present.add(name)
+        if len(name.split()) > 1:
+            full_by_first[base_token(name)].add(name)
+        else:
+            bare_count[(name, cls)] += len(apps)
+
+    print("\n=== AMBIGUITY: first names that no longer identify one person ===")
+    print("(Hazards the variant grouping above cannot see.)")
+
+    # 1. Bare names still in the sheet that several full names could match.
+    unresolvable = sorted(
+        (
+            (n, cls, cnt, sorted(full_by_first[base_token(n)]))
+            for (n, cls), cnt in bare_count.items()
+            if len(full_by_first.get(base_token(n), ())) >= 2
+        ),
+        key=lambda r: (-r[2], r[0]),
+    )
+    print(f"\n-- bare names in the sheet with 2+ candidates ({len(unresolvable)}) --")
+    print("   Fix these in the SHEET; an alias can only guess one of them.")
+    if not unresolvable:
+        print("   (none)")
+    for name, cls, count, candidates in unresolvable:
+        mapped = EXISTING_ALIASES.get(name, {}).get(cls)
+        note = f"alias says {mapped!r}" if mapped else "NO alias — counted as its own person"
+        print(f"   {name!r:18s} [{cls:5s}] {count:4d}×   {note}")
+        print(f"   {'':18s}         candidates: {', '.join(candidates)}")
+
+    # 2. Aliases keyed on a first name several people now share. Multi-token
+    # keys ("Jo A", "Jo Alpha") are already disambiguated, so skip them.
+    risky = sorted(
+        (key, mapping, sorted(full_by_first[key.lower()]))
+        for key, mapping in EXISTING_ALIASES.items()
+        if len(key.split()) == 1 and len(full_by_first.get(key.lower(), ())) >= 2
+    )
+    print(f"\n-- aliases keyed on an ambiguous first name ({len(risky)}) --")
+    print("   Each silently resolves future bare entries to one person.")
+    if not risky:
+        print("   (none)")
+    for key, mapping, candidates in risky:
+        targets = ", ".join(f"{cls}→{n}" for cls, n in sorted(mapping.items()))
+        others = [c for c in candidates if c not in mapping.values()]
+        print(f"   {key!r:18s} {targets}")
+        print(f"   {'':18s} also in sheet: {', '.join(others) or '—'}")
+
+    # 3. Aliases pointing at a name the sheet no longer contains.
+    dangling = sorted(
+        (key, cls, canon)
+        for key, mapping in EXISTING_ALIASES.items()
+        for cls, canon in mapping.items()
+        if canon not in present
+    )
+    print(f"\n-- aliases whose canonical name is absent from the sheet ({len(dangling)}) --")
+    print("   Renamed or respelled in the data but not here?")
+    if not dangling:
+        print("   (none)")
+    for key, cls, canon in dangling:
+        near = sorted(full_by_first.get(base_token(canon), ()))
+        hint = f"   did you mean: {', '.join(near)}" if near else ""
+        print(f"   {key!r:18s} [{cls:5s}] -> {canon!r}{hint}")
+
+
 def main() -> None:
     csv_path = Path(sys.argv[1] if len(sys.argv) > 1 else "archive/data.csv")
     if not csv_path.exists():
@@ -286,6 +373,8 @@ def main() -> None:
             f"  {marker} [{cls:5s}] {short_name!r:30s} ({scount:3d}×)  →  "
             f"{long_name!r}  ({lcount}×, overlap {overlap:.0%})"
         )
+
+    report_ambiguity(appearances)
 
     # Final paste-ready PLAYER_ALIASES block
     print("\n=== PLAYER_ALIASES proposal (paste into src/aliases.js — gitignored; NEVER into a tracked file) ===\n")
