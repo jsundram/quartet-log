@@ -82,10 +82,16 @@ def needs_the_extra_player(row: dict, others: str,
     for frag in re.split(r"[;,](?![^(]*\))", others):
         m = re.match(r"^.+?\(([^)]+)\)", frag.strip())
         inside = m.group(1) if m else ""
+        # A scoped entry argues for nothing: drop it and let the rest of the
+        # line decide. Suppressing the whole row on one is what hid the
+        # pianist in "Eve (v1, on II, III); Fred (p)" — the second entry is
+        # a standing member of the group and the next row loses them.
         if SCOPED_RE.search(inside):
-            return False
+            continue
         parts.append(inside.split(",")[0].strip())
-    return not (parts and all(EXTRA_STRING_RE.match(p) for p in parts))
+    # No unscoped entry left (every one was movement-scoped) means nothing was
+    # dropped that should carry, so suppress rather than report.
+    return bool(parts) and not all(EXTRA_STRING_RE.match(p) for p in parts)
 
 
 def load(path: Path) -> list[dict]:
