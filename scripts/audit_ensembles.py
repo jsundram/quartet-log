@@ -19,6 +19,12 @@ Two independent problems, reported separately:
                  cellist. Fixable in place: annotate the slot, e.g.
                  "Alice Hart" -> "Alice Hart (p)".
 
+                 It can only see a piano work that SAYS so. all_works.json
+                 carries no piano repertoire, so a row titled with a bare
+                 catalogue number ("K478") and no comment naming the ensemble
+                 is invisible here however it is logged. Read 0 as "none of
+                 the ones we can identify", not "none".
+
 Usage: python scripts/audit_ensembles.py [path/to/data.csv]
        (defaults to archive/data.csv)
 """
@@ -32,6 +38,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audit_aliases import load_rows, parse_others  # noqa: E402
+from audit_fillforward import load_catalog  # noqa: E402
 
 # Ensemble words that appear in Work Title, mapped to how many people play.
 ENSEMBLE_SIZES = {
@@ -62,7 +69,27 @@ ANNOT_KEYBOARD_RE = re.compile(
     re.I)
 
 
-def expected_size(row: dict) -> tuple[int, bool]:
+def comment_ensemble(row: dict, quartets: set) -> re.Match | None:
+    """The instrumentation phrase in Comments, if this row's own title hasn't
+    already settled the question.
+
+    Requiring an instrument immediately before the ensemble word keeps most
+    prose out, but not all of it: "Post-Mexican food after piano quartet
+    afternoon" is syntactically an instrumentation phrase and reads as one.
+    What rules it out is the row itself — the work is a catalogued string
+    quartet, so whatever the comment is talking about, it isn't this piece.
+    The catalog is the only thing that can say so, and it says it for the one
+    real false positive in the log without touching any other row.
+
+    An empty catalog (missing all_works.json) just disables the gate.
+    """
+    work = ((row.get("Composer") or "").strip(), (row.get("Work Title") or "").strip())
+    if work in quartets:
+        return None
+    return COMMENT_ENSEMBLE_RE.search(row.get("Comments") or "")
+
+
+def expected_size(row: dict, quartets: set) -> tuple[int, bool]:
     """(people the work needs, whether it was stated rather than assumed).
 
     Work Title is often a catalogue number — "K478", "20#4" — with the
@@ -73,20 +100,19 @@ def expected_size(row: dict) -> tuple[int, bool]:
     m = ENSEMBLE_RE.search(row.get("Work Title") or "")
     if m:
         return ENSEMBLE_SIZES[m.group(0).lower()], True
-    m = COMMENT_ENSEMBLE_RE.search(row.get("Comments") or "")
+    m = comment_ensemble(row, quartets)
     if m:
         return ENSEMBLE_SIZES[m.group(2).lower()], True
     return 4, False
 
 
-def mentions_keyboard(row: dict) -> bool:
+def mentions_keyboard(row: dict, quartets: set) -> bool:
     """A keyboard work? Work Title is authoritative; Comments only counts when
-    the keyboard word sits in an instrumentation phrase."""
+    the keyboard word sits in an instrumentation phrase about this work."""
     if TITLE_KEYBOARD_RE.search(row.get("Work Title") or ""):
         return True
-    return bool(COMMENT_ENSEMBLE_RE.search(row.get("Comments") or "")
-                and TITLE_KEYBOARD_RE.search(
-                    COMMENT_ENSEMBLE_RE.search(row.get("Comments") or "").group(1)))
+    m = comment_ensemble(row, quartets)
+    return bool(m and TITLE_KEYBOARD_RE.search(m.group(1)))
 
 
 def logged_people(row: dict) -> int:
@@ -104,9 +130,16 @@ SLOT_ANNOTATION_RE = re.compile(r"^(.+?)\s*\(([^)]+)\)\s*$")
 
 
 def slot_instrument(value: str) -> str | None:
-    """Mirror instrumentFromSlot in src/dataProcessor.js: pull the
-    "(instrument)" suffix off a player slot, keeping only what precedes the
-    first comma."""
+    """Pull the "(instrument)" suffix off a player slot, keeping only what
+    precedes the first comma.
+
+    Deliberately NOT a full mirror of instrumentFromSlot: that one also
+    rejects a parenthetical naming no instrument ("(sub)", "(guest)"), which
+    it must, because it decides the player's class. The only question asked
+    here is "is this the keyboard", and ANNOT_KEYBOARD_RE answers no to every
+    such note anyway — so carrying a copy of the JS instrument vocabulary
+    would add a thing to drift and change no answer.
+    """
     m = SLOT_ANNOTATION_RE.match((value or "").strip())
     if not m:
         return None
@@ -151,14 +184,15 @@ def main() -> None:
         print(f"CSV not found: {csv_path}", file=sys.stderr)
         sys.exit(1)
     rows = load_rows(csv_path)
+    _, quartets = load_catalog()
 
     explicit_short, assumed_short, unannotated = [], [], []
     for row in rows:
-        need, stated = expected_size(row)
+        need, stated = expected_size(row, quartets)
         got = logged_people(row)
         if got < need:
             (explicit_short if stated else assumed_short).append((row, need, got))
-        if mentions_keyboard(row) and not has_keyboard_annotation(row):
+        if mentions_keyboard(row, quartets) and not has_keyboard_annotation(row):
             unannotated.append(row)
 
     print(f"Rows: {len(rows)}\n")
