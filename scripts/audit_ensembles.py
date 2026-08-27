@@ -39,6 +39,14 @@ ENSEMBLE_SIZES = {
     "sextet": 6, "septet": 7, "octet": 8, "nonet": 9,
 }
 ENSEMBLE_RE = re.compile("|".join(ENSEMBLE_SIZES), re.I)
+# Comments are prose, and this is a music log: "more piano the second time" is
+# a dynamic, "quintets were averted" is a joke, "Is this a wind quintet" is
+# musing about a work's origin. A bare ensemble word there means nothing. Only
+# an instrumentation phrase — the instrument immediately before the ensemble
+# word, as in "Piano Quartet" or "Notturno for Piano Trio" — is trustworthy.
+COMMENT_ENSEMBLE_RE = re.compile(
+    r"\b(piano|klavier|harpsichord|fortepiano|clarinet|horn|oboe|flute|"
+    r"bassoon|string|wind)\s+(" + "|".join(ENSEMBLE_SIZES) + r")\b", re.I)
 # Two different jobs, two different patterns. Work titles are matched loosely
 # ("Brahms Piano Quartet 1"); instrument annotations are matched anchored, so
 # the "p" shorthand this log actually uses is recognized without "p" swallowing
@@ -57,18 +65,23 @@ def expected_size(row: dict) -> tuple[int, bool]:
     searched. Absent any ensemble word we assume a quartet, which is the log's
     bread and butter, but flag the assumption so those rows triage separately.
     """
-    for field in ("Work Title", "Comments"):
-        m = ENSEMBLE_RE.search(row.get(field) or "")
-        if m:
-            return ENSEMBLE_SIZES[m.group(0).lower()], True
+    m = ENSEMBLE_RE.search(row.get("Work Title") or "")
+    if m:
+        return ENSEMBLE_SIZES[m.group(0).lower()], True
+    m = COMMENT_ENSEMBLE_RE.search(row.get("Comments") or "")
+    if m:
+        return ENSEMBLE_SIZES[m.group(2).lower()], True
     return 4, False
 
 
 def mentions_keyboard(row: dict) -> bool:
-    """A keyboard work? Same reasoning as expected_size: the giveaway is as
-    often in Comments as in Work Title."""
-    return any(TITLE_KEYBOARD_RE.search(row.get(f) or "")
-               for f in ("Work Title", "Comments"))
+    """A keyboard work? Work Title is authoritative; Comments only counts when
+    the keyboard word sits in an instrumentation phrase."""
+    if TITLE_KEYBOARD_RE.search(row.get("Work Title") or ""):
+        return True
+    return bool(COMMENT_ENSEMBLE_RE.search(row.get("Comments") or "")
+                and TITLE_KEYBOARD_RE.search(
+                    COMMENT_ENSEMBLE_RE.search(row.get("Comments") or "").group(1)))
 
 
 def logged_people(row: dict) -> int:
