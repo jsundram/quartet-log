@@ -46,7 +46,12 @@ ENSEMBLE_RE = re.compile("|".join(ENSEMBLE_SIZES), re.I)
 # word, as in "Piano Quartet" or "Notturno for Piano Trio" — is trustworthy.
 COMMENT_ENSEMBLE_RE = re.compile(
     r"\b(piano|klavier|harpsichord|fortepiano|clarinet|horn|oboe|flute|"
-    r"bassoon|string|wind)\s+(" + "|".join(ENSEMBLE_SIZES) + r")\b", re.I)
+    r"bassoon)\s+(" + "|".join(ENSEMBLE_SIZES) + r")\b", re.I)
+# "wind" and "string" are deliberately absent: in a string-chamber log they
+# name a work's ORIGIN rather than what was played — "Wind Octet are quintet"
+# is Mozart's K406, an octet arranged as a quintet, and sizing it at 8 is
+# wrong. A genuine wind ensemble would fall back to the quartet default, which
+# is the honest answer for a row this log was never shaped to describe.
 # Two different jobs, two different patterns. Work titles are matched loosely
 # ("Brahms Piano Quartet 1"); instrument annotations are matched anchored, so
 # the "p" shorthand this log actually uses is recognized without "p" swallowing
