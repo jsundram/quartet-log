@@ -100,13 +100,13 @@ you naturally type is fine — first name, nickname, whatever the group calls
 them.
 
 The reason is that a first name stops identifying one person the moment a
-second Sarah turns up, and by then the older entries have no surname to tell
+second Alice turns up, and by then the older entries have no surname to tell
 them apart. Reconstructing that later means cross-referencing dates, venues and
 who else was in the room, and it gets harder every month. Spending three extra
 seconds once is the whole fix.
 
 Short forms are still worth using for the people you play with constantly —
-you will never wonder who "Josh" was. The rule is only about the first entry
+you will never wonder who "Bob" was. The rule is only about the first entry
 for someone new.
 
 ## 7. View your log

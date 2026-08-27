@@ -747,9 +747,9 @@ export const SESSION_WINDOW_HOURS = 4;
 //   - `entry` is empty — a blank cell inside the session window is a ditto
 //     mark ("same as the row above");
 //   - `entry` equals `prevEntry` exactly;
-//   - `prevEntry` starts with `entry` followed by a word boundary — "Chris"
-//     abbreviates a previous "Chris Smith". The boundary requirement is what
-//     keeps "Chris" from silently merging with a previous "Christina": a
+//   - `prevEntry` starts with `entry` followed by a word boundary — "Grace"
+//     abbreviates a previous "Grace Brown". The boundary requirement is what
+//     keeps "Grace" from silently merging with a previous "Gracie": a
 //     prefix that ends mid-word is a different name, not an abbreviation.
 /**
  * @param {string} entry
@@ -762,8 +762,8 @@ function refersToPrevEntry(entry, prevEntry) {
 
 // Expand shorthand in the player/location columns. The sheet convention is to
 // write a value in full once, then abbreviate while the session continues:
-// a blank cell or a leading-prefix of the previous entry (e.g. "Chris" after
-// "Chris Smith") repeats it, and the single-letter PLAYER_ABBREVIATIONS
+// a blank cell or a leading-prefix of the previous entry (e.g. "Grace" after
+// "Grace Brown") repeats it, and the single-letter PLAYER_ABBREVIATIONS
 // (e.g. "I" → a configured first name) expand regardless of the window. "-" means
 // "nobody in this slot": it is left as-is and does not advance the session
 // anchor, so shorthand can still refer past it to the last real entry.

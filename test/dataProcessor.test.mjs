@@ -118,7 +118,7 @@ describe('canonicalize', () => {
     });
 
     it('returns the input when name is not in the alias map', () => {
-        assert.equal(canonicalize('Marshall', 'upper', ALIASES), 'Marshall');
+        assert.equal(canonicalize('Trent', 'upper', ALIASES), 'Trent');
         assert.equal(canonicalize('Alice', 'cello', ALIASES), 'Alice');
     });
 
@@ -148,14 +148,14 @@ describe('parseOthers', () => {
     });
 
     it('parses a single "Name (instrument)" fragment', () => {
-        assert.deepEqual(parseOthers('Lois (piano)'), [
-            { name: 'Lois', instrument: 'piano' },
+        assert.deepEqual(parseOthers('Nadia (piano)'), [
+            { name: 'Nadia', instrument: 'piano' },
         ]);
     });
 
     it('parses a bare name with no instrument annotation', () => {
-        assert.deepEqual(parseOthers('Clara'), [
-            { name: 'Clara', instrument: null },
+        assert.deepEqual(parseOthers('Priya'), [
+            { name: 'Priya', instrument: null },
         ]);
     });
 
@@ -258,11 +258,11 @@ describe('normalizePlayerNames', () => {
     });
 
     it('attaches a parsed, canonicalized othersList', () => {
-        const data = [mkRow({ others: 'Jo (vc2); Marshall (va2)' })];
+        const data = [mkRow({ others: 'Jo (vc2); Trent (va2)' })];
         normalizePlayerNames(data, ALIASES);
         assert.deepEqual(data[0].othersList, [
             { name: 'Jo Beta', instrument: 'vc2', class: 'cello' },
-            { name: 'Marshall', instrument: 'va2', class: 'upper' },
+            { name: 'Trent', instrument: 'va2', class: 'upper' },
         ]);
     });
 
@@ -274,7 +274,7 @@ describe('normalizePlayerNames', () => {
     });
 
     it('returns the input array (for chaining)', () => {
-        const data = [mkRow({ player1: 'Marshall' })];
+        const data = [mkRow({ player1: 'Trent' })];
         const result = normalizePlayerNames(data, ALIASES);
         assert.equal(result, data);
     });
@@ -284,21 +284,21 @@ describe('peopleKeysFor', () => {
     it('returns canonical names from player1/2/3', () => {
         const row = {
             player1: 'Jo Alpha',
-            player2: 'Marshall',
+            player2: 'Trent',
             player3: 'Jo Beta',
             othersList: [],
         };
-        assert.deepEqual(peopleKeysFor(row), ['Jo Alpha', 'Marshall', 'Jo Beta']);
+        assert.deepEqual(peopleKeysFor(row), ['Jo Alpha', 'Trent', 'Jo Beta']);
     });
 
     it('skips empty and "-" sentinel player slots', () => {
         const row = {
-            player1: 'Marshall',
+            player1: 'Trent',
             player2: '',
             player3: '-',
             othersList: [],
         };
-        assert.deepEqual(peopleKeysFor(row), ['Marshall']);
+        assert.deepEqual(peopleKeysFor(row), ['Trent']);
     });
 
     it('includes othersList entries by canonical name only', () => {
@@ -315,14 +315,14 @@ describe('peopleKeysFor', () => {
     });
 
     it('handles a row with no othersList field at all', () => {
-        const row = { player1: 'Marshall', player2: '', player3: '' };
-        assert.deepEqual(peopleKeysFor(row), ['Marshall']);
+        const row = { player1: 'Trent', player2: '', player3: '' };
+        assert.deepEqual(peopleKeysFor(row), ['Trent']);
     });
 
     it('two same-short-name people in one row produce two distinct keys', () => {
         // The whole point of instrument-aware aliasing: the two Jos count as two.
         const data = [
-            { player1: 'Jo', player2: 'Marshall', player3: 'Jo', others: '' },
+            { player1: 'Jo', player2: 'Trent', player3: 'Jo', others: '' },
         ];
         normalizePlayerNames(data, ALIASES);
         const keys = peopleKeysFor(data[0]);
@@ -336,7 +336,7 @@ describe('peopleKeysFor', () => {
         // Hank[upper] aliases to Hank Field; "Hank Field" in Others?
         // stays canonical regardless of class.
         const data = [
-            { player1: 'Hank', player2: 'Marshall', player3: 'Stephanie',
+            { player1: 'Hank', player2: 'Trent', player3: 'Wendy',
               others: 'Hank Field (vc)' },
         ];
         normalizePlayerNames(data, ALIASES);
@@ -406,9 +406,9 @@ describe('computeAggregateStats', () => {
     it('counts canonical people across player slots and othersList', () => {
         const rows = [
             mkRow({ player1: 'Jo', player2: 'Ned', player3: 'Jo',
-                    others: 'Marshall (va2)' }),
+                    others: 'Trent (va2)' }),
         ];
-        // Jo[upper]→Jo Alpha, Ned[upper]→Ned, Jo[cello]→Jo Beta, Marshall(va2)→Marshall
+        // Jo[upper]→Jo Alpha, Ned[upper]→Ned, Jo[cello]→Jo Beta, Trent(va2)→Trent
         // = 4 distinct people
         assert.equal(computeAggregateStats(rows).uniquePeople, 4);
     });
@@ -764,9 +764,9 @@ describe('defaultMinPiecesForGraph', () => {
 
 describe('disambiguateLabels', () => {
     it('uses first name when unique', () => {
-        const nodes = [{ name: 'Alice Smith' }, { name: 'Bob Jones' }];
+        const nodes = [{ name: 'Alice Brown' }, { name: 'Bob Jones' }];
         const labels = disambiguateLabels(nodes);
-        assert.equal(labels.get('Alice Smith'), 'Alice');
+        assert.equal(labels.get('Alice Brown'), 'Alice');
         assert.equal(labels.get('Bob Jones'), 'Bob');
     });
 
@@ -778,14 +778,13 @@ describe('disambiguateLabels', () => {
     });
 
     it('falls back to full name when First L. still collides', () => {
-        const nodes = [{ name: 'John Smith' }, { name: 'John Smith Jr' }, { name: 'John Sturges' }];
+        const nodes = [{ name: 'John Stone' }, { name: 'John Stone Jr' }, { name: 'John Sturges' }];
         const labels = disambiguateLabels(nodes);
-        // 'John S.' would match all three (Smith, Smith Jr → "Jr" initial,
-        // Sturges → "Sturges" initial). Actually Smith and Sturges both
-        // start with S, so John S. matches Smith and Sturges. Smith Jr's
-        // last token is "Jr" → "John J." which is unique.
-        assert.equal(labels.get('John Smith Jr'), 'John J.');
-        assert.equal(labels.get('John Smith'), 'John Smith');
+        // Stone and Sturges both start with S, so 'John S.' matches two of
+        // the three and cannot disambiguate either. Stone Jr's last token is
+        // "Jr" → "John J.", which is unique.
+        assert.equal(labels.get('John Stone Jr'), 'John J.');
+        assert.equal(labels.get('John Stone'), 'John Stone');
         assert.equal(labels.get('John Sturges'), 'John Sturges');
     });
 
@@ -1060,38 +1059,38 @@ describe('fillForward', () => {
         ...cols,
     });
 
-    it('does not merge a mid-word prefix: "Chris" after "Christina" stays "Chris"', () => {
+    it('does not merge a mid-word prefix: "Grace" after "Gracie" stays "Grace"', () => {
         const data = [
-            ffRow(0, { player1: 'Christina' }),
-            ffRow(1, { player1: 'Chris' }),
+            ffRow(0, { player1: 'Gracie' }),
+            ffRow(1, { player1: 'Grace' }),
         ];
         fillForward(data);
-        assert.equal(data[1].player1, 'Chris');
+        assert.equal(data[1].player1, 'Grace');
     });
 
-    it('expands a word-boundary prefix: "Chris" after "Chris Smith" in the same session', () => {
+    it('expands a word-boundary prefix: "Grace" after "Grace Brown" in the same session', () => {
         const data = [
-            ffRow(0, { player1: 'Chris Smith' }),
-            ffRow(1, { player1: 'Chris' }),
+            ffRow(0, { player1: 'Grace Brown' }),
+            ffRow(1, { player1: 'Grace' }),
         ];
         fillForward(data);
-        assert.equal(data[1].player1, 'Chris Smith');
+        assert.equal(data[1].player1, 'Grace Brown');
     });
 
     it('treats the session window as a strict < 4h bound', () => {
         const inWindow = [
-            ffRow(0, { player1: 'Chris Smith' }),
-            ffRow(3.99, { player1: 'Chris' }),
+            ffRow(0, { player1: 'Grace Brown' }),
+            ffRow(3.99, { player1: 'Grace' }),
         ];
         fillForward(inWindow);
-        assert.equal(inWindow[1].player1, 'Chris Smith');
+        assert.equal(inWindow[1].player1, 'Grace Brown');
 
         const outOfWindow = [
-            ffRow(0, { player1: 'Chris Smith' }),
-            ffRow(4, { player1: 'Chris' }),
+            ffRow(0, { player1: 'Grace Brown' }),
+            ffRow(4, { player1: 'Grace' }),
         ];
         fillForward(outOfWindow);
-        assert.equal(outOfWindow[1].player1, 'Chris');
+        assert.equal(outOfWindow[1].player1, 'Grace');
     });
 
     it('ditto-fills an empty cell inside the session window, chaining forward', () => {
@@ -1128,13 +1127,13 @@ describe('fillForward', () => {
 
     it('leaves "-" cells untouched and refers past them to the last real entry', () => {
         const data = [
-            ffRow(0, { player1: 'Chris Smith' }),
+            ffRow(0, { player1: 'Grace Brown' }),
             ffRow(1),  // player1: '-'
-            ffRow(2, { player1: 'Chris' }),
+            ffRow(2, { player1: 'Grace' }),
         ];
         fillForward(data);
         assert.equal(data[1].player1, '-');
-        assert.equal(data[2].player1, 'Chris Smith');
+        assert.equal(data[2].player1, 'Grace Brown');
     });
 
     it('expands single-letter abbreviations regardless of the window', () => {
@@ -1154,11 +1153,11 @@ describe('fillForward', () => {
         // prepareRows makes this impossible in the real pipeline; pin the
         // guard anyway so a negative delta can never slip under `hours < 4`.
         const data = [
-            ffRow(2, { player1: 'Chris Smith' }),
-            ffRow(0, { player1: 'Chris' }),  // 2 hours BEFORE the row above
+            ffRow(2, { player1: 'Grace Brown' }),
+            ffRow(0, { player1: 'Grace' }),  // 2 hours BEFORE the row above
         ];
         fillForward(data);
-        assert.equal(data[1].player1, 'Chris');
+        assert.equal(data[1].player1, 'Grace');
     });
 
     it('fills the location column with the same rules', () => {

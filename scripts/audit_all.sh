@@ -74,7 +74,7 @@ rule "DROPPED BY FILL-FORWARD   scripts/audit_fillforward.py"
 
 # The full output runs to hundreds of lines, most of it groups that are fine.
 # This is the part worth reading on a routine run: what needs a decision, and
-# which decisions decay if left (only you know who "Chris" was last month).
+# which decisions decay if left (only you know who "Alice" was last month).
 # Each audit heads its sections "<label> (<n>)"; pull the n off the first
 # line matching the label.
 count() { grep -E "$1" "$2" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
