@@ -27,7 +27,11 @@ npm test            # unit tests (node:test over test/*.mjs)
 npm run lint        # eslint flat config (eslint.config.js)
 npm run typecheck   # tsc --noEmit over // @ts-check'd files (data layer)
 npm run test:e2e    # Playwright boot smoke (build with ./build.sh --prod first)
+npm run audit       # data-quality audits against a freshly fetched sheet
+npm run audit -- --no-fetch   # ...against whatever is already in archive/
 ```
+
+`npm run audit` (`scripts/audit_all.sh`) runs all three audits and prints a summary. Each needs a different view of the data and the difference is load-bearing: `audit_aliases` and `audit_ensembles` read the **processed** `archive/data.csv` (post-`fillForward`, so every row lists its full group — on the raw sheet every continuation row would look under-logged), while `audit_fillforward` reads the **raw** `archive/data-raw.csv` by necessity, since it looks for exactly the blank player slots `fillForward` erases. The summary's dangling-alias count comes from a second pass over the raw sheet, because on a canonicalized export every canonical name is present by construction and the count is always 0. The summary also marks which findings decay: bare ambiguous names and under-logged rows need memory and get harder to answer over time, while a dropped `Others?` player is recoverable from the row above it whenever you get to it.
 All four run in PR CI (`test.yml`); the Playwright job builds the site and boots it against a fixture CSV (`e2e/smoke.spec.js`). A `pretest`/`pretypecheck` hook materializes `src/aliases.js` from the stub on fresh clones.
 Uses Node's built-in `node:test` runner against `test/*.mjs`. No external test deps. Tests cover `src/dataProcessor.js` helpers (alias normalization, partial-movement filtering, aggregate stats, etc.).
 
