@@ -36,6 +36,8 @@ import { PLAYER_ABBREVIATIONS, PLAYER_ALIASES } from './config.js';
  * @property {string|null} others - raw "Others?" cell (kept for CSV export)
  * @property {string|null} location
  * @property {string} comments
+ * @property {(string|null)[]} [playerInstruments] - per-slot "(instrument)"
+ *   annotations, attached by normalizePlayerNames; null where a slot had none
  * @property {OtherPlayer[]} [othersList] - attached by normalizePlayerNames
  */
 
@@ -48,9 +50,26 @@ const SLOT_CLASS = /** @type {const} */ (['upper', 'upper', 'cello']);
  * @param {string|null|undefined} instrumentStr
  * @returns {'upper'|'cello'|null}
  */
+// Instrument annotations arrive as free text from two places: an
+// "(instrument)" suffix on a player slot, and each entry in the Others?
+// column. Loggers write terse codes (vc, va2) AND spelled-out names (cello,
+// viola), so both readers below share these patterns instead of each growing
+// its own prefix checks and drifting apart. The (?![a-z]) guards are what
+// stop "c" from swallowing "clarinet" and "va" from swallowing "violin".
+// Unnumbered violin (violin/vn/vln) deliberately matches neither: it says
+// nothing about which violin seat, so it buckets as OTHER rather than guess.
+const CELLO_INSTRUMENT = /^(?:vc|vlc|cello|violoncello|c)(?![a-z])/;
+const VIOLA_INSTRUMENT = /^(?:vla|viola|va)(?![a-z])/;
+
+// "asst v2" / "ast v2" is a v2 seat — drop the assistant prefix before matching.
+/** @param {string} s */
+function normalizeInstrument(s) {
+    return s.toLowerCase().trim().replace(/^as?st\s+/, '');
+}
+
 export function classOf(instrumentStr) {
     if (!instrumentStr) return null;
-    return instrumentStr.toLowerCase().trim().startsWith('vc') ? 'cello' : 'upper';
+    return CELLO_INSTRUMENT.test(normalizeInstrument(instrumentStr)) ? 'cello' : 'upper';
 }
 
 // `aliases` defaults to the deployment's real table (gitignored
@@ -78,6 +97,22 @@ export function stripParens(name) {
     if (!name) return name;
     const m = name.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
     return m ? m[1].trim() : name;
+}
+
+// Pull the "(instrument)" suffix off a player-slot value, mirroring the
+// Others?-entry shape: inside the parens the first comma separates the
+// instrument code from a free-form comment, so "Alice Hart (vc, doubling)"
+// yields "vc". Returns null when the slot carries no annotation.
+/**
+ * @param {string|null|undefined} name
+ * @returns {string|null}
+ */
+export function instrumentFromSlot(name) {
+    const m = (name || '').match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+    if (!m) return null;
+    const inside = m[2];
+    const commaIdx = inside.indexOf(',');
+    return (commaIdx >= 0 ? inside.slice(0, commaIdx) : inside).trim() || null;
 }
 
 // Split `s` on `,` or `;` at paren depth 0 only — so commas inside a
@@ -133,9 +168,17 @@ export function parseOthers(others) {
  */
 export function normalizePlayerNames(data, aliases = PLAYER_ALIASES) {
     data.forEach(d => {
-        d.player1 = canonicalize(stripParens(d.player1), SLOT_CLASS[0], aliases);
-        d.player2 = canonicalize(stripParens(d.player2), SLOT_CLASS[1], aliases);
-        d.player3 = canonicalize(stripParens(d.player3), SLOT_CLASS[2], aliases);
+        // A slot may carry an "(instrument)" annotation. When it does, it wins
+        // over the slot's positional class: ensembles the quartet layout has no
+        // seats for — piano trios and quartets above all — put people in
+        // whichever column is free, so a pianist or cellist can land in an
+        // upper slot. Classifying by what they played beats classifying by
+        // which column they landed in. Unannotated slots are unchanged.
+        const slotInstruments = [d.player1, d.player2, d.player3].map(instrumentFromSlot);
+        d.playerInstruments = slotInstruments;
+        d.player1 = canonicalize(stripParens(d.player1), classOf(slotInstruments[0]) ?? SLOT_CLASS[0], aliases);
+        d.player2 = canonicalize(stripParens(d.player2), classOf(slotInstruments[1]) ?? SLOT_CLASS[1], aliases);
+        d.player3 = canonicalize(stripParens(d.player3), classOf(slotInstruments[2]) ?? SLOT_CLASS[2], aliases);
         d.othersList = parseOthers(d.others).map(o => {
             const cls = classOf(o.instrument);
             // o.name is a non-empty string, so canonicalize returns a string
@@ -416,9 +459,9 @@ const SLOT_TO_PART = {
  */
 export function partFromInstrument(instrument) {
     if (!instrument) return 'OTHER';
-    const s = instrument.toLowerCase().trim().replace(/^as?st\s+/, '');
-    if (s.startsWith('vc')) return 'VC';
-    if (s.startsWith('vla') || s.startsWith('va')) return 'VA';
+    const s = normalizeInstrument(instrument);
+    if (CELLO_INSTRUMENT.test(s)) return 'VC';
+    if (VIOLA_INSTRUMENT.test(s)) return 'VA';
     if (s.startsWith('v1')) return 'V1';
     if (s.startsWith('v2')) return 'V2';
     return 'OTHER';
@@ -474,11 +517,15 @@ export function computePartBreakdownPerMusician(rows) {
     };
     rows.forEach(d => {
         const slotParts = SLOT_TO_PART[d.part];
-        if (slotParts) {
-            [d.player1, d.player2, d.player3].forEach((name, i) => {
-                if (name && name !== '-') bump(name, slotParts[i]);
-            });
-        }
+        [d.player1, d.player2, d.player3].forEach((name, i) => {
+            if (!name || name === '-') return;
+            // An annotated slot states its own part; fall back to the seat the
+            // quartet layout implies. A row with neither contributes nothing,
+            // exactly as before.
+            const annotated = d.playerInstruments?.[i];
+            if (annotated) bump(name, partFromInstrument(annotated));
+            else if (slotParts) bump(name, slotParts[i]);
+        });
         d.othersList?.forEach(o => {
             if (o.name) bump(o.name, partFromInstrument(o.instrument));
         });

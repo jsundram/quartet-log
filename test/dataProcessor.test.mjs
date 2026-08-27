@@ -6,6 +6,7 @@ import {
     classOf,
     canonicalize,
     stripParens,
+    instrumentFromSlot,
     normalizePlayerNames,
     peopleKeysFor,
     computeAggregateStats,
@@ -1297,5 +1298,99 @@ describe('extractUniquePlayers', () => {
     it('never lists "-" (empty slot), no matter how often it appears', () => {
         const players = extractUniquePlayers(many('V1', '-', 'Bob', 'Carol'));
         assert.deepEqual(players, ['Bob.va', 'Carol.vc']);
+    });
+});
+
+// Ensembles the string-quartet layout has no seats for — piano trios and
+// quartets above all — force people into whichever column is free, so a
+// pianist or a cellist can land in an "upper" slot. An "(instrument)"
+// annotation on the slot is how a logger says what was actually played.
+describe('instrument annotations on player slots', () => {
+    const mkRow = (overrides = {}) => ({
+        player1: '', player2: '', player3: '', others: '', ...overrides,
+    });
+
+    describe('instrumentFromSlot', () => {
+        it('pulls the instrument out of a slot annotation', () => {
+            assert.equal(instrumentFromSlot('Alice Hart (p)'), 'p');
+            assert.equal(instrumentFromSlot('Alice Hart (vc)'), 'vc');
+        });
+
+        it('keeps only the instrument when a comment follows the first comma', () => {
+            assert.equal(instrumentFromSlot('Alice Hart (vc, doubling)'), 'vc');
+        });
+
+        it('returns null for an unannotated slot', () => {
+            assert.equal(instrumentFromSlot('Alice Hart'), null);
+            assert.equal(instrumentFromSlot('-'), null);
+            assert.equal(instrumentFromSlot(''), null);
+            assert.equal(instrumentFromSlot(null), null);
+        });
+    });
+
+    it('lets a slot annotation override the slot class when aliasing', () => {
+        // Jo in an upper slot would normally alias to Jo Alpha; annotating the
+        // slot "(vc)" says this is the cellist, so the cello mapping wins.
+        const data = [mkRow({ player2: 'Jo (vc)', player3: 'Jo' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.equal(data[0].player2, 'Jo Beta');
+        assert.equal(data[0].player3, 'Jo Beta');
+    });
+
+    it('leaves unannotated slots on their positional class', () => {
+        const data = [mkRow({ player2: 'Jo', player3: 'Jo' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.equal(data[0].player2, 'Jo Alpha');
+        assert.equal(data[0].player3, 'Jo Beta');
+    });
+
+    it('records the parsed annotations, null where a slot had none', () => {
+        const data = [mkRow({ player1: 'Alice Hart (p)', player2: 'Bob' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.deepEqual(data[0].playerInstruments, ['p', null, null]);
+    });
+
+    it('counts an annotated slot under the annotated part, not the seat', () => {
+        // A piano quartet logged from the violin chair: slot 3 is nominally VC,
+        // but the pianist sits there. Without the annotation Alice would be
+        // counted as a cellist.
+        const data = [mkRow({ part: 'V1', player2: 'Bob', player3: 'Alice Hart (p)' })];
+        normalizePlayerNames(data, ALIASES);
+        const breakdown = computePartBreakdownPerMusician(data);
+        assert.equal(breakdown.get('Alice Hart').OTHER, 1);
+        assert.equal(breakdown.get('Alice Hart').VC, 0);
+        // The unannotated slot still follows SLOT_TO_PART (V1 → [V2, VA, VC]).
+        assert.equal(breakdown.get('Bob').VA, 1);
+    });
+});
+
+describe('spelled-out instrument names', () => {
+    it('treats written-out cello the same as the vc code', () => {
+        for (const s of ['vc', 'cello', 'violoncello', 'c', 'VC2', 'vlc']) {
+            assert.equal(classOf(s), 'cello', s);
+            assert.equal(partFromInstrument(s), 'VC', s);
+        }
+    });
+
+    it('treats written-out viola the same as the va code', () => {
+        for (const s of ['va', 'vla', 'viola', 'va2', 'vla2']) {
+            assert.equal(partFromInstrument(s), 'VA', s);
+        }
+    });
+
+    it('does not let "c" swallow clarinet', () => {
+        assert.equal(classOf('clarinet'), 'upper');
+        assert.equal(partFromInstrument('clarinet'), 'OTHER');
+    });
+
+    it('does not let "va" swallow violin', () => {
+        assert.equal(partFromInstrument('violin'), 'OTHER');
+        assert.equal(partFromInstrument('vln'), 'OTHER');
+    });
+
+    it('buckets keyboard shorthand as OTHER', () => {
+        for (const s of ['p', 'pf', 'pno', 'piano']) {
+            assert.equal(partFromInstrument(s), 'OTHER', s);
+        }
     });
 });

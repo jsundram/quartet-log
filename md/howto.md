@@ -46,7 +46,47 @@
 
 3. Repeat.
 
-## 5. View your log
+## 5. Logging anything that isn't a string quartet
+
+The three player fields model a string quartet: you take one seat, and the
+other three go in **Player 1**, **Player 2**, **Player 3** — the seats your own
+part implies. Playing V1 means Player 1 is V2, Player 2 is the violist, and
+Player 3 is the cellist.
+
+Piano trios, piano quartets, quintets and sextets don't fit that shape, so
+there are two conventions to keep them straight.
+
+**Use `-` for a seat the work doesn't have.** A piano trio has no second
+violin and no viola, so playing violin in one looks like this:
+
+| Which Part | Player 1 | Player 2 | Player 3 | Others? |
+|---|---|---|---|---|
+| `V1` | `-` | `-` | the cellist | `Alice Hart (p)` |
+
+**Say what someone played with `(instrument)`.** Anyone whose instrument isn't
+the one their seat implies needs an annotation — most often the pianist, but
+also a cellist you had to seat in a violin field because the pianist took the
+cello field. The annotation wins over the seat, so this is correct even though
+the pianist is in the cello field:
+
+| Which Part | Player 1 | Player 2 | Player 3 | Others? |
+|---|---|---|---|---|
+| `V1` | the violist | the cellist `(vc)` | the pianist `(p)` | |
+
+Both spellings and shorthands work — `p`, `pf` and `piano` are the same thing,
+as are `vc` and `cello`, and `va`, `vla` and `viola`. You can add a comment
+after the instrument: `Alice Hart (vc, doubling)` keeps the `vc` and ignores
+the rest.
+
+Pianists, clarinettists and other non-string players are counted as people you
+played with, but they're left out of the V1/V2/VA/VC part breakdowns, which
+only make sense for string parts.
+
+If you'd rather not annotate, put the extra player in **Others?** instead —
+`Alice Hart (p)` there works exactly the same way and needs no `-` juggling in
+the seats.
+
+## 6. View your log
 
 1. In your response sheet, go to **File → Share → Publish to web**. Set the format to **Comma-separated values (.csv)** and click **Publish**. Copy the URL it gives you.
 
