@@ -23,11 +23,66 @@ Usage: python scripts/audit_fillforward.py [path/to/data-raw.csv]
 from __future__ import annotations
 
 import csv
+import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
 
 SESSION_WINDOW_HOURS = 4  # mirrors SESSION_WINDOW_HOURS in src/dataProcessor.js
+CATALOG = Path(__file__).resolve().parent.parent / "static/data/all_works.json"
+# Parts that only exist in an ensemble larger than a quartet. A row naming one
+# of these in Others? is a quintet/sextet; the next row need not be.
+EXTRA_STRING_RE = re.compile(r"^(?:va|vla|vc|v)\s*[2-9]\b|^v[3-9]\b", re.I)
+# A comment scoping the entry to particular movements — "(echoing v2, on I)",
+# "(v1, shadowing on II, III)" — describes what someone did in THIS piece. It
+# is the opposite of a standing arrangement, so it must not propagate.
+SCOPED_RE = re.compile(r"\bon\s+[IVXivx]+\b|\bmvmts?\b|\bmovements?\b|\bonly\b",
+                       re.I)
+
+
+def load_catalog() -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
+    """(works needing 5+ players, works that are plain quartets).
+
+    The catalog already knows: the "5+" tab lists the quintet and sextet
+    repertoire, every other composer key lists that composer's quartets.
+    """
+    if not CATALOG.exists():
+        return set(), set()
+    data = json.loads(CATALOG.read_text())
+    big, quartets = set(), set()
+    for key, entries in data.items():
+        if key == "5+":
+            for group in entries:
+                for composer, titles in group.items():
+                    big.update((composer, title) for title in titles)
+        elif isinstance(entries, list) and entries and isinstance(entries[0], str):
+            quartets.update((key, title) for title in entries)
+    return big, quartets
+
+
+def needs_the_extra_player(row: dict, others: str,
+                           big: set, quartets: set) -> bool:
+    """Would the continuation row's work still seat whoever was in Others??
+
+    Suppress only on positive evidence: the work is a known quartet AND every
+    dropped entry is an extra-string part that a quartet has no seat for. A
+    sextet followed by a quartet really does lose its second viola, and
+    reporting that as a mistake sends someone to "fix" correct data. Anything
+    unrecognised is still reported — a pianist is not inferable this way, and
+    "Horn Trio (with cello)" names no keyboard while needing one.
+    """
+    work = ((row.get("Composer") or "").strip(), (row.get("Work Title") or "").strip())
+    if work in big or work not in quartets:
+        return True
+    parts = []
+    for frag in re.split(r"[;,](?![^(]*\))", others):
+        m = re.match(r"^.+?\(([^)]+)\)", frag.strip())
+        inside = m.group(1) if m else ""
+        if SCOPED_RE.search(inside):
+            return False
+        parts.append(inside.split(",")[0].strip())
+    return not (parts and all(EXTRA_STRING_RE.match(p) for p in parts))
 
 
 def load(path: Path) -> list[dict]:
@@ -61,6 +116,7 @@ def main() -> None:
               file=sys.stderr)
         sys.exit(1)
     rows = load(path)
+    big, quartets = load_catalog()
 
     sessions: dict[str, list[dict]] = {}
     order: list[str] = []
@@ -72,7 +128,8 @@ def main() -> None:
             gap = (row["_t"] - anchor["_t"]).total_seconds() / 3600
             anchor_others = (anchor.get("Others?") or "").strip()
             if blank and not others and anchor_others \
-                    and 0 <= gap < SESSION_WINDOW_HOURS:
+                    and 0 <= gap < SESSION_WINDOW_HOURS \
+                    and needs_the_extra_player(row, anchor_others, big, quartets):
                 key = label(anchor)
                 if key not in sessions:
                     sessions[key] = []
