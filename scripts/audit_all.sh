@@ -82,14 +82,14 @@ rule "SUMMARY"
 printf '  %-46s %s\n' \
   "bare names with 2+ candidates (NEEDS MEMORY)" "$(count 'bare names in the sheet with 2\+ candidates' "$OUT/aliases.txt")" \
   "aliases keyed on an ambiguous first name" "$(count 'aliases keyed on an ambiguous first name' "$OUT/aliases.txt")"
-# Deliberately not taken from the run above: on the processed export every
-# canonical name is present by construction, so the count is always 0 and
-# would read as "nothing to see". Only the raw sheet can answer it.
+# Taken from the raw sheet, not the run above: on a canonicalized export
+# every canonical name is present by construction, so both counts are
+# always 0 there and would read as "nothing to see".
+RAWALIAS=$("${PY[@]}" scripts/audit_aliases.py archive/data-raw.csv 2>/dev/null || true)
+n_of() { printf '%s' "$RAWALIAS" | grep -E "$1" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
 printf '  %-46s %s\n' \
-  "aliases whose canonical name is absent" \
-  "$("${PY[@]}" scripts/audit_aliases.py archive/data-raw.csv 2>/dev/null \
-     | grep -E 'aliases whose canonical name is absent' | head -1 \
-     | grep -oE '\([0-9]+\)' | tr -d '()') (from the raw sheet)"
+  "aliases that are a surname's only record" "$(n_of 'ONLY record of a surname') (back up src/aliases.js)" \
+  "aliases pointing at an unrelated name" "$(n_of 'absent and unrelated')"
 printf '  %-46s %s\n' \
   "under-logged, ensemble stated (NEEDS MEMORY)" "$(count 'title states the ensemble' "$OUT/ensembles.txt")" \
   "piano works with nobody marked at the keyboard" "$(count 'UNANNOTATED PIANO WORKS' "$OUT/ensembles.txt")"

@@ -280,11 +280,27 @@ def report_ambiguity(appearances: dict[tuple[str, str], list[list[str]]]) -> Non
         for cls, canon in mapping.items()
         if canon not in present
     )
-    print(f"\n-- aliases whose canonical name is absent from the sheet ({len(dangling)}) --")
-    print("   Renamed or respelled in the data but not here?")
-    if not dangling:
+    # Two very different things land here. Recording a surname the sheet never
+    # had is the point of the table for anyone logged by first name only, and
+    # the canonical name reading as "<key> <surname>" is its signature. A
+    # canonical name unrelated to the key is either a nickname or a spelling
+    # that drifted in the data, and only the second is a bug — so they are
+    # split rather than piled into one count nobody reads.
+    expected = [(k, c, n) for k, c, n in dangling
+                if n.lower().startswith(k.lower() + " ")]
+    suspect = [row for row in dangling if row not in expected]
+    print(f"\n-- aliases that are the ONLY record of a surname ({len(expected)}) --")
+    print("   Expected for anyone logged by first name only. Back this file up:")
+    print("   it is gitignored, so these surnames exist nowhere else.")
+    if not expected:
         print("   (none)")
-    for key, cls, canon in dangling:
+    for key, cls, canon in expected:
+        print(f"   {key!r:18s} [{cls:5s}] -> {canon!r}")
+    print(f"\n-- aliases whose canonical name is absent and unrelated ({len(suspect)}) --")
+    print("   A nickname, or a spelling that changed in the data but not here.")
+    if not suspect:
+        print("   (none)")
+    for key, cls, canon in suspect:
         near = sorted(full_by_first.get(base_token(canon), ()))
         hint = f"   did you mean: {', '.join(near)}" if near else ""
         print(f"   {key!r:18s} [{cls:5s}] -> {canon!r}{hint}")
