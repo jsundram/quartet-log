@@ -83,8 +83,8 @@ printf '  %-46s %s\n' \
   "bare names with 2+ candidates (NEEDS MEMORY)" "$(count 'bare names in the sheet with 2\+ candidates' "$OUT/aliases.txt")" \
   "aliases keyed on an ambiguous first name" "$(count 'aliases keyed on an ambiguous first name' "$OUT/aliases.txt")"
 # Taken from the raw sheet, not the run above: on a canonicalized export
-# every canonical name is present by construction, so both counts are
-# always 0 there and would read as "nothing to see".
+# every live alias's canonical name is present by construction, so both
+# counts collapse to near-nothing there and would read as "nothing to see".
 RAWALIAS=$("${PY[@]}" scripts/audit_aliases.py archive/data-raw.csv 2>/dev/null || true)
 n_of() { printf '%s' "$RAWALIAS" | grep -E "$1" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
 printf '  %-46s %s\n' \

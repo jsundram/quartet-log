@@ -206,13 +206,22 @@ def report_ambiguity(appearances: dict[tuple[str, str], list[list[str]]]) -> Non
     """
     full_by_first: dict[str, set[str]] = defaultdict(set)
     bare_count: Counter = Counter()
+    # Two senses of "present", and hazard 3 needs both. `present` is what a
+    # human actually typed; `resolved` adds what each of those names becomes
+    # after normalizePlayerNames — the alias targets that are live by
+    # definition, since the key sits in the sheet driving them.
     present: set[str] = set()
+    resolved: set[str] = set()
     for (name, cls), apps in appearances.items():
         present.add(name)
+        resolved.add(EXISTING_ALIASES.get(name, {}).get(cls) or name)
         if len(name.split()) > 1:
             full_by_first[base_token(name)].add(name)
         else:
             bare_count[(name, cls)] += len(apps)
+    # Surnames the sheet writes down anywhere: the test for whether this
+    # gitignored file is the only place a canonical name's surname exists.
+    sheet_surnames = {n.split()[-1].lower() for n in present if len(n.split()) > 1}
 
     print("\n=== AMBIGUITY: first names that no longer identify one person ===")
     print("(Hazards the variant grouping above cannot see.)")
@@ -282,13 +291,23 @@ def report_ambiguity(appearances: dict[tuple[str, str], list[list[str]]]) -> Non
     )
     # Two very different things land here. Recording a surname the sheet never
     # had is the point of the table for anyone logged by first name only, and
-    # the canonical name reading as "<key> <surname>" is its signature. A
-    # canonical name unrelated to the key is either a nickname or a spelling
-    # that drifted in the data, and only the second is a bug — so they are
+    # a surname written nowhere in the sheet is its signature — nicknames
+    # ("Bo" -> "Carol Hart") included, since the file is just as much the
+    # only record of those. A canonical name whose surname the sheet DOES
+    # carry is a spelling that drifted, and only that is a bug — so they are
     # split rather than piled into one count nobody reads.
     expected = [(k, c, n) for k, c, n in dangling
-                if n.lower().startswith(k.lower() + " ")]
-    suspect = [row for row in dangling if row not in expected]
+                if n.split()[-1].lower() not in sheet_surnames]
+    # A canonical name the sheet resolves to is a working alias, not a broken
+    # one — the normal shape of a spelling normalization ("Carol Hart"
+    # logged, "Caro Hart" canonical) leaves the target absent from the raw
+    # sheet by design. Reporting those sends you to delete a live alias, the
+    # failure this whole section was added to prevent. The surname bucket
+    # above deliberately keeps the literal test: its question is whether the
+    # SHEET records the surname at all, and an alias resolving to it is
+    # exactly the case where nothing but this file does.
+    suspect = [row for row in dangling
+               if row not in expected and row[2] not in resolved]
     print(f"\n-- aliases that are the ONLY record of a surname ({len(expected)}) --")
     print("   Expected for anyone logged by first name only. Back this file up:")
     print("   it is gitignored, so these surnames exist nowhere else.")
