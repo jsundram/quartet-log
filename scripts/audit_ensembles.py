@@ -50,16 +50,25 @@ ANNOT_KEYBOARD_RE = re.compile(
 
 
 def expected_size(row: dict) -> tuple[int, bool]:
-    """(people the work needs, whether the title said so explicitly).
+    """(people the work needs, whether it was stated rather than assumed).
 
-    Untitled works are the log's bread and butter — numbered string quartets
-    like "20#4" — so absent an ensemble word we assume a quartet, but flag the
-    assumption so those rows can be triaged separately from the certain ones.
+    Work Title is often a catalogue number — "K478", "20#4" — with the
+    ensemble named only in Comments ("Piano Quartet"), so both fields are
+    searched. Absent any ensemble word we assume a quartet, which is the log's
+    bread and butter, but flag the assumption so those rows triage separately.
     """
-    m = ENSEMBLE_RE.search(row.get("Work Title") or "")
-    if m:
-        return ENSEMBLE_SIZES[m.group(0).lower()], True
+    for field in ("Work Title", "Comments"):
+        m = ENSEMBLE_RE.search(row.get(field) or "")
+        if m:
+            return ENSEMBLE_SIZES[m.group(0).lower()], True
     return 4, False
+
+
+def mentions_keyboard(row: dict) -> bool:
+    """A keyboard work? Same reasoning as expected_size: the giveaway is as
+    often in Comments as in Work Title."""
+    return any(TITLE_KEYBOARD_RE.search(row.get(f) or "")
+               for f in ("Work Title", "Comments"))
 
 
 def logged_people(row: dict) -> int:
@@ -121,8 +130,7 @@ def main() -> None:
         got = logged_people(row)
         if got < need:
             (explicit_short if stated else assumed_short).append((row, need, got))
-        if TITLE_KEYBOARD_RE.search((row.get("Work Title") or "")) \
-                and not has_keyboard_annotation(row):
+        if mentions_keyboard(row) and not has_keyboard_annotation(row):
             unannotated.append(row)
 
     print(f"Rows: {len(rows)}\n")
