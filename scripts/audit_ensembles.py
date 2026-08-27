@@ -127,6 +127,16 @@ def has_keyboard_annotation(row: dict) -> bool:
     return any(i and ANNOT_KEYBOARD_RE.match(i) for i in instruments)
 
 
+def datestamp(row: dict) -> str:
+    """Date only, from the export's "M/D/YYYY H:mm:ss" Timestamp.
+
+    csvFormat.formatTimestamp writes month, day and hour unpadded, so a fixed
+    slice cuts into the time for most of the year. The date is the only thing
+    that finds the row in the sheet, so split on the space instead.
+    """
+    return (row.get("Timestamp") or "").split(" ")[0]
+
+
 def describe(row: dict) -> str:
     slots = " | ".join(
         (row.get(f"Player {i}") or "").strip() or "∅" for i in (1, 2, 3))
@@ -156,7 +166,7 @@ def main() -> None:
     print(f"=== UNDER-LOGGED: title states the ensemble ({len(explicit_short)}) ===")
     print("Someone is missing from these rows. Reconstruct only what you're sure of.\n")
     for row, need, got in explicit_short:
-        print(f"  {(row.get('Timestamp') or '')[:10]:10s} "
+        print(f"  {datestamp(row):10s} "
               f"{(row.get('Composer') or ''):14.14s} "
               f"{(row.get('Work Title') or ''):26.26s} needs {need}, logged {got}")
         print(f"             {describe(row)}")
@@ -167,7 +177,7 @@ def main() -> None:
     by_work: Counter = Counter()
     for row in unannotated:
         by_work[(row.get("Composer"), row.get("Work Title"))] += 1
-        print(f"  {(row.get('Timestamp') or '')[:10]:10s} "
+        print(f"  {datestamp(row):10s} "
               f"{(row.get('Composer') or ''):14.14s} "
               f"{(row.get('Work Title') or ''):26.26s} {describe(row)}")
 
