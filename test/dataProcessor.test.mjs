@@ -1326,6 +1326,33 @@ describe('instrument annotations on player slots', () => {
             assert.equal(instrumentFromSlot(''), null);
             assert.equal(instrumentFromSlot(null), null);
         });
+
+        it('ignores a parenthetical that is a note, not an instrument', () => {
+            // classOf answers 'upper' for any non-empty string, so honoring
+            // these would silently move the player off their seat.
+            for (const s of ['(sub)', '(guest)', '(first time)', "(Bob's teacher)"]) {
+                assert.equal(instrumentFromSlot(`Alice Hart ${s}`), null, s);
+            }
+        });
+
+        it('recognizes spelled-out and non-string instruments', () => {
+            assert.equal(instrumentFromSlot('Alice Hart (cello)'), 'cello');
+            assert.equal(instrumentFromSlot('Alice Hart (viola)'), 'viola');
+            assert.equal(instrumentFromSlot('Alice Hart (violin)'), 'violin');
+            assert.equal(instrumentFromSlot('Alice Hart (clarinet)'), 'clarinet');
+            assert.equal(instrumentFromSlot('Alice Hart (asst v2)'), 'asst v2');
+        });
+    });
+
+    it('leaves a note-annotated slot on its positional class', () => {
+        // "Jo (sub)" in the cello slot is still the cellist: reading 'sub' as
+        // an instrument would alias it to the upper-class Jo — a different
+        // person — and drop the row out of the VC column.
+        const data = [mkRow({ part: 'V1', player3: 'Jo (sub)' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.equal(data[0].player3, 'Jo Beta');
+        assert.deepEqual(data[0].playerInstruments, [null, null, null]);
+        assert.equal(computePartBreakdownPerMusician(data).get('Jo Beta').VC, 1);
     });
 
     it('lets a slot annotation override the slot class when aliasing', () => {
@@ -1361,6 +1388,19 @@ describe('instrument annotations on player slots', () => {
         assert.equal(breakdown.get('Alice Hart').VC, 0);
         // The unannotated slot still follows SLOT_TO_PART (V1 → [V2, VA, VC]).
         assert.equal(breakdown.get('Bob').VA, 1);
+    });
+
+    it('keys the Player dropdown by the annotated part, not the seat', () => {
+        // The dropdown must agree with the breakdown above: listing the
+        // pianist as "Alice Hart.vc" would let the VC part button claim she
+        // played cello on the very row the charts call OTHER.
+        const data = Array.from({ length: PLAYER_DROPDOWN_MIN_ENTRIES }, () =>
+            mkRow({ part: 'V1', player2: 'Bob', player3: 'Alice Hart (p)' }));
+        normalizePlayerNames(data, ALIASES);
+        const players = extractUniquePlayers(data);
+        assert.ok(players.includes('Alice Hart.other'));
+        assert.ok(!players.includes('Alice Hart.vc'));
+        assert.ok(players.includes('Bob.va'));
     });
 });
 
