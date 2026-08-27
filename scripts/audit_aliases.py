@@ -217,6 +217,26 @@ def report_ambiguity(appearances: dict[tuple[str, str], list[list[str]]]) -> Non
     print("\n=== AMBIGUITY: first names that no longer identify one person ===")
     print("(Hazards the variant grouping above cannot see.)")
 
+    # Guard against the trap this section fell into once: archive/data.csv is
+    # the PROCESSED export, written after normalizePlayerNames has already
+    # replaced every short form with its canonical name. Measured against it, a
+    # working alias looks dead — its bare form is gone precisely because the
+    # alias did its job — and "pruning dead aliases" then silently un-normalizes
+    # the data on the next fetch. Alias liveness can only be read from the raw
+    # sheet (scripts/fetch_raw.sh -> archive/data-raw.csv).
+    keys = [k for k in EXISTING_ALIASES if len(k.split()) == 1]
+    if keys:
+        unseen = sum(
+            1 for k in keys
+            if not any(n == k for n, _ in appearances)
+            and any(n == c for m in [EXISTING_ALIASES[k]] for c in m.values()
+                    for n, _ in appearances)
+        )
+        if unseen > len(keys) / 2:
+            print(f"\n  !! {unseen} of {len(keys)} alias keys are absent while their canonical")
+            print("     names are present — this input looks like the CANONICALIZED export.")
+            print("     Re-run against archive/data-raw.csv before judging any alias dead.")
+
     # 1. Bare names still in the sheet that several full names could match.
     unresolvable = sorted(
         (
