@@ -82,9 +82,15 @@ Pianists, clarinettists and other non-string players are counted as people you
 played with, but they're left out of the V1/V2/VA/VC part breakdowns, which
 only make sense for string parts.
 
-If you'd rather not annotate, put the extra player in **Others?** instead —
-`Alice Hart (p)` there works exactly the same way and needs no `-` juggling in
-the seats.
+You can also put the extra player in **Others?** instead — `Alice Hart (p)`
+there is read the same way. One difference decides which to reach for: the
+player fields carry forward to the next entry in a session, so a slot you
+leave blank repeats whoever was there before, annotation included. **Others?
+does not carry forward.** Logging six movements with the pianist in Others?
+means typing them six times, while `Alice Hart (p)` in a player field is typed
+once. Put them in a player field for a long session, and in Others? when the
+seats are already full — a piano quintet, say, where four string players fill
+every slot.
 
 ## 6. View your log
 
