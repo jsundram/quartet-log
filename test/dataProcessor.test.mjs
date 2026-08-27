@@ -133,10 +133,12 @@ describe('canonicalize', () => {
         assert.equal(canonicalize(undefined, 'upper', ALIASES), undefined);
     });
 
-    it('defaults its aliases parameter (callable with two args)', () => {
-        // With no injected table this reads the resolved src/aliases.js —
-        // possibly the empty stub — so only passthrough is asserted.
-        assert.equal(canonicalize('Zelda', 'upper'), 'Zelda');
+    it('requires an alias table rather than defaulting to one', () => {
+        // The table used to default to the deployment's real src/aliases.js,
+        // so a caller who forgot it read real names locally and the empty
+        // stub in CI. Throwing is what makes that impossible to do silently.
+        assert.throws(() => canonicalize('Zelda', 'upper'), TypeError);
+        assert.equal(canonicalize('Zelda', 'upper', {}), 'Zelda');
     });
 });
 
@@ -1023,7 +1025,7 @@ describe('prepareRows', () => {
 
 describe('empty and all-incomplete datasets', () => {
     it('fillForward returns empty input unchanged without throwing', () => {
-        assert.deepEqual(fillForward([]), []);
+        assert.deepEqual(fillForward([], {}), []);
     });
 
     it('the full pure pipeline yields [] for an all-partial-movement sheet', () => {
@@ -1035,7 +1037,7 @@ describe('empty and all-incomplete datasets', () => {
             rawRow({ 'Timestamp': '1/15/2024 11:00:00', 'Work Title': '76#2:II,III' }),
         ];
         const { rows } = prepareRows(raw.map(processRow));
-        const processed = normalizePlayerNames(fillForward(rows));
+        const processed = normalizePlayerNames(fillForward(rows, {}), {});
         assert.deepEqual(processed.filter(d => !d.work.incomplete), []);
     });
 
@@ -1043,7 +1045,7 @@ describe('empty and all-incomplete datasets', () => {
         const raw = [rawRow({ 'Timestamp': 'not a date' })];
         const { rows, dropped } = prepareRows(raw.map(processRow));
         assert.equal(dropped, 1);
-        const processed = normalizePlayerNames(fillForward(rows));
+        const processed = normalizePlayerNames(fillForward(rows, {}), {});
         assert.deepEqual(processed.filter(d => !d.work.incomplete), []);
     });
 });
@@ -1064,7 +1066,7 @@ describe('fillForward', () => {
             ffRow(0, { player1: 'Freddy' }),
             ffRow(1, { player1: 'Fred' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].player1, 'Fred');
     });
 
@@ -1073,7 +1075,7 @@ describe('fillForward', () => {
             ffRow(0, { player1: 'Fred Brown' }),
             ffRow(1, { player1: 'Fred' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].player1, 'Fred Brown');
     });
 
@@ -1082,14 +1084,14 @@ describe('fillForward', () => {
             ffRow(0, { player1: 'Fred Brown' }),
             ffRow(3.99, { player1: 'Fred' }),
         ];
-        fillForward(inWindow);
+        fillForward(inWindow, {});
         assert.equal(inWindow[1].player1, 'Fred Brown');
 
         const outOfWindow = [
             ffRow(0, { player1: 'Fred Brown' }),
             ffRow(4, { player1: 'Fred' }),
         ];
-        fillForward(outOfWindow);
+        fillForward(outOfWindow, {});
         assert.equal(outOfWindow[1].player1, 'Fred');
     });
 
@@ -1099,7 +1101,7 @@ describe('fillForward', () => {
             ffRow(1, { player1: '' }),
             ffRow(2, { player1: '' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].player1, 'Alice');
         assert.equal(data[2].player1, 'Alice');
     });
@@ -1109,7 +1111,7 @@ describe('fillForward', () => {
             ffRow(0, { player1: 'Alice' }),
             ffRow(5, { player1: '' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].player1, '');
     });
 
@@ -1121,7 +1123,7 @@ describe('fillForward', () => {
             ffRow(5, { player1: '' }),
             ffRow(5.5, { player1: 'Bob' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[2].player1, 'Bob');
     });
 
@@ -1131,7 +1133,7 @@ describe('fillForward', () => {
             ffRow(1),  // player1: '-'
             ffRow(2, { player1: 'Fred' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].player1, '-');
         assert.equal(data[2].player1, 'Fred Brown');
     });
@@ -1156,7 +1158,7 @@ describe('fillForward', () => {
             ffRow(2, { player1: 'Fred Brown' }),
             ffRow(0, { player1: 'Fred' }),  // 2 hours BEFORE the row above
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].player1, 'Fred');
     });
 
@@ -1165,7 +1167,7 @@ describe('fillForward', () => {
             ffRow(0, { location: 'Home' }),
             ffRow(1, { location: '' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].location, 'Home');
     });
 });

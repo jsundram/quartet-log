@@ -1,5 +1,4 @@
 // @ts-check
-import { PLAYER_ABBREVIATIONS, PLAYER_ALIASES } from './config.js';
 
 /**
  * Parsed "Work Title" cell (parseWork output).
@@ -98,16 +97,22 @@ function namesAnInstrument(instrumentStr) {
         || VIOLIN_INSTRUMENT.test(s) || OTHER_INSTRUMENT.test(s));
 }
 
-// `aliases` defaults to the deployment's real table (gitignored
-// src/aliases.js via config.js); tests inject placeholder fixtures so they
-// don't depend on its contents.
+// The name tables are arguments, never module state. This file used to
+// default them to the deployment's real tables (the gitignored src/aliases.js,
+// via config.js), which made every caller that omitted the argument read
+// whatever was on that machine: real people locally, the empty stub in CI. A
+// test could pass in one place and fail in the other for reasons no one could
+// see in the test. Now the wiring lives with the callers that know which
+// tables they mean — DataService.processData and scripts/fetch_processed.mjs
+// — and forgetting one throws instead of quietly reading personal data.
 /**
  * @param {string|null} name
  * @param {'upper'|'cello'|null} cls
- * @param {Record<string, import('./aliases.stub.js').AliasEntry>} [aliases]
+ * @param {Record<string, import('./aliases.stub.js').AliasEntry>} aliases
  * @returns {string|null}
  */
-export function canonicalize(name, cls, aliases = PLAYER_ALIASES) {
+export function canonicalize(name, cls, aliases) {
+    if (!aliases) throw new TypeError('canonicalize: pass an alias table (use {} for none)');
     if (!name) return name;
     return (cls && aliases[name]?.[cls]) ?? name;
 }
@@ -192,10 +197,11 @@ export function parseOthers(others) {
 
 /**
  * @param {Row[]} data
- * @param {Record<string, import('./aliases.stub.js').AliasEntry>} [aliases]
+ * @param {Record<string, import('./aliases.stub.js').AliasEntry>} aliases
  * @returns {Row[]}
  */
-export function normalizePlayerNames(data, aliases = PLAYER_ALIASES) {
+export function normalizePlayerNames(data, aliases) {
+    if (!aliases) throw new TypeError('normalizePlayerNames: pass an alias table (use {} for none)');
     data.forEach(d => {
         // A slot may carry an "(instrument)" annotation. When it does, it wins
         // over the slot's positional class: ensembles the quartet layout has no
@@ -782,10 +788,11 @@ function refersToPrevEntry(entry, prevEntry) {
 // window the way any negative number satisfies `hours < 4`.
 /**
  * @param {Row[]} data - MUST be in chronological order (see prepareRows)
- * @param {Record<string, string>} [abbreviations]
+ * @param {Record<string, string>} abbreviations
  * @returns {Row[]}
  */
-export function fillForward(data, abbreviations = PLAYER_ABBREVIATIONS) {
+export function fillForward(data, abbreviations) {
+    if (!abbreviations) throw new TypeError('fillForward: pass an abbreviation table (use {} for none)');
     if (!data.length) return data;
     ["player1", "player2", "player3", "location"].forEach(column => {
         let prev = data[0];
