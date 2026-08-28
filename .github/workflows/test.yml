@@ -32,6 +32,12 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # The audits are Python and node:test cannot see them; this is where
+      # every bug in the alias/ensemble tooling has surfaced, so it gates too.
+      # No new action to pin: uv-or-python3 fallback lives in the script.
+      - name: Run audit tests
+        run: npm run test:audits
+
       - name: Lint
         run: npm run lint
 

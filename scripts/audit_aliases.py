@@ -81,10 +81,18 @@ SLOT_CLASS = ["upper", "upper", "cello"]
 MIN_WRITTEN_IN_FULL = 5
 
 
+# Mirrors CELLO_INSTRUMENT in src/dataProcessor.js, including the (?![a-z])
+# guard that stops "c" swallowing "clarinet". Tested against the real classOf
+# in test/test_audits.py, which is what caught this reading "(cello)" as an
+# upper part while the app read it as a cellist.
+CELLO_INSTRUMENT = re.compile(r"^(?:vc|vlc|cello|violoncello|c)(?![a-z])", re.I)
+
+
 def class_of(instrument: str | None) -> str | None:
     if not instrument:
         return None
-    return "cello" if instrument.lower().strip().startswith("vc") else "upper"
+    s = instrument.lower().strip().replace("asst ", "").replace("ast ", "")
+    return "cello" if CELLO_INSTRUMENT.match(s) else "upper"
 
 
 def slot_annotation_classes(values: set[str]) -> dict[str, str]:
