@@ -165,6 +165,17 @@ def test_bare_names_are_not_candidates():
     assert by_first[("alice", "upper")] == {"Alice Hart"}
 
 
+def test_nobody_is_their_own_teammate():
+    """Someone written in a slot AND in Others? — how the rows that overflow
+    the quartet layout get logged — must not land in their own circle, or a
+    bare name beside its own full form scores a point for being the person
+    already named in that row."""
+    rows = [row(p1="Alice Hart", p2="Bob", others="Alice Hart (v2)")]
+    _b, circles, _w = aa.candidate_index(appearances_for(rows))
+    assert "Alice Hart" not in circles["Alice Hart"]
+    assert circles["Alice Hart"] == {"Bob"}
+
+
 def test_circles_and_written_come_from_the_rows_given():
     rows = [row(p1="Alice Hart", p2="Bob", p3="Carol"),
             row(p1="Alice Hart", p2="Dexter", p3="Carol")]
@@ -242,6 +253,28 @@ def test_a_tie_settles_nothing():
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Beryl", p3="Carol")])
     _c, unaliased, unsettled, _uv, _s, _rs = attribute(rows, {})
     assert unaliased == [] and len(unsettled) == 1
+
+
+def test_a_nickname_alias_competes_for_its_own_row():
+    """The table exists for people logged by first name only, nicknames
+    included, so its target may share no first token with the key.
+
+    Scoring only the first-token set left that person out of their own row:
+    `alias == top[1]` was unreachable, so a correctly aliased row could never
+    be `settled` and landed in `conflicts` — the one bucket whose copy tells
+    the reader to go and edit the sheet.
+    """
+    rows = ([row(ts=f"1/{i + 1}/2024 10:00:00", p1="Nick Adams",
+                 p2="Dexter", p3="Carol") for i in range(5)]
+            + [row(ts=f"2/{i + 1}/2024 10:00:00", p1="Nick Bailey",
+                   p2="Chantal", p3="Fernand") for i in range(5)]
+            + [row(ts=f"3/{i + 1}/2024 10:00:00", p1="Nicholas Hart",
+                   p2="Dexter", p3="Gaston") for i in range(5)]
+            + [row(ts="6/1/2024 10:00:00", p1="Nick", p2="Dexter", p3="Gaston")])
+    conflicts, unaliased, unsettled, _uv, settled, _rs = attribute(
+        rows, {"Nick": {"upper": "Nicholas Hart"}})
+    assert (conflicts, unaliased, unsettled) == ([], [], [])
+    assert settled == 1
 
 
 # ------------------------------------------------------ attribution guards --
@@ -413,6 +446,31 @@ def test_an_unannotated_others_entry_is_still_evidence():
 
 
 # ------------------------------------------------- report_ambiguity buckets --
+
+def test_an_unclassified_subject_prints_as_any_not_none(capsys):
+    """cls is None for an unannotated Others? entry — every namesake is in
+    play — and printing a literal [None] beside every other line's [upper] is
+    not what that means."""
+    rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
+            + [row(ts="6/1/2024 10:00:00", p1="Beryl", others="Alice")])
+    aa.report_ambiguity(list(zip(rows, rows)), appearances_for(rows), {})
+    out = capsys.readouterr().out
+    assert "[None]" not in out
+    assert "'Alice' [any]" in out
+
+
+def test_unruled_rivals_are_labelled_by_what_was_measured(capsys):
+    """The gate is `written < MIN_WRITTEN_IN_FULL`, so a rival named four
+    times in full is not "never written out" — and these are the lines whose
+    whole job is "confirm before editing"."""
+    rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
+            + attested("Alice Chan", "Dexter", n=4)
+            + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Beryl", p3="Carol")])
+    aa.report_ambiguity(list(zip(rows, rows)), appearances_for(rows), {})
+    out = capsys.readouterr().out
+    assert "never written out" not in out
+    assert f"fewer than {aa.MIN_WRITTEN_IN_FULL} times" in out
+
 
 def test_a_surname_the_sheet_never_writes_is_the_backup_bucket(capsys):
     """The gitignored table is the only record of it, which is a standing risk."""

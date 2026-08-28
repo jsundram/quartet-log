@@ -305,7 +305,13 @@ def collect_appearances(rows: list[dict],
     for row in rows:
         people = row_people(row, slot_classes)
         for name, cls, seat in people:
-            teammates = [n for n, _c, s2 in people if s2 != seat]
+            # Both tests are needed. The seat drops this very cell; the name
+            # drops the SAME person written again elsewhere in the row — a
+            # player slot and an Others? entry, which is how the rows that
+            # overflow the quartet layout get logged. Without it circles[X]
+            # contains X, and a bare name sitting beside its own full form
+            # scores a point for being the person already named in that row.
+            teammates = [n for n, _c, s2 in people if s2 != seat and n != name]
             # Everyone present counts as a teammate, but only a classified
             # entry gets its own (name, class) key — the alias table is keyed
             # on the pair, and an unannotated Others? name has no class the
@@ -376,7 +382,7 @@ def candidate_index(appearances: dict[tuple[str, str], list[list[str]]]
 def attribute_bare_entries(pairs: list[tuple[dict, dict]],
                            appearances: dict[tuple[str, str], list[list[str]]],
                            slot_classes: dict[str, str],
-                           ) -> tuple[list, list, list, int, int]:
+                           ) -> tuple[list, list, list, int, int, int]:
     """Decide, per entry, which of several same-first-name people a bare name is.
 
     "Which Alice was this" reads as a memory problem, and the name alone makes
@@ -438,6 +444,18 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
                 candidates = full_by_first.get((base_token(name), cls), set())
             if len(candidates) < 2:
                 continue
+            alias = EXISTING_ALIASES.get(name, {}).get(cls)
+            # The table exists for people logged by first name only, nicknames
+            # included, so its target may share no first token with the key:
+            # "Nick" -> "Nicholas Hart". Scoring only the first-token set left
+            # that person out of their own row, so `alias == top[1]` was
+            # unreachable and a correctly aliased row landed in `conflicts`,
+            # the one bucket that tells the reader to go edit the sheet. The
+            # ambiguity gate above still keys on the first-token set, so the
+            # alias joins a contest that already exists rather than starting
+            # one.
+            if alias:
+                candidates = candidates | {alias}
             # The sheet may already have answered this itself: fill-forward
             # expands a bare name that abbreviates the previous entry in the
             # session, and the app runs fillForward BEFORE normalizePlayerNames,
@@ -457,7 +475,6 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
             scored = sorted(((len([m for m in mates if m in circles[c]]), c)
                              for c in candidates), reverse=True)
             top, runner = scored[0], scored[1]
-            alias = EXISTING_ALIASES.get(name, {}).get(cls)
             why = [m for m in mates if m in circles[top[1]]]
             # A circle is only evidence if we have one. Someone almost always
             # logged bare has a thin explicit circle, so their FAILURE to match
@@ -604,12 +621,12 @@ def report_ambiguity(pairs: list[tuple[dict, dict]],
     if not conflicts:
         print("   (none)")
     for row, name, cls, alias, winner, why, unruled in conflicts:
-        print(f"   {describe_row(row)}  {name!r} [{cls}]")
+        print(f"   {describe_row(row)}  {name!r} [{cls or 'any'}]")
         print(f"   {'':10s} alias says {alias!r}, the room says {winner!r}"
               f"  (played with {', '.join(why[:3])})")
         if unruled:
             print(f"   {'':10s} could not rule out: {', '.join(unruled)}"
-                  " (never written out)")
+                  f" (written out fewer than {MIN_WRITTEN_IN_FULL} times)")
     print(f"\n-- bare entries the room resolves but no alias covers ({len(unaliased)}) --")
     print("   The app counts the bare form as its own person in every people")
     print("   stat. The room already names them, so this is mechanical: write")
@@ -617,18 +634,19 @@ def report_ambiguity(pairs: list[tuple[dict, dict]],
     if not unaliased:
         print("   (none)")
     for row, name, cls, winner, why, unruled in unaliased:
-        print(f"   {describe_row(row)}  {name!r} [{cls}] -> {winner!r}"
+        print(f"   {describe_row(row)}  {name!r} [{cls or 'any'}] -> {winner!r}"
               f"  (played with {', '.join(why[:3])})")
         if unruled:
             print(f"   {'':10s} could not rule out: {', '.join(unruled)}"
-                  " (never written out) — confirm before editing")
+                  f" (written out fewer than {MIN_WRITTEN_IN_FULL} times)"
+                  " — confirm before editing")
     print(f"\n-- bare entries nobody has decided ({len(unsettled)}) --")
     print("   No alias covers them and no circle matches, so these are open")
     print("   questions only you can close. Answer them first — they decay.")
     if not unsettled:
         print("   (none)")
     for row, name, cls, candidates in unsettled:
-        print(f"   {describe_row(row)}  {name!r} [{cls}]")
+        print(f"   {describe_row(row)}  {name!r} [{cls or 'any'}]")
         print(f"   {'':10s} candidates: {', '.join(candidates)}")
     print(f"\n   ({settled} more agree with the table and {unverified} have an alias"
           f" standing\n   that this run cannot second-guess; a further"
