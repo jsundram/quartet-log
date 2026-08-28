@@ -121,65 +121,50 @@ def label(row: dict) -> str:
 def session_window_report(rows: list[dict]) -> None:
     """Check SESSION_WINDOW_HOURS against the log instead of asserting it.
 
-    The window does NOT bound how long a session may run. It bounds the gap
-    between one logged piece and the next, so an all-day session logged as you
-    go never approaches it however long the day was — the measurement below is
-    of consecutive-entry gaps, not of sessions.
+    Measure what the constant actually governs. A blank cell is a ditto mark
+    and fillForward repeats it however long the gap, so continuation rows are
+    not what the window decides. What it decides is the shorthand rule: a
+    written short form is read as an abbreviation of the fuller name above it
+    only inside the window, and outside it stands as a name of its own. Too
+    long a window merges two people who share a first name; too short a one
+    splits one person in two.
 
-    What it costs to be too short is worse than one row. A continuation row
-    outside the window falls through to the branch that assigns the entry it
-    was given — an empty string — and that empty string becomes the anchor for
-    everything after it, so the rest of the day inherits nothing. A dinner
-    break can therefore blank an entire evening. Those follow-on rows are
-    counted here, since they are the real cost of the constant.
+    So the gaps that matter are the ones at which shorthand is actually
+    typed — a handful in this log, which is why the value is not delicate.
     """
-    gaps, outside = [], []
-    prev = None
-    for row in rows:
-        if prev is not None:
-            gap = (row["_t"] - prev["_t"]).total_seconds() / 3600
-            if gap >= 0 and all(s == "" for s in slots(row)):
-                gaps.append(gap)
-                if gap >= SESSION_WINDOW_HOURS:
-                    outside.append((gap, row))
-        prev = row
-    if not gaps:
-        return
-    ordered = sorted(gaps)
-
-    def pct(p: float) -> float:
-        return ordered[min(len(ordered) - 1, int(len(ordered) * p / 100))]
+    prefix_gaps = []
+    for column in ("Player 1", "Player 2", "Player 3"):
+        prev = None
+        for row in rows:
+            entry = (row.get(column) or "").strip()
+            if entry == "-":
+                continue
+            if prev is not None and entry and entry != prev[1]:
+                full = prev[1]
+                # Mirrors refersToPrevEntry in src/dataProcessor.js: a prefix
+                # ending at a word boundary, so "Grace" abbreviates "Grace
+                # Brown" but never "Gracie".
+                if full.startswith(entry) and len(full) > len(entry) \
+                        and full[len(entry)] == " ":
+                    prefix_gaps.append(
+                        ((row["_t"] - prev[0]).total_seconds() / 3600, row, full))
+            if entry:
+                prev = (row["_t"], entry)
 
     print(f"\n=== SESSION WINDOW (currently {SESSION_WINDOW_HOURS}h) ===")
-    print(f"Gaps between a continuation row and the one before it, {len(gaps)} of them.")
-    print("This is the gap between consecutive entries, not the length of a")
-    print("session: an all-day session logged as you go never approaches it.\n")
-    print("  median {:.2f}h   p90 {:.2f}h   p99 {:.2f}h   max {:.2f}h".format(
-        pct(50), pct(90), pct(99), max(ordered)))
-    print("\n  window   continuation rows left outside")
-    for w in (1, 2, 3, 4, 6, 12, 24):
-        n = sum(1 for g in ordered if g >= w)
-        mark = "  <- current" if w == SESSION_WINDOW_HOURS else ""
-        print(f"  {w:2d}h      {n:4d}  ({n / len(ordered):.1%}){mark}")
-    print("\nAnything in the flat part of that curve behaves alike; the value only")
-    print("matters where the curve is still falling.")
-
-    if not outside:
-        print("\nNo continuation row falls outside the window.")
+    print("The window governs one rule only: whether a written short form is")
+    print("read as an abbreviation of the fuller name above it. A blank cell")
+    print("repeats regardless of the gap, so continuation rows never depend on")
+    print("it — only the entries below do.\n")
+    if not prefix_gaps:
+        print("  No shorthand entries in this file; the value is unconstrained.")
         return
-    print(f"\n{len(outside)} row(s) fall outside it, and each blanks the rows after it")
-    print("until someone types a name again:")
-    index = {id(r): i for i, r in enumerate(rows)}
-    for gap, row in outside:
-        i = index[id(row)]
-        trailing = 0
-        for nxt in rows[i + 1:]:
-            if not all(s == "" for s in slots(nxt)):
-                break
-            trailing += 1
-        print(f"   after a {gap:.2f}h gap  {label(row)}")
-        if trailing:
-            print(f"   {'':17s} + {trailing} following row(s) inherit the blank")
+    inside = [g for g, _r, _f in prefix_gaps if g < SESSION_WINDOW_HOURS]
+    print(f"  {len(prefix_gaps)} shorthand entries; {len(inside)} inside the window.")
+    for gap, row, full in sorted(prefix_gaps):
+        verdict = "expanded" if gap < SESSION_WINDOW_HOURS else "left as typed"
+        print(f"   {gap:7.2f}h  {label(row)}  -> {full!r}  [{verdict}]")
+    print("\n  Moving the window only changes entries whose gap straddles it.")
 
 
 def main() -> None:
@@ -199,10 +184,15 @@ def main() -> None:
         blank = all(s == "" for s in slots(row))
         others = (row.get("Others?") or "").strip()
         if anchor is not None:
+            # No window here: fillForward fills a blank cell from the row
+            # above however long the gap, so a blank row inherits its anchor's
+            # players — and loses its anchor's Others? — whatever the gap. The
+            # dinner-break rows this used to skip are exactly the ones worth
+            # reporting.
             gap = (row["_t"] - anchor["_t"]).total_seconds() / 3600
             anchor_others = (anchor.get("Others?") or "").strip()
             if blank and not others and anchor_others \
-                    and 0 <= gap < SESSION_WINDOW_HOURS \
+                    and gap >= 0 \
                     and needs_the_extra_player(row, anchor_others, big, quartets):
                 key = label(anchor)
                 if key not in sessions:
