@@ -93,7 +93,36 @@ once. Put them in a player field for a long session, and in Others? when the
 seats are already full — a piano quintet, say, where four string players fill
 every slot.
 
-## 6. Naming people
+## 6. What repeats itself, and what doesn't
+
+You don't have to retype the same four names for every piece. Leave a player
+field **blank** and it repeats whoever was in that seat on your last entry —
+annotation included, so `Alice Hart (p)` keeps the `(p)`. Typing a short form
+of the name that's already there does the same: `Alice` after `Alice Hart`
+means the same person, not a new one.
+
+Three things are worth knowing, because they're the difference between a log
+that reads correctly years later and one that doesn't.
+
+**It repeats field by field.** When one player swaps out mid-session, type the
+new name in that one field and leave the others blank. The seats you left
+alone keep their people. This is what makes a long afternoon of rotating
+personnel easy to log — you only ever type what changed.
+
+**Only the player fields and the location repeat. `Others?` does not.** A
+fifth or sixth player has to be typed on every row they played. This is the
+single most common way a person goes missing from the log, and it's what
+`npm run audit` looks for first.
+
+**A long gap breaks the chain.** Repeating only reaches back a few hours, so a
+blank field after a dinner break has nothing to repeat and stays empty — and
+so does every blank row after it, until you type a name again. It's the gap
+between two entries that matters, not how long you've been playing: an
+all-day session logged as you go is fine however long the day runs. If you
+come back after a real break, **type the names once** on the first piece of
+the new sitting. One line of typing protects the rest of the evening.
+
+## 7. Naming people
 
 **Type someone's full name the first time you log them.** After that, whatever
 you naturally type is fine — first name, nickname, whatever the group calls
@@ -109,7 +138,7 @@ Short forms are still worth using for the people you play with constantly —
 you will never wonder who "Bob" was. The rule is only about the first entry
 for someone new.
 
-## 7. View your log
+## 8. View your log
 
 1. In your response sheet, go to **File → Share → Publish to web**. Set the format to **Comma-separated values (.csv)** and click **Publish**. Copy the URL it gives you.
 
