@@ -2,6 +2,9 @@
 import * as d3 from "d3";
 import { getDataUrl } from './urlConfig.js';
 import { processRow, prepareRows, fillForward, normalizePlayerNames } from './dataProcessor.js';
+// dataProcessor is pure and takes the name tables as arguments; this is the
+// app's one place that knows which tables it means (see canonicalize there).
+import { PLAYER_ALIASES, PLAYER_ABBREVIATIONS } from './config.js';
 
 /** @typedef {import('./dataProcessor.js').Row} Row */
 
@@ -247,8 +250,8 @@ export class DataService {
             console.warn(`Dropped ${dropped} row(s) with unparseable timestamps`);
         }
 
-        let processedData = fillForward(rows);
-        processedData = normalizePlayerNames(processedData);
+        let processedData = fillForward(rows, PLAYER_ABBREVIATIONS);
+        processedData = normalizePlayerNames(processedData, PLAYER_ALIASES);
 
         // Filter out incomplete works
         return processedData.filter(d => !d.work.incomplete);

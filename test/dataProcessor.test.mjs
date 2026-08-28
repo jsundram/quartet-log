@@ -6,6 +6,7 @@ import {
     classOf,
     canonicalize,
     stripParens,
+    instrumentFromSlot,
     normalizePlayerNames,
     peopleKeysFor,
     computeAggregateStats,
@@ -117,7 +118,7 @@ describe('canonicalize', () => {
     });
 
     it('returns the input when name is not in the alias map', () => {
-        assert.equal(canonicalize('Marshall', 'upper', ALIASES), 'Marshall');
+        assert.equal(canonicalize('Margot', 'upper', ALIASES), 'Margot');
         assert.equal(canonicalize('Alice', 'cello', ALIASES), 'Alice');
     });
 
@@ -132,10 +133,12 @@ describe('canonicalize', () => {
         assert.equal(canonicalize(undefined, 'upper', ALIASES), undefined);
     });
 
-    it('defaults its aliases parameter (callable with two args)', () => {
-        // With no injected table this reads the resolved src/aliases.js —
-        // possibly the empty stub — so only passthrough is asserted.
-        assert.equal(canonicalize('Zelda', 'upper'), 'Zelda');
+    it('requires an alias table rather than defaulting to one', () => {
+        // The table used to default to the deployment's real src/aliases.js,
+        // so a caller who forgot it read real names locally and the empty
+        // stub in CI. Throwing is what makes that impossible to do silently.
+        assert.throws(() => canonicalize('Zelda', 'upper'), TypeError);
+        assert.equal(canonicalize('Zelda', 'upper', {}), 'Zelda');
     });
 });
 
@@ -147,14 +150,14 @@ describe('parseOthers', () => {
     });
 
     it('parses a single "Name (instrument)" fragment', () => {
-        assert.deepEqual(parseOthers('Lois (piano)'), [
-            { name: 'Lois', instrument: 'piano' },
+        assert.deepEqual(parseOthers('Lisa (piano)'), [
+            { name: 'Lisa', instrument: 'piano' },
         ]);
     });
 
     it('parses a bare name with no instrument annotation', () => {
-        assert.deepEqual(parseOthers('Clara'), [
-            { name: 'Clara', instrument: null },
+        assert.deepEqual(parseOthers('Colin'), [
+            { name: 'Colin', instrument: null },
         ]);
     });
 
@@ -257,11 +260,11 @@ describe('normalizePlayerNames', () => {
     });
 
     it('attaches a parsed, canonicalized othersList', () => {
-        const data = [mkRow({ others: 'Jo (vc2); Marshall (va2)' })];
+        const data = [mkRow({ others: 'Jo (vc2); Margot (va2)' })];
         normalizePlayerNames(data, ALIASES);
         assert.deepEqual(data[0].othersList, [
             { name: 'Jo Beta', instrument: 'vc2', class: 'cello' },
-            { name: 'Marshall', instrument: 'va2', class: 'upper' },
+            { name: 'Margot', instrument: 'va2', class: 'upper' },
         ]);
     });
 
@@ -273,7 +276,7 @@ describe('normalizePlayerNames', () => {
     });
 
     it('returns the input array (for chaining)', () => {
-        const data = [mkRow({ player1: 'Marshall' })];
+        const data = [mkRow({ player1: 'Margot' })];
         const result = normalizePlayerNames(data, ALIASES);
         assert.equal(result, data);
     });
@@ -283,21 +286,21 @@ describe('peopleKeysFor', () => {
     it('returns canonical names from player1/2/3', () => {
         const row = {
             player1: 'Jo Alpha',
-            player2: 'Marshall',
+            player2: 'Margot',
             player3: 'Jo Beta',
             othersList: [],
         };
-        assert.deepEqual(peopleKeysFor(row), ['Jo Alpha', 'Marshall', 'Jo Beta']);
+        assert.deepEqual(peopleKeysFor(row), ['Jo Alpha', 'Margot', 'Jo Beta']);
     });
 
     it('skips empty and "-" sentinel player slots', () => {
         const row = {
-            player1: 'Marshall',
+            player1: 'Margot',
             player2: '',
             player3: '-',
             othersList: [],
         };
-        assert.deepEqual(peopleKeysFor(row), ['Marshall']);
+        assert.deepEqual(peopleKeysFor(row), ['Margot']);
     });
 
     it('includes othersList entries by canonical name only', () => {
@@ -314,14 +317,14 @@ describe('peopleKeysFor', () => {
     });
 
     it('handles a row with no othersList field at all', () => {
-        const row = { player1: 'Marshall', player2: '', player3: '' };
-        assert.deepEqual(peopleKeysFor(row), ['Marshall']);
+        const row = { player1: 'Margot', player2: '', player3: '' };
+        assert.deepEqual(peopleKeysFor(row), ['Margot']);
     });
 
     it('two same-short-name people in one row produce two distinct keys', () => {
         // The whole point of instrument-aware aliasing: the two Jos count as two.
         const data = [
-            { player1: 'Jo', player2: 'Marshall', player3: 'Jo', others: '' },
+            { player1: 'Jo', player2: 'Margot', player3: 'Jo', others: '' },
         ];
         normalizePlayerNames(data, ALIASES);
         const keys = peopleKeysFor(data[0]);
@@ -335,7 +338,7 @@ describe('peopleKeysFor', () => {
         // Hank[upper] aliases to Hank Field; "Hank Field" in Others?
         // stays canonical regardless of class.
         const data = [
-            { player1: 'Hank', player2: 'Marshall', player3: 'Stephanie',
+            { player1: 'Hank', player2: 'Margot', player3: 'Sean',
               others: 'Hank Field (vc)' },
         ];
         normalizePlayerNames(data, ALIASES);
@@ -405,9 +408,9 @@ describe('computeAggregateStats', () => {
     it('counts canonical people across player slots and othersList', () => {
         const rows = [
             mkRow({ player1: 'Jo', player2: 'Ned', player3: 'Jo',
-                    others: 'Marshall (va2)' }),
+                    others: 'Margot (va2)' }),
         ];
-        // Jo[upper]→Jo Alpha, Ned[upper]→Ned, Jo[cello]→Jo Beta, Marshall(va2)→Marshall
+        // Jo[upper]→Jo Alpha, Ned[upper]→Ned, Jo[cello]→Jo Beta, Margot(va2)→Margot
         // = 4 distinct people
         assert.equal(computeAggregateStats(rows).uniquePeople, 4);
     });
@@ -763,9 +766,9 @@ describe('defaultMinPiecesForGraph', () => {
 
 describe('disambiguateLabels', () => {
     it('uses first name when unique', () => {
-        const nodes = [{ name: 'Alice Smith' }, { name: 'Bob Jones' }];
+        const nodes = [{ name: 'Alice Brown' }, { name: 'Bob Jones' }];
         const labels = disambiguateLabels(nodes);
-        assert.equal(labels.get('Alice Smith'), 'Alice');
+        assert.equal(labels.get('Alice Brown'), 'Alice');
         assert.equal(labels.get('Bob Jones'), 'Bob');
     });
 
@@ -777,14 +780,13 @@ describe('disambiguateLabels', () => {
     });
 
     it('falls back to full name when First L. still collides', () => {
-        const nodes = [{ name: 'John Smith' }, { name: 'John Smith Jr' }, { name: 'John Sturges' }];
+        const nodes = [{ name: 'John Stone' }, { name: 'John Stone Jr' }, { name: 'John Sturges' }];
         const labels = disambiguateLabels(nodes);
-        // 'John S.' would match all three (Smith, Smith Jr → "Jr" initial,
-        // Sturges → "Sturges" initial). Actually Smith and Sturges both
-        // start with S, so John S. matches Smith and Sturges. Smith Jr's
-        // last token is "Jr" → "John J." which is unique.
-        assert.equal(labels.get('John Smith Jr'), 'John J.');
-        assert.equal(labels.get('John Smith'), 'John Smith');
+        // Stone and Sturges both start with S, so 'John S.' matches two of
+        // the three and cannot disambiguate either. Stone Jr's last token is
+        // "Jr" → "John J.", which is unique.
+        assert.equal(labels.get('John Stone Jr'), 'John J.');
+        assert.equal(labels.get('John Stone'), 'John Stone');
         assert.equal(labels.get('John Sturges'), 'John Sturges');
     });
 
@@ -1023,7 +1025,7 @@ describe('prepareRows', () => {
 
 describe('empty and all-incomplete datasets', () => {
     it('fillForward returns empty input unchanged without throwing', () => {
-        assert.deepEqual(fillForward([]), []);
+        assert.deepEqual(fillForward([], {}), []);
     });
 
     it('the full pure pipeline yields [] for an all-partial-movement sheet', () => {
@@ -1035,7 +1037,7 @@ describe('empty and all-incomplete datasets', () => {
             rawRow({ 'Timestamp': '1/15/2024 11:00:00', 'Work Title': '76#2:II,III' }),
         ];
         const { rows } = prepareRows(raw.map(processRow));
-        const processed = normalizePlayerNames(fillForward(rows));
+        const processed = normalizePlayerNames(fillForward(rows, {}), {});
         assert.deepEqual(processed.filter(d => !d.work.incomplete), []);
     });
 
@@ -1043,7 +1045,7 @@ describe('empty and all-incomplete datasets', () => {
         const raw = [rawRow({ 'Timestamp': 'not a date' })];
         const { rows, dropped } = prepareRows(raw.map(processRow));
         assert.equal(dropped, 1);
-        const processed = normalizePlayerNames(fillForward(rows));
+        const processed = normalizePlayerNames(fillForward(rows, {}), {});
         assert.deepEqual(processed.filter(d => !d.work.incomplete), []);
     });
 });
@@ -1059,38 +1061,38 @@ describe('fillForward', () => {
         ...cols,
     });
 
-    it('does not merge a mid-word prefix: "Chris" after "Christina" stays "Chris"', () => {
+    it('does not merge a mid-word prefix: "Fred" after "Freddy" stays "Fred"', () => {
         const data = [
-            ffRow(0, { player1: 'Christina' }),
-            ffRow(1, { player1: 'Chris' }),
+            ffRow(0, { player1: 'Freddy' }),
+            ffRow(1, { player1: 'Fred' }),
         ];
-        fillForward(data);
-        assert.equal(data[1].player1, 'Chris');
+        fillForward(data, {});
+        assert.equal(data[1].player1, 'Fred');
     });
 
-    it('expands a word-boundary prefix: "Chris" after "Chris Smith" in the same session', () => {
+    it('expands a word-boundary prefix: "Fred" after "Fred Brown" in the same session', () => {
         const data = [
-            ffRow(0, { player1: 'Chris Smith' }),
-            ffRow(1, { player1: 'Chris' }),
+            ffRow(0, { player1: 'Fred Brown' }),
+            ffRow(1, { player1: 'Fred' }),
         ];
-        fillForward(data);
-        assert.equal(data[1].player1, 'Chris Smith');
+        fillForward(data, {});
+        assert.equal(data[1].player1, 'Fred Brown');
     });
 
     it('treats the session window as a strict < 4h bound', () => {
         const inWindow = [
-            ffRow(0, { player1: 'Chris Smith' }),
-            ffRow(3.99, { player1: 'Chris' }),
+            ffRow(0, { player1: 'Fred Brown' }),
+            ffRow(3.99, { player1: 'Fred' }),
         ];
-        fillForward(inWindow);
-        assert.equal(inWindow[1].player1, 'Chris Smith');
+        fillForward(inWindow, {});
+        assert.equal(inWindow[1].player1, 'Fred Brown');
 
         const outOfWindow = [
-            ffRow(0, { player1: 'Chris Smith' }),
-            ffRow(4, { player1: 'Chris' }),
+            ffRow(0, { player1: 'Fred Brown' }),
+            ffRow(4, { player1: 'Fred' }),
         ];
-        fillForward(outOfWindow);
-        assert.equal(outOfWindow[1].player1, 'Chris');
+        fillForward(outOfWindow, {});
+        assert.equal(outOfWindow[1].player1, 'Fred');
     });
 
     it('ditto-fills an empty cell inside the session window, chaining forward', () => {
@@ -1099,7 +1101,7 @@ describe('fillForward', () => {
             ffRow(1, { player1: '' }),
             ffRow(2, { player1: '' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].player1, 'Alice');
         assert.equal(data[2].player1, 'Alice');
     });
@@ -1109,7 +1111,7 @@ describe('fillForward', () => {
             ffRow(0, { player1: 'Alice' }),
             ffRow(5, { player1: '' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].player1, '');
     });
 
@@ -1121,19 +1123,19 @@ describe('fillForward', () => {
             ffRow(5, { player1: '' }),
             ffRow(5.5, { player1: 'Bob' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[2].player1, 'Bob');
     });
 
     it('leaves "-" cells untouched and refers past them to the last real entry', () => {
         const data = [
-            ffRow(0, { player1: 'Chris Smith' }),
+            ffRow(0, { player1: 'Fred Brown' }),
             ffRow(1),  // player1: '-'
-            ffRow(2, { player1: 'Chris' }),
+            ffRow(2, { player1: 'Fred' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].player1, '-');
-        assert.equal(data[2].player1, 'Chris Smith');
+        assert.equal(data[2].player1, 'Fred Brown');
     });
 
     it('expands single-letter abbreviations regardless of the window', () => {
@@ -1153,11 +1155,11 @@ describe('fillForward', () => {
         // prepareRows makes this impossible in the real pipeline; pin the
         // guard anyway so a negative delta can never slip under `hours < 4`.
         const data = [
-            ffRow(2, { player1: 'Chris Smith' }),
-            ffRow(0, { player1: 'Chris' }),  // 2 hours BEFORE the row above
+            ffRow(2, { player1: 'Fred Brown' }),
+            ffRow(0, { player1: 'Fred' }),  // 2 hours BEFORE the row above
         ];
-        fillForward(data);
-        assert.equal(data[1].player1, 'Chris');
+        fillForward(data, {});
+        assert.equal(data[1].player1, 'Fred');
     });
 
     it('fills the location column with the same rules', () => {
@@ -1165,7 +1167,7 @@ describe('fillForward', () => {
             ffRow(0, { location: 'Home' }),
             ffRow(1, { location: '' }),
         ];
-        fillForward(data);
+        fillForward(data, {});
         assert.equal(data[1].location, 'Home');
     });
 });
@@ -1297,5 +1299,139 @@ describe('extractUniquePlayers', () => {
     it('never lists "-" (empty slot), no matter how often it appears', () => {
         const players = extractUniquePlayers(many('V1', '-', 'Bob', 'Carol'));
         assert.deepEqual(players, ['Bob.va', 'Carol.vc']);
+    });
+});
+
+// Ensembles the string-quartet layout has no seats for — piano trios and
+// quartets above all — force people into whichever column is free, so a
+// pianist or a cellist can land in an "upper" slot. An "(instrument)"
+// annotation on the slot is how a logger says what was actually played.
+describe('instrument annotations on player slots', () => {
+    const mkRow = (overrides = {}) => ({
+        player1: '', player2: '', player3: '', others: '', ...overrides,
+    });
+
+    describe('instrumentFromSlot', () => {
+        it('pulls the instrument out of a slot annotation', () => {
+            assert.equal(instrumentFromSlot('Alice Hart (p)'), 'p');
+            assert.equal(instrumentFromSlot('Alice Hart (vc)'), 'vc');
+        });
+
+        it('keeps only the instrument when a comment follows the first comma', () => {
+            assert.equal(instrumentFromSlot('Alice Hart (vc, doubling)'), 'vc');
+        });
+
+        it('returns null for an unannotated slot', () => {
+            assert.equal(instrumentFromSlot('Alice Hart'), null);
+            assert.equal(instrumentFromSlot('-'), null);
+            assert.equal(instrumentFromSlot(''), null);
+            assert.equal(instrumentFromSlot(null), null);
+        });
+
+        it('ignores a parenthetical that is a note, not an instrument', () => {
+            // classOf answers 'upper' for any non-empty string, so honoring
+            // these would silently move the player off their seat.
+            for (const s of ['(sub)', '(guest)', '(first time)', "(Bob's teacher)"]) {
+                assert.equal(instrumentFromSlot(`Alice Hart ${s}`), null, s);
+            }
+        });
+
+        it('recognizes spelled-out and non-string instruments', () => {
+            assert.equal(instrumentFromSlot('Alice Hart (cello)'), 'cello');
+            assert.equal(instrumentFromSlot('Alice Hart (viola)'), 'viola');
+            assert.equal(instrumentFromSlot('Alice Hart (violin)'), 'violin');
+            assert.equal(instrumentFromSlot('Alice Hart (clarinet)'), 'clarinet');
+            assert.equal(instrumentFromSlot('Alice Hart (asst v2)'), 'asst v2');
+        });
+    });
+
+    it('leaves a note-annotated slot on its positional class', () => {
+        // "Jo (sub)" in the cello slot is still the cellist: reading 'sub' as
+        // an instrument would alias it to the upper-class Jo — a different
+        // person — and drop the row out of the VC column.
+        const data = [mkRow({ part: 'V1', player3: 'Jo (sub)' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.equal(data[0].player3, 'Jo Beta');
+        assert.deepEqual(data[0].playerInstruments, [null, null, null]);
+        assert.equal(computePartBreakdownPerMusician(data).get('Jo Beta').VC, 1);
+    });
+
+    it('lets a slot annotation override the slot class when aliasing', () => {
+        // Jo in an upper slot would normally alias to Jo Alpha; annotating the
+        // slot "(vc)" says this is the cellist, so the cello mapping wins.
+        const data = [mkRow({ player2: 'Jo (vc)', player3: 'Jo' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.equal(data[0].player2, 'Jo Beta');
+        assert.equal(data[0].player3, 'Jo Beta');
+    });
+
+    it('leaves unannotated slots on their positional class', () => {
+        const data = [mkRow({ player2: 'Jo', player3: 'Jo' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.equal(data[0].player2, 'Jo Alpha');
+        assert.equal(data[0].player3, 'Jo Beta');
+    });
+
+    it('records the parsed annotations, null where a slot had none', () => {
+        const data = [mkRow({ player1: 'Alice Hart (p)', player2: 'Bob' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.deepEqual(data[0].playerInstruments, ['p', null, null]);
+    });
+
+    it('counts an annotated slot under the annotated part, not the seat', () => {
+        // A piano quartet logged from the violin chair: slot 3 is nominally VC,
+        // but the pianist sits there. Without the annotation Alice would be
+        // counted as a cellist.
+        const data = [mkRow({ part: 'V1', player2: 'Bob', player3: 'Alice Hart (p)' })];
+        normalizePlayerNames(data, ALIASES);
+        const breakdown = computePartBreakdownPerMusician(data);
+        assert.equal(breakdown.get('Alice Hart').OTHER, 1);
+        assert.equal(breakdown.get('Alice Hart').VC, 0);
+        // The unannotated slot still follows SLOT_TO_PART (V1 → [V2, VA, VC]).
+        assert.equal(breakdown.get('Bob').VA, 1);
+    });
+
+    it('keys the Player dropdown by the annotated part, not the seat', () => {
+        // The dropdown must agree with the breakdown above: listing the
+        // pianist as "Alice Hart.vc" would let the VC part button claim she
+        // played cello on the very row the charts call OTHER.
+        const data = Array.from({ length: PLAYER_DROPDOWN_MIN_ENTRIES }, () =>
+            mkRow({ part: 'V1', player2: 'Bob', player3: 'Alice Hart (p)' }));
+        normalizePlayerNames(data, ALIASES);
+        const players = extractUniquePlayers(data);
+        assert.ok(players.includes('Alice Hart.other'));
+        assert.ok(!players.includes('Alice Hart.vc'));
+        assert.ok(players.includes('Bob.va'));
+    });
+});
+
+describe('spelled-out instrument names', () => {
+    it('treats written-out cello the same as the vc code', () => {
+        for (const s of ['vc', 'cello', 'violoncello', 'c', 'VC2', 'vlc']) {
+            assert.equal(classOf(s), 'cello', s);
+            assert.equal(partFromInstrument(s), 'VC', s);
+        }
+    });
+
+    it('treats written-out viola the same as the va code', () => {
+        for (const s of ['va', 'vla', 'viola', 'va2', 'vla2']) {
+            assert.equal(partFromInstrument(s), 'VA', s);
+        }
+    });
+
+    it('does not let "c" swallow clarinet', () => {
+        assert.equal(classOf('clarinet'), 'upper');
+        assert.equal(partFromInstrument('clarinet'), 'OTHER');
+    });
+
+    it('does not let "va" swallow violin', () => {
+        assert.equal(partFromInstrument('violin'), 'OTHER');
+        assert.equal(partFromInstrument('vln'), 'OTHER');
+    });
+
+    it('buckets keyboard shorthand as OTHER', () => {
+        for (const s of ['p', 'pf', 'pno', 'piano']) {
+            assert.equal(partFromInstrument(s), 'OTHER', s);
+        }
     });
 });

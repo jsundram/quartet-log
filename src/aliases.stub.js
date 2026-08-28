@@ -36,7 +36,7 @@
 export const PLAYER_ALIASES = {};
 
 /**
- * Single-letter abbreviation → short name, e.g. { "A": "Ann" }.
+ * Single-letter abbreviation → short name, e.g. { "A": "Alice" }.
  * Expanded by fillForward (src/dataProcessor.js) before aliasing.
  * @type {Record<string, string>}
  */

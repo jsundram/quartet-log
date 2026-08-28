@@ -1,5 +1,4 @@
 // @ts-check
-import { PLAYER_ABBREVIATIONS, PLAYER_ALIASES } from './config.js';
 
 /**
  * Parsed "Work Title" cell (parseWork output).
@@ -36,6 +35,8 @@ import { PLAYER_ABBREVIATIONS, PLAYER_ALIASES } from './config.js';
  * @property {string|null} others - raw "Others?" cell (kept for CSV export)
  * @property {string|null} location
  * @property {string} comments
+ * @property {(string|null)[]} [playerInstruments] - per-slot "(instrument)"
+ *   annotations, attached by normalizePlayerNames; null where a slot had none
  * @property {OtherPlayer[]} [othersList] - attached by normalizePlayerNames
  */
 
@@ -48,21 +49,70 @@ const SLOT_CLASS = /** @type {const} */ (['upper', 'upper', 'cello']);
  * @param {string|null|undefined} instrumentStr
  * @returns {'upper'|'cello'|null}
  */
-export function classOf(instrumentStr) {
-    if (!instrumentStr) return null;
-    return instrumentStr.toLowerCase().trim().startsWith('vc') ? 'cello' : 'upper';
+// Instrument annotations arrive as free text from two places: an
+// "(instrument)" suffix on a player slot, and each entry in the Others?
+// column. Loggers write terse codes (vc, va2) AND spelled-out names (cello,
+// viola), so both readers below share these patterns instead of each growing
+// its own prefix checks and drifting apart. The (?![a-z]) guards are what
+// stop "c" from swallowing "clarinet" and "va" from swallowing "violin".
+// Unnumbered violin (violin/vn/vln) deliberately matches neither: it says
+// nothing about which violin seat, so it buckets as OTHER rather than guess.
+const CELLO_INSTRUMENT = /^(?:vc|vlc|cello|violoncello|c)(?![a-z])/;
+const VIOLA_INSTRUMENT = /^(?:vla|viola|va)(?![a-z])/;
+const VIOLIN_INSTRUMENT = /^(?:v[12]|violin|vn|vln)(?![a-z])/;
+// Everything else the log has actually named, plus the obvious neighbours.
+// Part-wise these all bucket as OTHER, so this list never has to be right
+// about WHICH instrument — only about instrument-or-not, which is what
+// instrumentFromSlot needs to tell an annotation from a note (see there).
+const OTHER_INSTRUMENT = new RegExp('^(?:' + [
+    'p|pf|pno|piano|fortepiano|harpsichord|hpsi?|organ|keys?|keyboard',
+    'fl|flute|ob|oboe|cl|clarinet|bsn|bassoon|sax|rec|recorder',
+    'hn|horn|tpt|trumpet|tbn|trombone|tuba',
+    'db|bass|contrabass|guitar|gtr|lute|harp',
+    'voice|sop|soprano|alto|mezzo|ten|tenor|bari|baritone',
+].join('|') + ')(?![a-z])');
+
+// "asst v2" / "ast v2" is a v2 seat — drop the assistant prefix before matching.
+/** @param {string} s */
+function normalizeInstrument(s) {
+    return s.toLowerCase().trim().replace(/^as?st\s+/, '');
 }
 
-// `aliases` defaults to the deployment's real table (gitignored
-// src/aliases.js via config.js); tests inject placeholder fixtures so they
-// don't depend on its contents.
+export function classOf(instrumentStr) {
+    if (!instrumentStr) return null;
+    return CELLO_INSTRUMENT.test(normalizeInstrument(instrumentStr)) ? 'cello' : 'upper';
+}
+
+// Does this free-text string name an instrument at all? Only player slots ask:
+// an Others? entry's parenthetical is an instrument by convention, but a slot's
+// is just as often a note — "(sub)", "(guest)", "(Bob's teacher)" — and classOf
+// answers 'upper' for every one of those. Reading a note as an instrument would
+// silently reclass the player: "(sub)" in the cello slot aliases as an upper
+// player (the wrong person, where a short name means two people) and drops out
+// of the VC column. Unrecognized parentheticals therefore fall back to the seat.
+/** @param {string|null|undefined} instrumentStr */
+function namesAnInstrument(instrumentStr) {
+    const s = normalizeInstrument(instrumentStr || '');
+    return !!s && (CELLO_INSTRUMENT.test(s) || VIOLA_INSTRUMENT.test(s)
+        || VIOLIN_INSTRUMENT.test(s) || OTHER_INSTRUMENT.test(s));
+}
+
+// The name tables are arguments, never module state. This file used to
+// default them to the deployment's real tables (the gitignored src/aliases.js,
+// via config.js), which made every caller that omitted the argument read
+// whatever was on that machine: real people locally, the empty stub in CI. A
+// test could pass in one place and fail in the other for reasons no one could
+// see in the test. Now the wiring lives with the callers that know which
+// tables they mean — DataService.processData and scripts/fetch_processed.mjs
+// — and forgetting one throws instead of quietly reading personal data.
 /**
  * @param {string|null} name
  * @param {'upper'|'cello'|null} cls
- * @param {Record<string, import('./aliases.stub.js').AliasEntry>} [aliases]
+ * @param {Record<string, import('./aliases.stub.js').AliasEntry>} aliases
  * @returns {string|null}
  */
-export function canonicalize(name, cls, aliases = PLAYER_ALIASES) {
+export function canonicalize(name, cls, aliases) {
+    if (!aliases) throw new TypeError('canonicalize: pass an alias table (use {} for none)');
     if (!name) return name;
     return (cls && aliases[name]?.[cls]) ?? name;
 }
@@ -78,6 +128,25 @@ export function stripParens(name) {
     if (!name) return name;
     const m = name.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
     return m ? m[1].trim() : name;
+}
+
+// Pull the "(instrument)" suffix off a player-slot value, mirroring the
+// Others?-entry shape: inside the parens the first comma separates the
+// instrument code from a free-form comment, so "Alice Hart (vc, doubling)"
+// yields "vc". Returns null when the slot carries no annotation — and also
+// when the parenthetical is a note rather than an instrument, so only an
+// annotation that classifies can override the seat (see namesAnInstrument).
+/**
+ * @param {string|null|undefined} name
+ * @returns {string|null}
+ */
+export function instrumentFromSlot(name) {
+    const m = (name || '').match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+    if (!m) return null;
+    const inside = m[2];
+    const commaIdx = inside.indexOf(',');
+    const instrument = (commaIdx >= 0 ? inside.slice(0, commaIdx) : inside).trim();
+    return namesAnInstrument(instrument) ? instrument : null;
 }
 
 // Split `s` on `,` or `;` at paren depth 0 only — so commas inside a
@@ -128,14 +197,23 @@ export function parseOthers(others) {
 
 /**
  * @param {Row[]} data
- * @param {Record<string, import('./aliases.stub.js').AliasEntry>} [aliases]
+ * @param {Record<string, import('./aliases.stub.js').AliasEntry>} aliases
  * @returns {Row[]}
  */
-export function normalizePlayerNames(data, aliases = PLAYER_ALIASES) {
+export function normalizePlayerNames(data, aliases) {
+    if (!aliases) throw new TypeError('normalizePlayerNames: pass an alias table (use {} for none)');
     data.forEach(d => {
-        d.player1 = canonicalize(stripParens(d.player1), SLOT_CLASS[0], aliases);
-        d.player2 = canonicalize(stripParens(d.player2), SLOT_CLASS[1], aliases);
-        d.player3 = canonicalize(stripParens(d.player3), SLOT_CLASS[2], aliases);
+        // A slot may carry an "(instrument)" annotation. When it does, it wins
+        // over the slot's positional class: ensembles the quartet layout has no
+        // seats for — piano trios and quartets above all — put people in
+        // whichever column is free, so a pianist or cellist can land in an
+        // upper slot. Classifying by what they played beats classifying by
+        // which column they landed in. Unannotated slots are unchanged.
+        const slotInstruments = [d.player1, d.player2, d.player3].map(instrumentFromSlot);
+        d.playerInstruments = slotInstruments;
+        d.player1 = canonicalize(stripParens(d.player1), classOf(slotInstruments[0]) ?? SLOT_CLASS[0], aliases);
+        d.player2 = canonicalize(stripParens(d.player2), classOf(slotInstruments[1]) ?? SLOT_CLASS[1], aliases);
+        d.player3 = canonicalize(stripParens(d.player3), classOf(slotInstruments[2]) ?? SLOT_CLASS[2], aliases);
         d.othersList = parseOthers(d.others).map(o => {
             const cls = classOf(o.instrument);
             // o.name is a non-empty string, so canonicalize returns a string
@@ -396,9 +474,8 @@ export function defaultMinPiecesForGraph(rows, maxNodes = 50) {
 // the V2 player, player2 is the VA player, player3 is the cellist. VA2 rows
 // (quintets with the user on second viola) follow the sheet convention of
 // listing the violins and cello in the slots with the other violist under
-// Others — same mapping as VA. Consumed by extractUniquePlayers,
-// checkSinglePlayerMatch, and computePartBreakdownPerMusician; undefined
-// for any other part value.
+// Others — same mapping as VA. Read only through slotPartsFor below, which
+// layers slot annotations on top; undefined for any other part value.
 const SLOT_TO_PART = {
     V1: ['V2', 'VA', 'VC'],
     V2: ['V1', 'VA', 'VC'],
@@ -416,12 +493,32 @@ const SLOT_TO_PART = {
  */
 export function partFromInstrument(instrument) {
     if (!instrument) return 'OTHER';
-    const s = instrument.toLowerCase().trim().replace(/^as?st\s+/, '');
-    if (s.startsWith('vc')) return 'VC';
-    if (s.startsWith('vla') || s.startsWith('va')) return 'VA';
+    const s = normalizeInstrument(instrument);
+    if (CELLO_INSTRUMENT.test(s)) return 'VC';
+    if (VIOLA_INSTRUMENT.test(s)) return 'VA';
     if (s.startsWith('v1')) return 'V1';
     if (s.startsWith('v2')) return 'V2';
     return 'OTHER';
+}
+
+// Which part each of the three player slots represents on this row. The seat
+// the quartet layout implies (SLOT_TO_PART) is the default; an "(instrument)"
+// annotation on the slot overrides it, because ensembles the layout has no
+// seats for put people in whichever column is free. Entries are null where
+// neither is known — an unannotated slot on a row whose own part isn't one of
+// the four the layout covers. Shared by every consumer so the charts, the
+// Player dropdown and the dropdown's filter cannot disagree about one row.
+/**
+ * @param {Row} d
+ * @returns {('V1'|'V2'|'VA'|'VC'|'OTHER'|null)[]}
+ */
+export function slotPartsFor(d) {
+    const slotParts = SLOT_TO_PART[d.part];
+    return [0, 1, 2].map(i => {
+        const annotated = d.playerInstruments?.[i];
+        if (annotated) return partFromInstrument(annotated);
+        return slotParts ? slotParts[i] : null;
+    });
 }
 
 // Argmax over a part-breakdown vector: which instrument did this musician
@@ -450,7 +547,7 @@ export function predominantPart(parts) {
 }
 
 // For every musician, count how many pieces they played in each part.
-// player1/2/3 slots are mapped via SLOT_TO_PART; othersList entries use the
+// player1/2/3 slots are mapped via slotPartsFor; othersList entries use the
 // parsed instrument string. The returned breakdown vectors sum to the
 // musician's total appearance count (including any OTHER, like piano).
 /**
@@ -473,12 +570,13 @@ export function computePartBreakdownPerMusician(rows) {
         parts[part]++;
     };
     rows.forEach(d => {
-        const slotParts = SLOT_TO_PART[d.part];
-        if (slotParts) {
-            [d.player1, d.player2, d.player3].forEach((name, i) => {
-                if (name && name !== '-') bump(name, slotParts[i]);
-            });
-        }
+        const slotParts = slotPartsFor(d);
+        [d.player1, d.player2, d.player3].forEach((name, i) => {
+            if (!name || name === '-') return;
+            // A row with neither an annotation nor a known seat contributes
+            // nothing, exactly as before.
+            if (slotParts[i]) bump(name, /** @type {'V1'} */ (slotParts[i]));
+        });
         d.othersList?.forEach(o => {
             if (o.name) bump(o.name, partFromInstrument(o.instrument));
         });
@@ -655,9 +753,9 @@ export const SESSION_WINDOW_HOURS = 4;
 //   - `entry` is empty — a blank cell inside the session window is a ditto
 //     mark ("same as the row above");
 //   - `entry` equals `prevEntry` exactly;
-//   - `prevEntry` starts with `entry` followed by a word boundary — "Chris"
-//     abbreviates a previous "Chris Smith". The boundary requirement is what
-//     keeps "Chris" from silently merging with a previous "Christina": a
+//   - `prevEntry` starts with `entry` followed by a word boundary — "Fred"
+//     abbreviates a previous "Fred Brown". The boundary requirement is what
+//     keeps "Fred" from silently merging with a previous "Freddy": a
 //     prefix that ends mid-word is a different name, not an abbreviation.
 /**
  * @param {string} entry
@@ -670,8 +768,8 @@ function refersToPrevEntry(entry, prevEntry) {
 
 // Expand shorthand in the player/location columns. The sheet convention is to
 // write a value in full once, then abbreviate while the session continues:
-// a blank cell or a leading-prefix of the previous entry (e.g. "Chris" after
-// "Chris Smith") repeats it, and the single-letter PLAYER_ABBREVIATIONS
+// a blank cell or a leading-prefix of the previous entry (e.g. "Fred" after
+// "Fred Brown") repeats it, and the single-letter PLAYER_ABBREVIATIONS
 // (e.g. "I" → a configured first name) expand regardless of the window. "-" means
 // "nobody in this slot": it is left as-is and does not advance the session
 // anchor, so shorthand can still refer past it to the last real entry.
@@ -690,10 +788,11 @@ function refersToPrevEntry(entry, prevEntry) {
 // window the way any negative number satisfies `hours < 4`.
 /**
  * @param {Row[]} data - MUST be in chronological order (see prepareRows)
- * @param {Record<string, string>} [abbreviations]
+ * @param {Record<string, string>} abbreviations
  * @returns {Row[]}
  */
-export function fillForward(data, abbreviations = PLAYER_ABBREVIATIONS) {
+export function fillForward(data, abbreviations) {
+    if (!abbreviations) throw new TypeError('fillForward: pass an abbreviation table (use {} for none)');
     if (!data.length) return data;
     ["player1", "player2", "player3", "location"].forEach(column => {
         let prev = data[0];
@@ -758,13 +857,12 @@ export function extractUniquePlayers(data) {
     const playerCounts = new Map();
 
     data.forEach(d => {
-        const slotParts = SLOT_TO_PART[d.part];
-        if (!slotParts) return;
+        const slotParts = slotPartsFor(d);
         [d.player1, d.player2, d.player3].forEach((name, i) => {
             // "-" means "nobody in this slot" (see fillForward), so it is
             // not a person the dropdown could filter by — same exclusion
             // peopleKeysFor applies.
-            if (!name || name === '-') return;
+            if (!name || name === '-' || !slotParts[i]) return;
             const player = `${name}.${slotParts[i].toLowerCase()}`;
             playerCounts.set(player, (playerCounts.get(player) || 0) + 1);
         });
@@ -803,13 +901,13 @@ export function stackedPartSegments(d) {
 // matches when EVERY selected person matches on AT LEAST ONE of their
 // selected instruments (AND across people, OR across one person's
 // instruments). Instrument slots are relative to the user's own part: e.g.
-// when the user played V1, player1 is the V2 chair (see extractUniquePlayers).
+// when the user played V1, player1 is the V2 chair — unless the slot says
+// otherwise (slotPartsFor), which is the same rule the charts read.
 
 export function checkSinglePlayerMatch(d, playerName, instrument) {
-    const slotParts = SLOT_TO_PART[d.part];
-    if (!slotParts) return false;
+    const slotParts = slotPartsFor(d);
     return [d.player1, d.player2, d.player3].some((name, i) =>
-        slotParts[i].toLowerCase() === instrument && name === playerName);
+        slotParts[i]?.toLowerCase() === instrument && name === playerName);
 }
 
 export function checkPlayersMatch(d, selectedPlayers) {

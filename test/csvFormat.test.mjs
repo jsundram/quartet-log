@@ -7,7 +7,7 @@ import {
     formatTimestamp,
     serializeRows,
 } from '../src/csvFormat.js';
-import { processRow } from '../src/dataProcessor.js';
+import { normalizePlayerNames, processRow } from '../src/dataProcessor.js';
 
 // Minimal RFC-4180 parser (same shape as the one in scripts/fetch_processed.mjs,
 // which can't be imported here because that script has top-level side effects).
@@ -127,6 +127,22 @@ describe('serializeRows', () => {
             assert.equal(back.location, orig.location);
             assert.equal(back.comments, orig.comments);
         });
+    });
+
+    it('carries a slot\'s "(instrument)" annotation through the round trip', () => {
+        // normalizePlayerNames splits the annotation off the name; writing
+        // only the name would make an annotated pianist indistinguishable
+        // from a violinist on re-read (and invisible to audit_ensembles).
+        const rows = normalizePlayerNames([processedRow({
+            player1: 'Alice Hart (p)', player2: 'Bob', player3: 'Carol',
+        })], {});
+
+        const line = serializeRows(rows).split('\n')[1];
+        assert.ok(line.includes('Alice Hart (p)'), line);
+
+        const back = normalizePlayerNames(parseCSV(serializeRows(rows)).map(processRow), {});
+        assert.equal(back[0].player1, 'Alice Hart');
+        assert.deepEqual(back[0].playerInstruments, ['p', null, null]);
     });
 });
 

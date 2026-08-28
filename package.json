@@ -11,7 +11,8 @@
         "lint": "eslint .",
         "pretypecheck": "node scripts/ensure_aliases.mjs",
         "typecheck": "tsc --noEmit",
-        "test:e2e": "playwright test"
+        "test:e2e": "playwright test",
+        "audit": "./scripts/audit_all.sh"
     },
     "config": {
         "pandoc_version": "3.6.2",

@@ -10,6 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { processRow, prepareRows, fillForward, normalizePlayerNames } from '../src/dataProcessor.js';
 import { serializeRows } from '../src/csvFormat.js';
+// dataProcessor takes the name tables as arguments; this script is a writer of
+// the processed export, so it wires the same ones the app does.
+import { PLAYER_ALIASES, PLAYER_ABBREVIATIONS } from '../src/config.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const URL_FILE = resolve(REPO_ROOT, '.dev-data-url');
@@ -67,8 +70,8 @@ const rawRows = parseCSV(await response.text());
 // fillForward, normalize names, drop partial-movement rows.
 const { rows: processed, dropped } = prepareRows(rawRows.map(processRow));
 if (dropped) console.error(`Warning: dropped ${dropped} row(s) with unparseable timestamps`);
-fillForward(processed);
-normalizePlayerNames(processed);
+fillForward(processed, PLAYER_ABBREVIATIONS);
+normalizePlayerNames(processed, PLAYER_ALIASES);
 const data = processed.filter(d => !d.work.incomplete);
 
 // Headers, field order, timestamp format, and escaping come from the shared

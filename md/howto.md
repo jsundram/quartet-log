@@ -46,7 +46,70 @@
 
 3. Repeat.
 
-## 5. View your log
+## 5. Logging anything that isn't a string quartet
+
+The three player fields model a string quartet: you take one seat, and the
+other three go in **Player 1**, **Player 2**, **Player 3** — the seats your own
+part implies. Playing V1 means Player 1 is V2, Player 2 is the violist, and
+Player 3 is the cellist.
+
+Piano trios, piano quartets, quintets and sextets don't fit that shape, so
+there are two conventions to keep them straight.
+
+**Use `-` for a seat the work doesn't have.** A piano trio has no second
+violin and no viola, so playing violin in one looks like this:
+
+| Which Part | Player 1 | Player 2 | Player 3 | Others? |
+|---|---|---|---|---|
+| `V1` | `-` | `-` | the cellist | `Alice Hart (p)` |
+
+**Say what someone played with `(instrument)`.** Anyone whose instrument isn't
+the one their seat implies needs an annotation — most often the pianist, but
+also a cellist you had to seat in a violin field because the pianist took the
+cello field. The annotation wins over the seat, so this is correct even though
+the pianist is in the cello field:
+
+| Which Part | Player 1 | Player 2 | Player 3 | Others? |
+|---|---|---|---|---|
+| `V1` | the violist `(va)` | the cellist `(vc)` | the pianist `(p)` | |
+
+Both spellings and shorthands work — `p`, `pf` and `piano` are the same thing,
+as are `vc` and `cello`, and `va`, `vla` and `viola`. You can add a comment
+after the instrument: `Alice Hart (vc, doubling)` keeps the `vc` and ignores
+the rest. Parentheses that name no instrument — `(sub)`, `(guest)`, `(first
+time)` — are just notes: they're ignored, and the seat decides as usual.
+
+Pianists, clarinettists and other non-string players are counted as people you
+played with, but they're left out of the V1/V2/VA/VC part breakdowns, which
+only make sense for string parts.
+
+You can also put the extra player in **Others?** instead — `Alice Hart (p)`
+there is read the same way. One difference decides which to reach for: the
+player fields carry forward to the next entry in a session, so a slot you
+leave blank repeats whoever was there before, annotation included. **Others?
+does not carry forward.** Logging six movements with the pianist in Others?
+means typing them six times, while `Alice Hart (p)` in a player field is typed
+once. Put them in a player field for a long session, and in Others? when the
+seats are already full — a piano quintet, say, where four string players fill
+every slot.
+
+## 6. Naming people
+
+**Type someone's full name the first time you log them.** After that, whatever
+you naturally type is fine — first name, nickname, whatever the group calls
+them.
+
+The reason is that a first name stops identifying one person the moment a
+second Alice turns up, and by then the older entries have no surname to tell
+them apart. Reconstructing that later means cross-referencing dates, venues and
+who else was in the room, and it gets harder every month. Spending three extra
+seconds once is the whole fix.
+
+Short forms are still worth using for the people you play with constantly —
+you will never wonder who "Bob" was. The rule is only about the first entry
+for someone new.
+
+## 7. View your log
 
 1. In your response sheet, go to **File → Share → Publish to web**. Set the format to **Comma-separated values (.csv)** and click **Publish**. Copy the URL it gives you.
 

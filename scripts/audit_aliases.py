@@ -80,6 +80,41 @@ def class_of(instrument: str | None) -> str | None:
     return "cello" if instrument.lower().strip().startswith("vc") else "upper"
 
 
+def slot_annotation_classes(values: set[str]) -> dict[str, str]:
+    """{slot value: instrument class} for slot values carrying a parenthetical.
+
+    normalizePlayerNames classes an annotated slot by what it says it played,
+    not by which column it landed in — but only when the parenthetical names
+    an instrument, so "(sub)" stays positional. Mirroring that here would mean
+    a third Python copy of instrumentFromSlot + classOf, this one carrying an
+    instrument vocabulary that drifts the moment the JS list is edited. So ask
+    the real module instead: the set is tiny (only slots with a parenthetical),
+    which is one node call for the whole file.
+
+    Falls back to {} — i.e. positional classing, as before — if node cannot
+    answer, since this only refines a heuristic report.
+    """
+    if not values:
+        return {}
+    js = (
+        "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>"
+        "import('./src/dataProcessor.js').then(m => process.stdout.write("
+        "JSON.stringify(Object.fromEntries(JSON.parse(s).map("
+        "v => [v, m.classOf(m.instrumentFromSlot(v))])))))"
+        ".catch(e => { console.error(e.message); process.exit(1); }))"
+    )
+    try:
+        result = subprocess.run(
+            ["node", "-e", js], input=json.dumps(sorted(values)),
+            capture_output=True, text=True, check=True, cwd=REPO_ROOT,
+        )
+        return {k: v for k, v in json.loads(result.stdout).items() if v}
+    except (OSError, subprocess.CalledProcessError, ValueError) as e:
+        print(f"Note: could not class slot annotations via node ({e}); "
+              "falling back to the slot position.", file=sys.stderr)
+        return {}
+
+
 def _split_outside_parens(s: str) -> list[str]:
     """Split on ',' or ';' at paren depth 0 — mirrors splitOutsideParens
     in src/dataProcessor.js so a comma inside a "(instrument, comment)"
@@ -140,13 +175,21 @@ def load_rows(path: Path) -> list[dict]:
 def collect_appearances(rows: list[dict]) -> dict[tuple[str, str], list[list[str]]]:
     """For each (name, class) pair, return list of teammate-lists from each appearance."""
     appearances: dict[tuple[str, str], list[list[str]]] = defaultdict(list)
+    annotated = {
+        raw for row in rows for i in range(3)
+        if "(" in (raw := (row.get(f"Player {i + 1}") or "").strip())
+    }
+    slot_classes = slot_annotation_classes(annotated)
     for row in rows:
         # Build list of (name, class) seen in this row
         people: list[tuple[str, str]] = []
         for i in range(3):
             raw = (row.get(f"Player {i + 1}") or "").strip()
             if raw and raw != "-":
-                people.append((expand_abbrev(strip_parens(raw)), SLOT_CLASS[i]))
+                # An instrument annotation states the class; the column only
+                # implies it (SLOT_CLASS). Same precedence as the app.
+                cls = slot_classes.get(raw) or SLOT_CLASS[i]
+                people.append((expand_abbrev(strip_parens(raw)), cls))
         # The canonical header is "Others?" (see src/csvFormat.js), but
         # exports written before the header fix used "Others" — accept both.
         for name, instr in parse_others(row.get("Others?") or row.get("Others") or ""):
@@ -181,6 +224,148 @@ def base_token(name: str) -> str:
 
 def already_aliased(variant: str, cls: str) -> bool:
     return variant in EXISTING_ALIASES and cls in EXISTING_ALIASES[variant]
+
+
+def report_ambiguity(appearances: dict[tuple[str, str], list[list[str]]]) -> None:
+    """Flag first names that no longer identify exactly one person.
+
+    The variant grouping above answers "which short forms belong in
+    PLAYER_ALIASES". This answers the complementary question: which short
+    forms must NOT go in, because an alias maps one name to one person and
+    the sheet now holds several people who share it.
+
+    Three hazards, none of them visible in the grouping above:
+      1. A bare first name still in the sheet that two or more full names
+         could match. No alias can express "this row is Alice Hart and that
+         one is Alice Bek" — the ROWS have to be edited.
+      2. An existing alias keyed on such a name. It resolves silently, so
+         every future bare entry lands on whichever person the table names.
+      3. An alias whose canonical name appears nowhere in the sheet —
+         usually a spelling fix that was applied to the data but not here.
+
+    Caveat: hazards 1 and 2 can only fire once the second full name shows up
+    in the data. A short form that is genuinely ambiguous in real life still
+    looks unique here until someone with the same first name gets logged.
+    """
+    full_by_first: dict[str, set[str]] = defaultdict(set)
+    bare_count: Counter = Counter()
+    # Two senses of "present", and hazard 3 needs both. `present` is what a
+    # human actually typed; `resolved` adds what each of those names becomes
+    # after normalizePlayerNames — the alias targets that are live by
+    # definition, since the key sits in the sheet driving them.
+    present: set[str] = set()
+    resolved: set[str] = set()
+    for (name, cls), apps in appearances.items():
+        present.add(name)
+        resolved.add(EXISTING_ALIASES.get(name, {}).get(cls) or name)
+        if len(name.split()) > 1:
+            full_by_first[base_token(name)].add(name)
+        else:
+            bare_count[(name, cls)] += len(apps)
+    # Surnames the sheet writes down anywhere: the test for whether this
+    # gitignored file is the only place a canonical name's surname exists.
+    sheet_surnames = {n.split()[-1].lower() for n in present if len(n.split()) > 1}
+
+    print("\n=== AMBIGUITY: first names that no longer identify one person ===")
+    print("(Hazards the variant grouping above cannot see.)")
+
+    # Guard against the trap this section fell into once: archive/data.csv is
+    # the PROCESSED export, written after normalizePlayerNames has already
+    # replaced every short form with its canonical name. Measured against it, a
+    # working alias looks dead — its bare form is gone precisely because the
+    # alias did its job — and "pruning dead aliases" then silently un-normalizes
+    # the data on the next fetch. Alias liveness can only be read from the raw
+    # sheet (scripts/fetch_raw.sh -> archive/data-raw.csv).
+    keys = [k for k in EXISTING_ALIASES if len(k.split()) == 1]
+    if keys:
+        unseen = sum(
+            1 for k in keys
+            if not any(n == k for n, _ in appearances)
+            and any(n == c for m in [EXISTING_ALIASES[k]] for c in m.values()
+                    for n, _ in appearances)
+        )
+        if unseen > len(keys) / 2:
+            print(f"\n  !! {unseen} of {len(keys)} alias keys are absent while their canonical")
+            print("     names are present — this input looks like the CANONICALIZED export.")
+            print("     Re-run against archive/data-raw.csv before judging any alias dead.")
+
+    # 1. Bare names still in the sheet that several full names could match.
+    unresolvable = sorted(
+        (
+            (n, cls, cnt, sorted(full_by_first[base_token(n)]))
+            for (n, cls), cnt in bare_count.items()
+            if len(full_by_first.get(base_token(n), ())) >= 2
+        ),
+        key=lambda r: (-r[2], r[0]),
+    )
+    print(f"\n-- bare names in the sheet with 2+ candidates ({len(unresolvable)}) --")
+    print("   Fix these in the SHEET; an alias can only guess one of them.")
+    if not unresolvable:
+        print("   (none)")
+    for name, cls, count, candidates in unresolvable:
+        mapped = EXISTING_ALIASES.get(name, {}).get(cls)
+        note = f"alias says {mapped!r}" if mapped else "NO alias — counted as its own person"
+        print(f"   {name!r:18s} [{cls:5s}] {count:4d}×   {note}")
+        print(f"   {'':18s}         candidates: {', '.join(candidates)}")
+
+    # 2. Aliases keyed on a first name several people now share. Multi-token
+    # keys ("Jo A", "Jo Alpha") are already disambiguated, so skip them.
+    risky = sorted(
+        (key, mapping, sorted(full_by_first[key.lower()]))
+        for key, mapping in EXISTING_ALIASES.items()
+        if len(key.split()) == 1 and len(full_by_first.get(key.lower(), ())) >= 2
+    )
+    print(f"\n-- aliases keyed on an ambiguous first name ({len(risky)}) --")
+    print("   Each silently resolves future bare entries to one person.")
+    if not risky:
+        print("   (none)")
+    for key, mapping, candidates in risky:
+        targets = ", ".join(f"{cls}→{n}" for cls, n in sorted(mapping.items()))
+        others = [c for c in candidates if c not in mapping.values()]
+        print(f"   {key!r:18s} {targets}")
+        print(f"   {'':18s} also in sheet: {', '.join(others) or '—'}")
+
+    # 3. Aliases pointing at a name the sheet no longer contains.
+    dangling = sorted(
+        (key, cls, canon)
+        for key, mapping in EXISTING_ALIASES.items()
+        for cls, canon in mapping.items()
+        if canon not in present
+    )
+    # Two very different things land here. Recording a surname the sheet never
+    # had is the point of the table for anyone logged by first name only, and
+    # a surname written nowhere in the sheet is its signature — nicknames
+    # ("Bo" -> "Carol Hart") included, since the file is just as much the
+    # only record of those. A canonical name whose surname the sheet DOES
+    # carry is a spelling that drifted, and only that is a bug — so they are
+    # split rather than piled into one count nobody reads.
+    expected = [(k, c, n) for k, c, n in dangling
+                if n.split()[-1].lower() not in sheet_surnames]
+    # A canonical name the sheet resolves to is a working alias, not a broken
+    # one — the normal shape of a spelling normalization ("Carol Hart"
+    # logged, "Caro Hart" canonical) leaves the target absent from the raw
+    # sheet by design. Reporting those sends you to delete a live alias, the
+    # failure this whole section was added to prevent. The surname bucket
+    # above deliberately keeps the literal test: its question is whether the
+    # SHEET records the surname at all, and an alias resolving to it is
+    # exactly the case where nothing but this file does.
+    suspect = [row for row in dangling
+               if row not in expected and row[2] not in resolved]
+    print(f"\n-- aliases that are the ONLY record of a surname ({len(expected)}) --")
+    print("   Expected for anyone logged by first name only. Back this file up:")
+    print("   it is gitignored, so these surnames exist nowhere else.")
+    if not expected:
+        print("   (none)")
+    for key, cls, canon in expected:
+        print(f"   {key!r:18s} [{cls:5s}] -> {canon!r}")
+    print(f"\n-- aliases whose canonical name is absent and unrelated ({len(suspect)}) --")
+    print("   A nickname, or a spelling that changed in the data but not here.")
+    if not suspect:
+        print("   (none)")
+    for key, cls, canon in suspect:
+        near = sorted(full_by_first.get(base_token(canon), ()))
+        hint = f"   did you mean: {', '.join(near)}" if near else ""
+        print(f"   {key!r:18s} [{cls:5s}] -> {canon!r}{hint}")
 
 
 def main() -> None:
@@ -286,6 +471,8 @@ def main() -> None:
             f"  {marker} [{cls:5s}] {short_name!r:30s} ({scount:3d}×)  →  "
             f"{long_name!r}  ({lcount}×, overlap {overlap:.0%})"
         )
+
+    report_ambiguity(appearances)
 
     # Final paste-ready PLAYER_ALIASES block
     print("\n=== PLAYER_ALIASES proposal (paste into src/aliases.js — gitignored; NEVER into a tracked file) ===\n")

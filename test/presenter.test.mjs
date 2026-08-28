@@ -96,6 +96,18 @@ test("player-filter matching", async (t) => {
         assert.equal(checkSinglePlayerMatch(va2Row, 'Alice', 'va'), false);
     });
 
+    await t.test("a slot annotation beats the seat, as it does in the charts", () => {
+        // Piano quartet logged from the violin chair: the pianist sits in the
+        // nominal cello slot. Selecting "Alice.vc" must not match this row.
+        const piano = {
+            part: 'V1', player1: 'Bob', player2: 'Carol', player3: 'Alice',
+            playerInstruments: [null, null, 'p'],
+        };
+        assert.equal(checkSinglePlayerMatch(piano, 'Alice', 'vc'), false);
+        assert.equal(checkSinglePlayerMatch(piano, 'Alice', 'other'), true);
+        assert.equal(checkSinglePlayerMatch(piano, 'Bob', 'v2'), true);
+    });
+
     await t.test("rows with unknown parts never match a slot", () => {
         const bare = { part: null, player1: 'Alice', player2: 'Bob', player3: 'Carol' };
         assert.equal(checkSinglePlayerMatch(bare, 'Carol', 'vc'), false);
