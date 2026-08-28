@@ -78,23 +78,38 @@ rule "DROPPED BY FILL-FORWARD   scripts/audit_fillforward.py"
 # Each audit heads its sections "<label> (<n>)"; pull the n off the first
 # line matching the label.
 count() { grep -E "$1" "$2" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
+# Taken from the raw sheet, not the run above: on a canonicalized export
+# every live alias's canonical name is present by construction, so both
+# counts collapse to near-nothing there and would read as "nothing to see".
+# Kept, not discarded: the summary's bare-entry counts come from this pass, so
+# throwing the body away would leave a reader with a number and no way to reach
+# the rows behind it. The processed pass prints its own attribution under a
+# "not evidence" banner, so it is no substitute.
+#
+# Warnings go to STDOUT, beside the numbers they qualify. fill_forward prints
+# its degradation notice on stdout for that reason, and re-emitting on stderr
+# would undo it: `npm run audit > report.txt` is the documented workflow, and a
+# degraded run must not read as a clean one in the file.
+RAW_OUT="$OUT/aliases-raw.txt"
+if ! "${PY[@]}" scripts/audit_aliases.py archive/data-raw.csv > "$RAW_OUT" 2>"$OUT/raw.err"; then
+    echo "  !! the raw-sheet pass FAILED — the counts below are missing, not zero:"
+    sed 's/^/     /' "$OUT/raw.err"
+fi
+RAWALIAS=$(cat "$RAW_OUT" 2>/dev/null || true)
+if printf '%s' "$RAWALIAS" | grep -q 'could not fill-forward'; then
+    echo "  !! fill-forward degraded on the raw pass — NEEDS MEMORY below is inflated."
+fi
+
+# The bare-entry findings the summary counts, printed from the raw pass so the
+# rows are reachable. Everything else in that pass duplicates the run above.
+rule "BARE NAMES        scripts/audit_aliases.py archive/data-raw.csv"
+sed -n '/^-- bare entries whose alias contradicts the room/,/no alias was consulted/p' \
+    "$RAW_OUT" 2>/dev/null || true
+
 rule "SUMMARY"
 printf '  %-46s %s\n' \
   "bare names with 2+ candidates (for context)" "$(count 'bare names in the sheet with 2\+ candidates' "$OUT/aliases.txt")" \
   "aliases keyed on an ambiguous first name" "$(count 'aliases keyed on an ambiguous first name' "$OUT/aliases.txt")"
-# Taken from the raw sheet, not the run above: on a canonicalized export
-# every live alias's canonical name is present by construction, so both
-# counts collapse to near-nothing there and would read as "nothing to see".
-# stderr is NOT discarded and failure is NOT swallowed: this pass runs
-# fill_forward, which degrades to un-filled rows if node fails, and a degraded
-# run inflates the NEEDS MEMORY count with rows whose answer sits in the row
-# above. Silently printing that as a finding is worse than printing nothing.
-if ! RAWALIAS=$("${PY[@]}" scripts/audit_aliases.py archive/data-raw.csv); then
-    echo "  !! the raw-sheet pass FAILED — the counts below are missing, not zero." >&2
-fi
-if printf '%s' "$RAWALIAS" | grep -q 'could not fill-forward'; then
-    echo "  !! fill-forward degraded on the raw pass — NEEDS MEMORY below is inflated." >&2
-fi
 n_of() { printf '%s' "$RAWALIAS" | grep -E "$1" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
 printf '  %-46s %s\n' \
   "aliases that are a surname's only record" "$(n_of 'ONLY record of a surname') (back up src/aliases.js)" \
