@@ -85,7 +85,16 @@ printf '  %-46s %s\n' \
 # Taken from the raw sheet, not the run above: on a canonicalized export
 # every live alias's canonical name is present by construction, so both
 # counts collapse to near-nothing there and would read as "nothing to see".
-RAWALIAS=$("${PY[@]}" scripts/audit_aliases.py archive/data-raw.csv 2>/dev/null || true)
+# stderr is NOT discarded and failure is NOT swallowed: this pass runs
+# fill_forward, which degrades to un-filled rows if node fails, and a degraded
+# run inflates the NEEDS MEMORY count with rows whose answer sits in the row
+# above. Silently printing that as a finding is worse than printing nothing.
+if ! RAWALIAS=$("${PY[@]}" scripts/audit_aliases.py archive/data-raw.csv); then
+    echo "  !! the raw-sheet pass FAILED — the counts below are missing, not zero." >&2
+fi
+if printf '%s' "$RAWALIAS" | grep -q 'could not fill-forward'; then
+    echo "  !! fill-forward degraded on the raw pass — NEEDS MEMORY below is inflated." >&2
+fi
 n_of() { printf '%s' "$RAWALIAS" | grep -E "$1" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
 printf '  %-46s %s\n' \
   "aliases that are a surname's only record" "$(n_of 'ONLY record of a surname') (back up src/aliases.js)" \

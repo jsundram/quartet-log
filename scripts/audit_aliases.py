@@ -188,26 +188,35 @@ def slot_classes_for(rows: list[dict]) -> dict[str, str]:
     return slot_annotation_classes(annotated)
 
 
-def row_people(row: dict, slot_classes: dict[str, str]) -> list[tuple[str, str]]:
-    """(name, class) for everyone in one row.
+def row_people(row: dict, slot_classes: dict[str, str]) -> list[tuple[str, str, str]]:
+    """(name, class, seat) for everyone in one row.
 
     The single reader of a row's cast, shared by the teammate index below and
     by attribute_bare_entries, so the two cannot disagree about who was there.
+
+    `seat` identifies the cell — "p1".."p3" or "o0", "o1" for the parsed
+    Others? entries. Attribution compares the same row before and after
+    fill-forward, and needs to drop the subject's OWN cell from the evidence:
+    when fill-forward resolved that very cell, comparing by name fails to
+    exclude it (the written name is "Peter", the filled one "Peter Chan") and
+    the subject is scored as its own stand-mate — for whichever rival happens
+    to know the person it actually is.
     """
-    people: list[tuple[str, str]] = []
+    people: list[tuple[str, str, str]] = []
     for i in range(3):
         raw = (row.get(f"Player {i + 1}") or "").strip()
         if raw and raw != "-":
             # An instrument annotation states the class; the column only
             # implies it (SLOT_CLASS). Same precedence as the app.
             cls = slot_classes.get(raw) or SLOT_CLASS[i]
-            people.append((expand_abbrev(strip_parens(raw)), cls))
+            people.append((expand_abbrev(strip_parens(raw)), cls, f"p{i + 1}"))
     # The canonical header is "Others?" (see src/csvFormat.js), but exports
     # written before the header fix used "Others" — accept both.
-    for name, instr in parse_others(row.get("Others?") or row.get("Others") or ""):
+    for i, (name, instr) in enumerate(
+            parse_others(row.get("Others?") or row.get("Others") or "")):
         cls = class_of(instr)
         if name and cls:
-            people.append((expand_abbrev(name), cls))
+            people.append((expand_abbrev(name), cls, f"o{i}"))
     return people
 
 
@@ -249,8 +258,15 @@ def fill_forward(rows: list[dict]) -> list[tuple[dict, dict]]:
         return list(zip(csv.DictReader(io.StringIO(out["before"])),
                         csv.DictReader(io.StringIO(out["after"]))))
     except (OSError, subprocess.CalledProcessError, ValueError) as e:
-        print(f"Note: could not fill-forward via node ({e}); continuation rows "
-              "will look emptier than they are.", file=sys.stderr)
+        # On stdout, not stderr: this lands inside the report a caller
+        # captures, so a degraded run cannot be mistaken for a clean one.
+        # Without fill-forward every continuation row loses its cast, and the
+        # entries that depended on it inflate the NEEDS MEMORY count — the
+        # opposite of what that flag is supposed to mean.
+        why = (getattr(e, "stderr", "") or str(e)).strip().splitlines()
+        print(f"\n  !! could not fill-forward via node ({why[-1] if why else e}) — continuation rows"
+              "\n     lost their cast, so the counts below understate what is"
+              "\n     answerable and overstate what needs memory.")
         return [(row, row) for row in rows]
 
 
@@ -267,8 +283,8 @@ def collect_appearances(rows: list[dict],
         slot_classes = slot_classes_for(rows)
     for row in rows:
         people = row_people(row, slot_classes)
-        for name, cls in people:
-            teammates = [n for n, _ in people if n != name]
+        for name, cls, seat in people:
+            teammates = [n for n, _c, s2 in people if s2 != seat]
             appearances[(name, cls)].append(teammates)
     return appearances
 
@@ -312,8 +328,12 @@ def candidate_index(appearances: dict[tuple[str, str], list[list[str]]]
         keyed on, so a cello-slot "Jo" never draws the upper-class Jo.
 
     Also returns each full name's teammate circle and how often it was written
-    out. Circles come only from names a human typed in full: a typed name is
-    evidence, an alias-supplied one is the hypothesis under test.
+    out. Both come from `appearances`, which must be built from the rows AS
+    WRITTEN: a typed name is evidence, while an alias-supplied one is the
+    hypothesis under test and a fill-forwarded one is the sheet repeating
+    itself. Counting the latter would let a name typed once in a five-piece
+    session clear MIN_WRITTEN_IN_FULL five times over — and that is exactly
+    the population the threshold exists to protect against.
     """
     by_first: dict[tuple[str, str], set[str]] = defaultdict(set)
     circles: dict[str, set[str]] = defaultdict(set)
@@ -371,14 +391,23 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
     for row, filled in pairs:
         # Evidence from the filled row, subjects from the row as written: a
         # continuation row's blank slot is not a cell anyone can go and fix.
-        names = [n for n, _ in row_people(filled, slot_classes)]
-        for name, cls in row_people(row, slot_classes):
+        cast = row_people(filled, slot_classes)
+        by_seat = {seat: n for n, _c, seat in cast}
+        for name, cls, seat in row_people(row, slot_classes):
             if len(name.split()) > 1:
                 continue
             candidates = full_by_first.get((base_token(name), cls), set())
             if len(candidates) < 2:
                 continue
-            mates = [m for m in names if m != name]
+            # The sheet may already have answered this itself: fill-forward
+            # expands a bare name that abbreviates the previous entry in the
+            # session, and the app runs fillForward BEFORE normalizePlayerNames,
+            # so no alias ever sees this cell. Nothing to report.
+            resolved = by_seat.get(seat, name)
+            if resolved != name and base_token(resolved) == base_token(name):
+                settled += 1
+                continue
+            mates = [n for n, _c, s2 in cast if s2 != seat]
             scored = sorted(((len([m for m in mates if m in circles[c]]), c)
                              for c in candidates), reverse=True)
             top, runner = scored[0], scored[1]
@@ -627,7 +656,13 @@ def main() -> None:
 
     # (row as written, row after fill-forward) — see fill_forward.
     pairs = fill_forward(load_rows(csv_path))
-    rows = [filled for _written, filled in pairs]
+    rows = [written for written, _filled in pairs]
+    # Every index in this report — variants, teammate counts, bare-name counts,
+    # the canonicalized-export detector — is built from the rows AS WRITTEN.
+    # Fill-forward synthesises values a human never typed, and each of those
+    # readers is asking what was typed: how often a full name was spelled out,
+    # which cells still hold a bare one. Only the per-entry evidence lookup in
+    # attribute_bare_entries wants the filled view, and it takes it from pairs.
     # One node round-trip for the whole file; every reader shares the result.
     slot_classes = slot_classes_for(rows)
     appearances = collect_appearances(rows, slot_classes)
