@@ -172,30 +172,44 @@ def load_rows(path: Path) -> list[dict]:
         return [r for r in reader if r.get("Timestamp")]
 
 
-def collect_appearances(rows: list[dict]) -> dict[tuple[str, str], list[list[str]]]:
-    """For each (name, class) pair, return list of teammate-lists from each appearance."""
-    appearances: dict[tuple[str, str], list[list[str]]] = defaultdict(list)
+def slot_classes_for(rows: list[dict]) -> dict[str, str]:
+    """One node call for every slot value in the file that carries a paren."""
     annotated = {
         raw for row in rows for i in range(3)
         if "(" in (raw := (row.get(f"Player {i + 1}") or "").strip())
     }
-    slot_classes = slot_annotation_classes(annotated)
+    return slot_annotation_classes(annotated)
+
+
+def row_people(row: dict, slot_classes: dict[str, str]) -> list[tuple[str, str]]:
+    """(name, class) for everyone in one row.
+
+    The single reader of a row's cast, shared by the teammate index below and
+    by attribute_bare_rows, so the two cannot disagree about who was there.
+    """
+    people: list[tuple[str, str]] = []
+    for i in range(3):
+        raw = (row.get(f"Player {i + 1}") or "").strip()
+        if raw and raw != "-":
+            # An instrument annotation states the class; the column only
+            # implies it (SLOT_CLASS). Same precedence as the app.
+            cls = slot_classes.get(raw) or SLOT_CLASS[i]
+            people.append((expand_abbrev(strip_parens(raw)), cls))
+    # The canonical header is "Others?" (see src/csvFormat.js), but exports
+    # written before the header fix used "Others" — accept both.
+    for name, instr in parse_others(row.get("Others?") or row.get("Others") or ""):
+        cls = class_of(instr)
+        if name and cls:
+            people.append((expand_abbrev(name), cls))
+    return people
+
+
+def collect_appearances(rows: list[dict]) -> dict[tuple[str, str], list[list[str]]]:
+    """For each (name, class) pair, return list of teammate-lists from each appearance."""
+    appearances: dict[tuple[str, str], list[list[str]]] = defaultdict(list)
+    slot_classes = slot_classes_for(rows)
     for row in rows:
-        # Build list of (name, class) seen in this row
-        people: list[tuple[str, str]] = []
-        for i in range(3):
-            raw = (row.get(f"Player {i + 1}") or "").strip()
-            if raw and raw != "-":
-                # An instrument annotation states the class; the column only
-                # implies it (SLOT_CLASS). Same precedence as the app.
-                cls = slot_classes.get(raw) or SLOT_CLASS[i]
-                people.append((expand_abbrev(strip_parens(raw)), cls))
-        # The canonical header is "Others?" (see src/csvFormat.js), but
-        # exports written before the header fix used "Others" — accept both.
-        for name, instr in parse_others(row.get("Others?") or row.get("Others") or ""):
-            cls = class_of(instr)
-            if name and cls:
-                people.append((expand_abbrev(name), cls))
+        people = row_people(row, slot_classes)
         for name, cls in people:
             teammates = [n for n, _ in people if n != name]
             appearances[(name, cls)].append(teammates)
@@ -226,7 +240,71 @@ def already_aliased(variant: str, cls: str) -> bool:
     return variant in EXISTING_ALIASES and cls in EXISTING_ALIASES[variant]
 
 
-def report_ambiguity(appearances: dict[tuple[str, str], list[list[str]]]) -> None:
+def attribute_bare_rows(rows: list[dict],
+                       appearances: dict[tuple[str, str], list[list[str]]]
+                       ) -> tuple[list, list, int]:
+    """Decide, per row, which of several same-first-name people a bare entry is.
+
+    "Which Alice was this" reads as a memory problem, and the name alone makes
+    it one. The row is not alone though: two people who share a first name
+    almost never share a stand. Measured on this log the candidates' teammate
+    circles are literally disjoint — jaccard 0.00 for every ambiguous pair —
+    so the OTHER people in the row identify the one who was there, years after
+    anyone could recall the evening.
+
+    Returns (conflicts, unsettled, settled):
+      conflicts  the row's teammates point somewhere other than the alias, so
+                 the alias is currently crediting the wrong person. The only
+                 entry here that is ever a bug, and the reason to run this.
+      unsettled  no candidate's circle matches — a one-off group, a reading
+                 party. These genuinely need memory, and they are the only
+                 ones that decay.
+      settled    count of rows the teammates settle in agreement with the
+                 alias. Not listed: nothing to do, and listing them buries the
+                 two lists above.
+    """
+    # Circle = everyone this person has ever played with, either class.
+    circles: dict[str, set[str]] = defaultdict(set)
+    for (name, _cls), apps in appearances.items():
+        circles[name].update(teammate_counter(apps))
+
+    full_by_first: dict[str, set[str]] = defaultdict(set)
+    for (name, _cls) in appearances:
+        if len(name.split()) > 1:
+            full_by_first[base_token(name)].add(name)
+
+    conflicts, unsettled, settled = [], [], 0
+    slot_classes = slot_classes_for(rows)
+    for row in rows:
+        people = row_people(row, slot_classes)
+        names = [n for n, _ in people]
+        for name, cls in people:
+            candidates = full_by_first.get(base_token(name), set())
+            if len(name.split()) > 1 or len(candidates) < 2:
+                continue
+            mates = [m for m in names if m != name]
+            scored = sorted(((len([m for m in mates if m in circles[c]]), c)
+                             for c in candidates), reverse=True)
+            top, runner = scored[0], (scored[1] if len(scored) > 1 else (0, ""))
+            alias = EXISTING_ALIASES.get(name, {}).get(cls)
+            if not top[0] or top[0] == runner[0]:
+                unsettled.append((row, name, cls, alias, sorted(candidates)))
+            elif alias and alias != top[1]:
+                conflicts.append((row, name, cls, alias, top[1],
+                                  [m for m in mates if m in circles[top[1]]]))
+            else:
+                settled += 1
+    return conflicts, unsettled, settled
+
+
+def describe_row(row: dict) -> str:
+    return (f"{(row.get('Timestamp') or '').split(' ')[0]:>10s} "
+            f"{(row.get('Composer') or '').strip():14.14s} "
+            f"{(row.get('Work Title') or '').strip():14.14s}")
+
+
+def report_ambiguity(rows: list[dict],
+                     appearances: dict[tuple[str, str], list[list[str]]]) -> None:
     """Flag first names that no longer identify exactly one person.
 
     The variant grouping above answers "which short forms belong in
@@ -307,6 +385,31 @@ def report_ambiguity(appearances: dict[tuple[str, str], list[list[str]]]) -> Non
         note = f"alias says {mapped!r}" if mapped else "NO alias — counted as its own person"
         print(f"   {name!r:18s} [{cls:5s}] {count:4d}×   {note}")
         print(f"   {'':18s}         candidates: {', '.join(candidates)}")
+
+    # 1b. The same hazard read per ROW rather than per name, which is what
+    # decides whether there is any work to do. A bare name with four possible
+    # people is not four problems if the stand tells you which one it was.
+    conflicts, unsettled, settled = attribute_bare_rows(rows, appearances)
+    print(f"\n-- bare rows whose alias contradicts the row ({len(conflicts)}) --")
+    print("   The teammates say one person and the alias says another, so these")
+    print("   rows are credited to the wrong one today. Fix the SHEET cell.")
+    if not conflicts:
+        print("   (none)")
+    for row, name, cls, alias, winner, why in conflicts:
+        print(f"   {describe_row(row)}  {name!r} [{cls}]")
+        print(f"   {'':10s} alias says {alias!r}, the room says {winner!r}"
+              f"  (played with {', '.join(why[:3])})")
+    print(f"\n-- bare rows the room cannot settle ({len(unsettled)}) --")
+    print("   No candidate's circle matches — a one-off group or a reading")
+    print("   party. These are the ones that need memory, so answer them first.")
+    if not unsettled:
+        print("   (none)")
+    for row, name, cls, alias, candidates in unsettled:
+        print(f"   {describe_row(row)}  {name!r} [{cls}]"
+              f"  alias -> {alias or 'none'}")
+        print(f"   {'':10s} candidates: {', '.join(candidates)}")
+    print(f"\n   ({settled} more bare rows are settled by the room and agree with"
+          " the table — nothing to do.)")
 
     # 2. Aliases keyed on a first name several people now share. Multi-token
     # keys ("Jo A", "Jo Alpha") are already disambiguated, so skip them.
@@ -472,7 +575,7 @@ def main() -> None:
             f"{long_name!r}  ({lcount}×, overlap {overlap:.0%})"
         )
 
-    report_ambiguity(appearances)
+    report_ambiguity(rows, appearances)
 
     # Final paste-ready PLAYER_ALIASES block
     print("\n=== PLAYER_ALIASES proposal (paste into src/aliases.js — gitignored; NEVER into a tracked file) ===\n")

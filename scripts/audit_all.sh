@@ -79,8 +79,13 @@ rule "DROPPED BY FILL-FORWARD   scripts/audit_fillforward.py"
 # line matching the label.
 count() { grep -E "$1" "$2" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
 rule "SUMMARY"
+# Row-level first: a bare name with four possible people is not four problems
+# if the other players in the row say which one it was. Only the rows the room
+# cannot settle actually need memory.
 printf '  %-46s %s\n' \
-  "bare names with 2+ candidates (NEEDS MEMORY)" "$(count 'bare names in the sheet with 2\+ candidates' "$OUT/aliases.txt")" \
+  "bare rows the room cannot settle (NEEDS MEMORY)" "$(count 'bare rows the room cannot settle' "$OUT/aliases.txt")" \
+  "bare rows whose alias contradicts the row" "$(count 'bare rows whose alias contradicts the row' "$OUT/aliases.txt")" \
+  "bare names with 2+ candidates (for context)" "$(count 'bare names in the sheet with 2\+ candidates' "$OUT/aliases.txt")" \
   "aliases keyed on an ambiguous first name" "$(count 'aliases keyed on an ambiguous first name' "$OUT/aliases.txt")"
 # Taken from the raw sheet, not the run above: on a canonicalized export
 # every live alias's canonical name is present by construction, so both
