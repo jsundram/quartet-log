@@ -73,6 +73,12 @@ if not EXISTING_ALIASES and not ABBREVIATIONS:
 # Slot semantics from src/dataProcessor.js
 SLOT_CLASS = ["upper", "upper", "cello"]
 
+# How many times a full name must appear, written out, before its teammate
+# circle counts as evidence in attribute_bare_entries. The people most often
+# logged bare are exactly the ones whose full name is rarest, so below this a
+# non-match means "we have never seen this person named", not "not them".
+MIN_WRITTEN_IN_FULL = 5
+
 
 def class_of(instrument: str | None) -> str | None:
     if not instrument:
@@ -204,10 +210,17 @@ def row_people(row: dict, slot_classes: dict[str, str]) -> list[tuple[str, str]]
     return people
 
 
-def collect_appearances(rows: list[dict]) -> dict[tuple[str, str], list[list[str]]]:
-    """For each (name, class) pair, return list of teammate-lists from each appearance."""
+def collect_appearances(rows: list[dict],
+                       slot_classes: dict[str, str] | None = None
+                       ) -> dict[tuple[str, str], list[list[str]]]:
+    """For each (name, class) pair, return list of teammate-lists from each appearance.
+
+    `slot_classes` costs a node subprocess over the whole file, so main computes
+    it once and hands the same map to every reader.
+    """
     appearances: dict[tuple[str, str], list[list[str]]] = defaultdict(list)
-    slot_classes = slot_classes_for(rows)
+    if slot_classes is None:
+        slot_classes = slot_classes_for(rows)
     for row in rows:
         people = row_people(row, slot_classes)
         for name, cls in people:
@@ -240,61 +253,97 @@ def already_aliased(variant: str, cls: str) -> bool:
     return variant in EXISTING_ALIASES and cls in EXISTING_ALIASES[variant]
 
 
-def attribute_bare_rows(rows: list[dict],
-                       appearances: dict[tuple[str, str], list[list[str]]]
-                       ) -> tuple[list, list, int]:
-    """Decide, per row, which of several same-first-name people a bare entry is.
+def attribute_bare_entries(rows: list[dict],
+                           appearances: dict[tuple[str, str], list[list[str]]],
+                           slot_classes: dict[str, str],
+                           ) -> tuple[list, list, list, int, int]:
+    """Decide, per entry, which of several same-first-name people a bare name is.
 
     "Which Alice was this" reads as a memory problem, and the name alone makes
     it one. The row is not alone though: two people who share a first name
-    almost never share a stand. Measured on this log the candidates' teammate
-    circles are literally disjoint — jaccard 0.00 for every ambiguous pair —
-    so the OTHER people in the row identify the one who was there, years after
-    anyone could recall the evening.
+    rarely share a stand, so the OTHER people in the row point at the one who
+    was there, long after anyone could recall the evening.
 
-    Returns (conflicts, unsettled, settled):
-      conflicts  the row's teammates point somewhere other than the alias, so
-                 the alias is currently crediting the wrong person. The only
-                 entry here that is ever a bug, and the reason to run this.
-      unsettled  no candidate's circle matches — a one-off group, a reading
-                 party. These genuinely need memory, and they are the only
-                 ones that decay.
-      settled    count of rows the teammates settle in agreement with the
-                 alias. Not listed: nothing to do, and listing them buries the
-                 two lists above.
+    MUST be measured on the RAW sheet (scripts/fetch_raw.sh -> data-raw.csv).
+    On the processed export the evidence has been rewritten by the very table
+    under test: normalizePlayerNames has already replaced each bare slot name
+    with whatever the alias guessed, so those rows have joined the guessed
+    person's circle and vote to confirm the guess. A wrong alias would then
+    look settled, and only Others? entries — exported verbatim — could ever
+    disagree. Circles are built from explicitly-written full names only, for
+    the same reason: a name someone typed in full is evidence, a name an alias
+    supplied is the hypothesis.
+
+    Returns (conflicts, unaliased, unsettled, unverified, settled):
+      conflicts  the room points somewhere other than the alias, so the entry
+                 is credited to the wrong person today. Fix the sheet cell.
+      unaliased  the room names someone but no alias covers this bare name, so
+                 the app counts the bare form as a separate person in every
+                 people stat. Also a sheet fix, and the largest bucket.
+      unsettled  no candidate's circle matches AND no alias has ever decided
+                 it. Nobody has answered these, and nobody else can: the only
+                 entries that truly need memory.
+      unverified count of entries with no usable evidence but an alias already
+                 standing. Not work — the alias is the best available answer
+                 and this run simply cannot second-guess it. Kept apart from
+                 `unsettled` because presenting 400 of these as NEEDS MEMORY
+                 is as misleading as reporting none.
+      settled    count of entries the room settles in agreement with the table.
+                 Not listed: nothing to do, and listing them buries the rest.
     """
-    # Circle = everyone this person has ever played with, either class.
+    # Evidence: who each EXPLICITLY-named person has played with. Bare names
+    # are excluded on purpose — they are the question, not the answer.
     circles: dict[str, set[str]] = defaultdict(set)
-    for (name, _cls), apps in appearances.items():
-        circles[name].update(teammate_counter(apps))
+    written: Counter = Counter()
+    full_by_first: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for (name, cls), apps in appearances.items():
+        # "Peter O" is Peter Ouyang with the surname abbreviated, not a second
+        # Peter. Treating it as a candidate invents a rival for the real one.
+        if len(name.split()) > 1 and len(name.split()[-1].rstrip(".")) > 1:
+            circles[name].update(teammate_counter(apps))
+            written[name] += len(apps)
+            # Keyed by class, because PLAYER_ALIASES is: a bare "Jo" in the
+            # cello slot must not draw the upper-class Jo as a candidate, or
+            # that Jo's larger circle wins and the correct class-keyed alias
+            # gets reported as crediting the wrong person.
+            full_by_first[(base_token(name), cls)].add(name)
 
-    full_by_first: dict[str, set[str]] = defaultdict(set)
-    for (name, _cls) in appearances:
-        if len(name.split()) > 1:
-            full_by_first[base_token(name)].add(name)
-
-    conflicts, unsettled, settled = [], [], 0
-    slot_classes = slot_classes_for(rows)
+    conflicts, unaliased, unsettled, unverified, settled = [], [], [], 0, 0
     for row in rows:
         people = row_people(row, slot_classes)
         names = [n for n, _ in people]
         for name, cls in people:
-            candidates = full_by_first.get(base_token(name), set())
-            if len(name.split()) > 1 or len(candidates) < 2:
+            if len(name.split()) > 1:
+                continue
+            candidates = full_by_first.get((base_token(name), cls), set())
+            if len(candidates) < 2:
                 continue
             mates = [m for m in names if m != name]
             scored = sorted(((len([m for m in mates if m in circles[c]]), c)
                              for c in candidates), reverse=True)
-            top, runner = scored[0], (scored[1] if len(scored) > 1 else (0, ""))
+            top, runner = scored[0], scored[1]
             alias = EXISTING_ALIASES.get(name, {}).get(cls)
-            if not top[0] or top[0] == runner[0]:
-                unsettled.append((row, name, cls, alias, sorted(candidates)))
+            why = [m for m in mates if m in circles[top[1]]]
+            # A circle is only evidence if we have one. Someone almost always
+            # logged bare has a thin explicit circle, so their FAILURE to match
+            # says nothing — and the rival who happens to share one hub mate
+            # would win by default. Both the winner and, when contradicting it,
+            # the alias's target must be people the sheet actually names.
+            confident = (written[top[1]] >= MIN_WRITTEN_IN_FULL
+                         and (not alias or alias == top[1]
+                              or written.get(alias, 0) >= MIN_WRITTEN_IN_FULL))
+            if not top[0] or top[0] == runner[0] or not confident:
+                if alias:
+                    unverified += 1
+                else:
+                    unsettled.append((row, name, cls, alias, sorted(candidates)))
             elif alias and alias != top[1]:
-                conflicts.append((row, name, cls, alias, top[1],
-                                  [m for m in mates if m in circles[top[1]]]))
-            else:
+                conflicts.append((row, name, cls, alias, top[1], why))
+            elif alias:
                 settled += 1
-    return conflicts, unsettled, settled
+            else:
+                unaliased.append((row, name, cls, top[1], why))
+    return conflicts, unaliased, unsettled, unverified, settled
 
 
 def describe_row(row: dict) -> str:
@@ -304,7 +353,8 @@ def describe_row(row: dict) -> str:
 
 
 def report_ambiguity(rows: list[dict],
-                     appearances: dict[tuple[str, str], list[list[str]]]) -> None:
+                     appearances: dict[tuple[str, str], list[list[str]]],
+                     slot_classes: dict[str, str]) -> None:
     """Flag first names that no longer identify exactly one person.
 
     The variant grouping above answers "which short forms belong in
@@ -355,6 +405,7 @@ def report_ambiguity(rows: list[dict],
     # the data on the next fetch. Alias liveness can only be read from the raw
     # sheet (scripts/fetch_raw.sh -> archive/data-raw.csv).
     keys = [k for k in EXISTING_ALIASES if len(k.split()) == 1]
+    canonicalized = False
     if keys:
         unseen = sum(
             1 for k in keys
@@ -362,7 +413,8 @@ def report_ambiguity(rows: list[dict],
             and any(n == c for m in [EXISTING_ALIASES[k]] for c in m.values()
                     for n, _ in appearances)
         )
-        if unseen > len(keys) / 2:
+        canonicalized = unseen > len(keys) / 2
+        if canonicalized:
             print(f"\n  !! {unseen} of {len(keys)} alias keys are absent while their canonical")
             print("     names are present — this input looks like the CANONICALIZED export.")
             print("     Re-run against archive/data-raw.csv before judging any alias dead.")
@@ -386,30 +438,49 @@ def report_ambiguity(rows: list[dict],
         print(f"   {name!r:18s} [{cls:5s}] {count:4d}×   {note}")
         print(f"   {'':18s}         candidates: {', '.join(candidates)}")
 
-    # 1b. The same hazard read per ROW rather than per name, which is what
-    # decides whether there is any work to do. A bare name with four possible
-    # people is not four problems if the stand tells you which one it was.
-    conflicts, unsettled, settled = attribute_bare_rows(rows, appearances)
-    print(f"\n-- bare rows whose alias contradicts the row ({len(conflicts)}) --")
-    print("   The teammates say one person and the alias says another, so these")
-    print("   rows are credited to the wrong one today. Fix the SHEET cell.")
+    # 1b. The same hazard read per ENTRY rather than per name, which is what
+    # decides whether there is any work to do: a bare name with four possible
+    # people is not four problems if the stand says which one it was. Counted
+    # per entry, not per row — a camp session's Others? column can hold two
+    # ambiguous names, and each is its own cell to fix.
+    conflicts, unaliased, unsettled, unverified, settled = attribute_bare_entries(
+        rows, appearances, slot_classes)
+    if canonicalized:
+        print("\n   !! Attribution below is measured on the CANONICALIZED export, where")
+        print("      every bare slot name has already been replaced by whatever the")
+        print("      alias guessed. Those rows now vote for the guess, so a wrong alias")
+        print("      confirms itself and only Others? entries can disagree. A 0 here is")
+        print("      not evidence — re-run against archive/data-raw.csv.")
+    print(f"\n-- bare entries whose alias contradicts the room ({len(conflicts)}) --")
+    print("   The stand says one person and the alias says another, so these are")
+    print("   credited to the wrong one today. Fix the SHEET cell.")
     if not conflicts:
         print("   (none)")
     for row, name, cls, alias, winner, why in conflicts:
         print(f"   {describe_row(row)}  {name!r} [{cls}]")
         print(f"   {'':10s} alias says {alias!r}, the room says {winner!r}"
               f"  (played with {', '.join(why[:3])})")
-    print(f"\n-- bare rows the room cannot settle ({len(unsettled)}) --")
-    print("   No candidate's circle matches — a one-off group or a reading")
-    print("   party. These are the ones that need memory, so answer them first.")
+    print(f"\n-- bare entries the room resolves but no alias covers ({len(unaliased)}) --")
+    print("   The app counts the bare form as its own person in every people")
+    print("   stat. The room already names them, so this is mechanical: write")
+    print("   the full name into the cell (or add the alias, if it is unambiguous).")
+    if not unaliased:
+        print("   (none)")
+    for row, name, cls, winner, why in unaliased:
+        print(f"   {describe_row(row)}  {name!r} [{cls}] -> {winner!r}"
+              f"  (played with {', '.join(why[:3])})")
+    print(f"\n-- bare entries nobody has decided ({len(unsettled)}) --")
+    print("   No alias covers them and no circle matches, so these are open")
+    print("   questions only you can close. Answer them first — they decay.")
     if not unsettled:
         print("   (none)")
     for row, name, cls, alias, candidates in unsettled:
         print(f"   {describe_row(row)}  {name!r} [{cls}]"
               f"  alias -> {alias or 'none'}")
         print(f"   {'':10s} candidates: {', '.join(candidates)}")
-    print(f"\n   ({settled} more bare rows are settled by the room and agree with"
-          " the table — nothing to do.)")
+    print(f"\n   ({settled} more bare entries agree with the table, and {unverified}"
+          " have an alias\n   standing that this run has no evidence to"
+          " second-guess — nothing to do for either.)")
 
     # 2. Aliases keyed on a first name several people now share. Multi-token
     # keys ("Jo A", "Jo Alpha") are already disambiguated, so skip them.
@@ -478,7 +549,9 @@ def main() -> None:
         sys.exit(1)
 
     rows = load_rows(csv_path)
-    appearances = collect_appearances(rows)
+    # One node round-trip for the whole file; every reader shares the result.
+    slot_classes = slot_classes_for(rows)
+    appearances = collect_appearances(rows, slot_classes)
     print(f"Rows: {len(rows)}    Unique (name, class) pairs: {len(appearances)}\n")
 
     # Group by base token to find variants
@@ -575,7 +648,7 @@ def main() -> None:
             f"{long_name!r}  ({lcount}×, overlap {overlap:.0%})"
         )
 
-    report_ambiguity(rows, appearances)
+    report_ambiguity(rows, appearances, slot_classes)
 
     # Final paste-ready PLAYER_ALIASES block
     print("\n=== PLAYER_ALIASES proposal (paste into src/aliases.js — gitignored; NEVER into a tracked file) ===\n")

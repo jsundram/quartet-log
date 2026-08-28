@@ -79,12 +79,7 @@ rule "DROPPED BY FILL-FORWARD   scripts/audit_fillforward.py"
 # line matching the label.
 count() { grep -E "$1" "$2" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
 rule "SUMMARY"
-# Row-level first: a bare name with four possible people is not four problems
-# if the other players in the row say which one it was. Only the rows the room
-# cannot settle actually need memory.
 printf '  %-46s %s\n' \
-  "bare rows the room cannot settle (NEEDS MEMORY)" "$(count 'bare rows the room cannot settle' "$OUT/aliases.txt")" \
-  "bare rows whose alias contradicts the row" "$(count 'bare rows whose alias contradicts the row' "$OUT/aliases.txt")" \
   "bare names with 2+ candidates (for context)" "$(count 'bare names in the sheet with 2\+ candidates' "$OUT/aliases.txt")" \
   "aliases keyed on an ambiguous first name" "$(count 'aliases keyed on an ambiguous first name' "$OUT/aliases.txt")"
 # Taken from the raw sheet, not the run above: on a canonicalized export
@@ -95,6 +90,14 @@ n_of() { printf '%s' "$RAWALIAS" | grep -E "$1" | head -1 | grep -oE '\([0-9]+\)
 printf '  %-46s %s\n' \
   "aliases that are a surname's only record" "$(n_of 'ONLY record of a surname') (back up src/aliases.js)" \
   "aliases pointing at an unrelated name" "$(n_of 'absent and unrelated')"
+# Also from the raw pass, and for a sharper reason: attribution reads a bare
+# name's teammates as evidence, and on the processed export those teammates
+# were themselves supplied by the alias under test. A wrong alias would vote
+# to confirm itself, so a 0 there is not evidence of anything.
+printf '  %-46s %s\n' \
+  "bare entries nobody has decided (NEEDS MEMORY)" "$(n_of 'bare entries nobody has decided')" \
+  "bare entries whose alias contradicts the room" "$(n_of 'whose alias contradicts the room')" \
+  "bare entries resolved but not aliased" "$(n_of 'resolves but no alias covers')"
 printf '  %-46s %s\n' \
   "under-logged, ensemble stated (NEEDS MEMORY)" "$(count 'title states the ensemble' "$OUT/ensembles.txt")" \
   "piano works with nobody marked at the keyboard" "$(count 'UNANNOTATED PIANO WORKS' "$OUT/ensembles.txt")"
