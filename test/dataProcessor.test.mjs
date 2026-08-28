@@ -1106,25 +1106,34 @@ describe('fillForward', () => {
         assert.equal(data[2].player1, 'Alice');
     });
 
-    it('leaves an empty cell empty outside the session window', () => {
+    it('fills an empty cell however long the gap — a blank is a ditto mark', () => {
+        // Nobody starts a session by leaving the names out, so a blank can
+        // only mean "same as above"; "-" is how the sheet says "nobody here".
+        // Time-gating this cost a whole evening in the real log: one
+        // dinner-break gap emptied the row, and that empty value then
+        // anchored every row after it.
         const data = [
             ffRow(0, { player1: 'Alice' }),
             ffRow(5, { player1: '' }),
         ];
         fillForward(data, {});
-        assert.equal(data[1].player1, '');
+        assert.equal(data[1].player1, 'Alice');
     });
 
-    it('an out-of-window empty cell resets the reference entry', () => {
-        // The 3rd row's "Bob" is not a prefix of the (now empty) reference,
-        // so it stands on its own instead of resurrecting "Alice".
+    it('an empty cell never becomes the reference entry', () => {
+        // The blank inherits Alice and leaves the reference alone, so the
+        // dinner-break row does not blank the rest of the evening. A name
+        // typed afterwards still stands on its own.
         const data = [
             ffRow(0, { player1: 'Alice' }),
             ffRow(5, { player1: '' }),
-            ffRow(5.5, { player1: 'Bob' }),
+            ffRow(5.5, { player1: '' }),
+            ffRow(6, { player1: 'Bob' }),
         ];
         fillForward(data, {});
-        assert.equal(data[2].player1, 'Bob');
+        assert.equal(data[1].player1, 'Alice');
+        assert.equal(data[2].player1, 'Alice');
+        assert.equal(data[3].player1, 'Bob');
     });
 
     it('leaves "-" cells untouched and refers past them to the last real entry', () => {

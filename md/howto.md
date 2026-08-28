@@ -114,13 +114,17 @@ fifth or sixth player has to be typed on every row they played. This is the
 single most common way a person goes missing from the log, and it's what
 `npm run audit` looks for first.
 
-**A long gap breaks the chain.** Repeating only reaches back a few hours, so a
-blank field after a dinner break has nothing to repeat and stays empty — and
-so does every blank row after it, until you type a name again. It's the gap
-between two entries that matters, not how long you've been playing: an
-all-day session logged as you go is fine however long the day runs. If you
-come back after a real break, **type the names once** on the first piece of
-the new sitting. One line of typing protects the rest of the evening.
+**A blank always repeats, however long the break.** Take an hour for dinner
+or come back the next morning — a blank field still means "the same person as
+last time", because leaving names out is never how you'd start a group. When
+a seat is genuinely empty, write `-` rather than leaving it blank; that's how
+the sheet tells "nobody here" apart from "same as above".
+
+**A short form only reaches back a few hours.** Typing `Alice` to mean the
+`Alice Hart` above works within the same sitting. Weeks later it's read as a
+name in its own right, because by then it's just as likely to be a different
+Alice — so when you come back to someone after a long time, type the name in
+full.
 
 ## 7. Naming people
 
