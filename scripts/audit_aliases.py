@@ -13,6 +13,7 @@ Usage: python scripts/audit_aliases.py [path/to/data.csv]
 from __future__ import annotations
 
 import csv
+import io
 import json
 import re
 import subprocess
@@ -191,7 +192,7 @@ def row_people(row: dict, slot_classes: dict[str, str]) -> list[tuple[str, str]]
     """(name, class) for everyone in one row.
 
     The single reader of a row's cast, shared by the teammate index below and
-    by attribute_bare_rows, so the two cannot disagree about who was there.
+    by attribute_bare_entries, so the two cannot disagree about who was there.
     """
     people: list[tuple[str, str]] = []
     for i in range(3):
@@ -208,6 +209,49 @@ def row_people(row: dict, slot_classes: dict[str, str]) -> list[tuple[str, str]]
         if name and cls:
             people.append((expand_abbrev(name), cls))
     return people
+
+
+def fill_forward(rows: list[dict]) -> list[tuple[dict, dict]]:
+    """Pair each row as written with the same row after fill-forward.
+
+    The sheet's convention is to spell the group out once and leave the slots
+    blank for the rest of the session, so a third of the raw file has empty
+    player columns that nonetheless mean "same quartet". Attribution reads a
+    bare name's stand-mates as its evidence, and on those rows there are none
+    to read — the entry lands in "nobody has decided" while the row above
+    names everyone who was there.
+
+    Reading the raw sheet is required because of normalizePlayerNames, not
+    fillForward, so run just the latter: the real one, via node, with an empty
+    abbreviation table so nothing but the sheet's own repetition is filled in.
+    Idempotent on the processed export, which has already been through it.
+
+    Both versions are returned because they answer different questions. The
+    filled row says who was in the room, which is the evidence. The row as
+    written says which cells exist, which is what a finding can ask you to
+    edit — a continuation row has no cell to fix, and reporting one sends you
+    to a blank slot. Attribution reads the first and reports the second.
+    """
+    js = (
+        "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>Promise.all(["
+        "import('./src/dataProcessor.js'),import('./src/csvFormat.js')])"
+        ".then(([dp,cf])=>{const {rows}=dp.prepareRows(JSON.parse(s).map(dp.processRow));"
+        "const before=cf.serializeRows(rows);dp.fillForward(rows,{});"
+        "process.stdout.write(JSON.stringify({before,after:cf.serializeRows(rows)}));})"
+        ".catch(e=>{console.error(e.message);process.exit(1);}))"
+    )
+    try:
+        result = subprocess.run(
+            ["node", "-e", js], input=json.dumps(rows),
+            capture_output=True, text=True, check=True, cwd=REPO_ROOT,
+        )
+        out = json.loads(result.stdout)
+        return list(zip(csv.DictReader(io.StringIO(out["before"])),
+                        csv.DictReader(io.StringIO(out["after"]))))
+    except (OSError, subprocess.CalledProcessError, ValueError) as e:
+        print(f"Note: could not fill-forward via node ({e}); continuation rows "
+              "will look emptier than they are.", file=sys.stderr)
+        return [(row, row) for row in rows]
 
 
 def collect_appearances(rows: list[dict],
@@ -253,7 +297,37 @@ def already_aliased(variant: str, cls: str) -> bool:
     return variant in EXISTING_ALIASES and cls in EXISTING_ALIASES[variant]
 
 
-def attribute_bare_entries(rows: list[dict],
+def candidate_index(appearances: dict[tuple[str, str], list[list[str]]]
+                    ) -> tuple[dict[tuple[str, str], set[str]], dict[str, set[str]], Counter]:
+    """Who a bare first name could be, plus the evidence about each.
+
+    One definition, shared by both halves of the ambiguity report, so the
+    "fix these in the sheet" list and the per-entry verdicts cannot disagree
+    about the same name in the same output.
+
+    Two exclusions, both of which would otherwise invent rivals:
+      - a last token of one letter is a surname abbreviated ("Peter O" is
+        Peter Ouyang, not a second Peter);
+      - candidates are keyed by instrument class, the axis PLAYER_ALIASES is
+        keyed on, so a cello-slot "Jo" never draws the upper-class Jo.
+
+    Also returns each full name's teammate circle and how often it was written
+    out. Circles come only from names a human typed in full: a typed name is
+    evidence, an alias-supplied one is the hypothesis under test.
+    """
+    by_first: dict[tuple[str, str], set[str]] = defaultdict(set)
+    circles: dict[str, set[str]] = defaultdict(set)
+    written: Counter = Counter()
+    for (name, cls), apps in appearances.items():
+        tokens = name.split()
+        if len(tokens) > 1 and len(tokens[-1].rstrip(".")) > 1:
+            by_first[(base_token(name), cls)].add(name)
+            circles[name].update(teammate_counter(apps))
+            written[name] += len(apps)
+    return by_first, circles, written
+
+
+def attribute_bare_entries(pairs: list[tuple[dict, dict]],
                            appearances: dict[tuple[str, str], list[list[str]]],
                            slot_classes: dict[str, str],
                            ) -> tuple[list, list, list, int, int]:
@@ -291,28 +365,14 @@ def attribute_bare_entries(rows: list[dict],
       settled    count of entries the room settles in agreement with the table.
                  Not listed: nothing to do, and listing them buries the rest.
     """
-    # Evidence: who each EXPLICITLY-named person has played with. Bare names
-    # are excluded on purpose — they are the question, not the answer.
-    circles: dict[str, set[str]] = defaultdict(set)
-    written: Counter = Counter()
-    full_by_first: dict[tuple[str, str], set[str]] = defaultdict(set)
-    for (name, cls), apps in appearances.items():
-        # "Peter O" is Peter Ouyang with the surname abbreviated, not a second
-        # Peter. Treating it as a candidate invents a rival for the real one.
-        if len(name.split()) > 1 and len(name.split()[-1].rstrip(".")) > 1:
-            circles[name].update(teammate_counter(apps))
-            written[name] += len(apps)
-            # Keyed by class, because PLAYER_ALIASES is: a bare "Jo" in the
-            # cello slot must not draw the upper-class Jo as a candidate, or
-            # that Jo's larger circle wins and the correct class-keyed alias
-            # gets reported as crediting the wrong person.
-            full_by_first[(base_token(name), cls)].add(name)
+    full_by_first, circles, written = candidate_index(appearances)
 
     conflicts, unaliased, unsettled, unverified, settled = [], [], [], 0, 0
-    for row in rows:
-        people = row_people(row, slot_classes)
-        names = [n for n, _ in people]
-        for name, cls in people:
+    for row, filled in pairs:
+        # Evidence from the filled row, subjects from the row as written: a
+        # continuation row's blank slot is not a cell anyone can go and fix.
+        names = [n for n, _ in row_people(filled, slot_classes)]
+        for name, cls in row_people(row, slot_classes):
             if len(name.split()) > 1:
                 continue
             candidates = full_by_first.get((base_token(name), cls), set())
@@ -326,23 +386,31 @@ def attribute_bare_entries(rows: list[dict],
             why = [m for m in mates if m in circles[top[1]]]
             # A circle is only evidence if we have one. Someone almost always
             # logged bare has a thin explicit circle, so their FAILURE to match
-            # says nothing — and the rival who happens to share one hub mate
-            # would win by default. Both the winner and, when contradicting it,
-            # the alias's target must be people the sheet actually names.
+            # says nothing — and a rival who happens to share one hub mate
+            # would win by default. That cuts both ways: a conclusion needs the
+            # winner to be attested AND the losers' silence to mean something,
+            # so every rival the sheet has barely named is reported as one we
+            # could not rule out rather than quietly discarded.
+            unruled = sorted(c for _n, c in scored[1:]
+                             if written[c] < MIN_WRITTEN_IN_FULL)
             confident = (written[top[1]] >= MIN_WRITTEN_IN_FULL
+                         and len(unruled) < len(candidates) - 1
                          and (not alias or alias == top[1]
                               or written.get(alias, 0) >= MIN_WRITTEN_IN_FULL))
             if not top[0] or top[0] == runner[0] or not confident:
                 if alias:
                     unverified += 1
                 else:
-                    unsettled.append((row, name, cls, alias, sorted(candidates)))
+                    # No alias has ever decided this and the room cannot
+                    # either. `alias` is not carried: it is None on every
+                    # entry that reaches here, by construction.
+                    unsettled.append((row, name, cls, sorted(candidates)))
             elif alias and alias != top[1]:
-                conflicts.append((row, name, cls, alias, top[1], why))
+                conflicts.append((row, name, cls, alias, top[1], why, unruled))
             elif alias:
                 settled += 1
             else:
-                unaliased.append((row, name, cls, top[1], why))
+                unaliased.append((row, name, cls, top[1], why, unruled))
     return conflicts, unaliased, unsettled, unverified, settled
 
 
@@ -352,7 +420,7 @@ def describe_row(row: dict) -> str:
             f"{(row.get('Work Title') or '').strip():14.14s}")
 
 
-def report_ambiguity(rows: list[dict],
+def report_ambiguity(pairs: list[tuple[dict, dict]],
                      appearances: dict[tuple[str, str], list[list[str]]],
                      slot_classes: dict[str, str]) -> None:
     """Flag first names that no longer identify exactly one person.
@@ -375,7 +443,13 @@ def report_ambiguity(rows: list[dict],
     in the data. A short form that is genuinely ambiguous in real life still
     looks unique here until someone with the same first name gets logged.
     """
-    full_by_first: dict[str, set[str]] = defaultdict(set)
+    # One candidate definition for the whole section (see candidate_index):
+    # by_first is class-keyed for the per-name and per-entry verdicts, and
+    # names_by_first is the class-blind view the alias-key checks below want.
+    by_first, _circles, _written = candidate_index(appearances)
+    names_by_first: dict[str, set[str]] = defaultdict(set)
+    for (token, _cls), names in by_first.items():
+        names_by_first[token] |= names
     bare_count: Counter = Counter()
     # Two senses of "present", and hazard 3 needs both. `present` is what a
     # human actually typed; `resolved` adds what each of those names becomes
@@ -386,9 +460,7 @@ def report_ambiguity(rows: list[dict],
     for (name, cls), apps in appearances.items():
         present.add(name)
         resolved.add(EXISTING_ALIASES.get(name, {}).get(cls) or name)
-        if len(name.split()) > 1:
-            full_by_first[base_token(name)].add(name)
-        else:
+        if len(name.split()) == 1:
             bare_count[(name, cls)] += len(apps)
     # Surnames the sheet writes down anywhere: the test for whether this
     # gitignored file is the only place a canonical name's surname exists.
@@ -422,9 +494,9 @@ def report_ambiguity(rows: list[dict],
     # 1. Bare names still in the sheet that several full names could match.
     unresolvable = sorted(
         (
-            (n, cls, cnt, sorted(full_by_first[base_token(n)]))
+            (n, cls, cnt, sorted(by_first[(base_token(n), cls)]))
             for (n, cls), cnt in bare_count.items()
-            if len(full_by_first.get(base_token(n), ())) >= 2
+            if len(by_first.get((base_token(n), cls), ())) >= 2
         ),
         key=lambda r: (-r[2], r[0]),
     )
@@ -444,7 +516,7 @@ def report_ambiguity(rows: list[dict],
     # per entry, not per row — a camp session's Others? column can hold two
     # ambiguous names, and each is its own cell to fix.
     conflicts, unaliased, unsettled, unverified, settled = attribute_bare_entries(
-        rows, appearances, slot_classes)
+        pairs, appearances, slot_classes)
     if canonicalized:
         print("\n   !! Attribution below is measured on the CANONICALIZED export, where")
         print("      every bare slot name has already been replaced by whatever the")
@@ -456,27 +528,32 @@ def report_ambiguity(rows: list[dict],
     print("   credited to the wrong one today. Fix the SHEET cell.")
     if not conflicts:
         print("   (none)")
-    for row, name, cls, alias, winner, why in conflicts:
+    for row, name, cls, alias, winner, why, unruled in conflicts:
         print(f"   {describe_row(row)}  {name!r} [{cls}]")
         print(f"   {'':10s} alias says {alias!r}, the room says {winner!r}"
               f"  (played with {', '.join(why[:3])})")
+        if unruled:
+            print(f"   {'':10s} could not rule out: {', '.join(unruled)}"
+                  " (never written out)")
     print(f"\n-- bare entries the room resolves but no alias covers ({len(unaliased)}) --")
     print("   The app counts the bare form as its own person in every people")
     print("   stat. The room already names them, so this is mechanical: write")
     print("   the full name into the cell (or add the alias, if it is unambiguous).")
     if not unaliased:
         print("   (none)")
-    for row, name, cls, winner, why in unaliased:
+    for row, name, cls, winner, why, unruled in unaliased:
         print(f"   {describe_row(row)}  {name!r} [{cls}] -> {winner!r}"
               f"  (played with {', '.join(why[:3])})")
+        if unruled:
+            print(f"   {'':10s} could not rule out: {', '.join(unruled)}"
+                  " (never written out) — confirm before editing")
     print(f"\n-- bare entries nobody has decided ({len(unsettled)}) --")
     print("   No alias covers them and no circle matches, so these are open")
     print("   questions only you can close. Answer them first — they decay.")
     if not unsettled:
         print("   (none)")
-    for row, name, cls, alias, candidates in unsettled:
-        print(f"   {describe_row(row)}  {name!r} [{cls}]"
-              f"  alias -> {alias or 'none'}")
+    for row, name, cls, candidates in unsettled:
+        print(f"   {describe_row(row)}  {name!r} [{cls}]")
         print(f"   {'':10s} candidates: {', '.join(candidates)}")
     print(f"\n   ({settled} more bare entries agree with the table, and {unverified}"
           " have an alias\n   standing that this run has no evidence to"
@@ -485,9 +562,9 @@ def report_ambiguity(rows: list[dict],
     # 2. Aliases keyed on a first name several people now share. Multi-token
     # keys ("Jo A", "Jo Alpha") are already disambiguated, so skip them.
     risky = sorted(
-        (key, mapping, sorted(full_by_first[key.lower()]))
+        (key, mapping, sorted(names_by_first[key.lower()]))
         for key, mapping in EXISTING_ALIASES.items()
-        if len(key.split()) == 1 and len(full_by_first.get(key.lower(), ())) >= 2
+        if len(key.split()) == 1 and len(names_by_first.get(key.lower(), ())) >= 2
     )
     print(f"\n-- aliases keyed on an ambiguous first name ({len(risky)}) --")
     print("   Each silently resolves future bare entries to one person.")
@@ -537,7 +614,7 @@ def report_ambiguity(rows: list[dict],
     if not suspect:
         print("   (none)")
     for key, cls, canon in suspect:
-        near = sorted(full_by_first.get(base_token(canon), ()))
+        near = sorted(names_by_first.get(base_token(canon), ()))
         hint = f"   did you mean: {', '.join(near)}" if near else ""
         print(f"   {key!r:18s} [{cls:5s}] -> {canon!r}{hint}")
 
@@ -548,7 +625,9 @@ def main() -> None:
         print(f"CSV not found: {csv_path}", file=sys.stderr)
         sys.exit(1)
 
-    rows = load_rows(csv_path)
+    # (row as written, row after fill-forward) — see fill_forward.
+    pairs = fill_forward(load_rows(csv_path))
+    rows = [filled for _written, filled in pairs]
     # One node round-trip for the whole file; every reader shares the result.
     slot_classes = slot_classes_for(rows)
     appearances = collect_appearances(rows, slot_classes)
@@ -648,7 +727,7 @@ def main() -> None:
             f"{long_name!r}  ({lcount}×, overlap {overlap:.0%})"
         )
 
-    report_ambiguity(rows, appearances, slot_classes)
+    report_ambiguity(pairs, appearances, slot_classes)
 
     # Final paste-ready PLAYER_ALIASES block
     print("\n=== PLAYER_ALIASES proposal (paste into src/aliases.js — gitignored; NEVER into a tracked file) ===\n")
