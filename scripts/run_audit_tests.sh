@@ -24,7 +24,19 @@ if command -v uv >/dev/null 2>&1; then
         pytest test/test_audits.py "$@"
 fi
 
-echo "note: uv not found, falling back to python3 -m pytest" >&2
-python3 -c "import pytest" 2>/dev/null \
-    || python3 -m pip install --quiet --disable-pip-version-check "pytest==$PYTEST_VERSION"
-exec python3 -m pytest test/test_audits.py "$@"
+# No uv: build a venv and install the pinned pytest into it. NOT
+# `pip install` into the system interpreter — that is PEP-668 marked on
+# current Ubuntu, so it would fail the CI step outright, and mutating the
+# runner's Python to run a test suite is the wrong trade anyway. NOT
+# "use whatever pytest is already importable" either: that is what the
+# previous version did, and it made the pin above fictional — CI ran the
+# image's pytest and only happened to match. The venv is cached between runs.
+echo "note: uv not found, using a cached venv" >&2
+VENV="${XDG_CACHE_HOME:-$HOME/.cache}/quartet-log/pytest-$PYTEST_VERSION"
+if [ ! -x "$VENV/bin/pytest" ]; then
+    rm -rf "$VENV"
+    python3 -m venv "$VENV"
+    "$VENV/bin/pip" install --quiet --disable-pip-version-check \
+        "pytest==$PYTEST_VERSION"
+fi
+exec "$VENV/bin/pytest" test/test_audits.py "$@"

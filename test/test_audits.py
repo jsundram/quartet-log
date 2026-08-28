@@ -72,6 +72,11 @@ def attribute(rows, aliases=None, filled=None, monkeypatch=None):
     return aa.attribute_bare_entries(pairs, appearances_for(rows), {})
 
 
+def buckets(rows, aliases=None, filled=None):
+    """(conflicts, unaliased, unsettled) — the three that are listed."""
+    return attribute(rows, aliases, filled)[:3]
+
+
 # --------------------------------------------------------------- parsing --
 
 @pytest.mark.parametrize("instrument,expected", [
@@ -179,7 +184,7 @@ def attested(name, mate, n=aa.MIN_WRITTEN_IN_FULL):
 def test_room_agreeing_with_the_alias_is_settled_not_reported():
     rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Beryl", p3="Carol")])
-    conflicts, unaliased, unsettled, unverified, settled = attribute(
+    conflicts, unaliased, unsettled, unverified, settled, _rs = attribute(
         rows, {"Alice": {"upper": "Alice Hart"}})
     assert (conflicts, unaliased, unsettled) == ([], [], [])
     assert settled == 1 and unverified == 0
@@ -188,7 +193,7 @@ def test_room_agreeing_with_the_alias_is_settled_not_reported():
 def test_room_contradicting_the_alias_is_reported():
     rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Chantal", p3="Carol")])
-    conflicts, _ua, _us, _uv, _s = attribute(
+    conflicts, _ua, _us, _uv, _s, _rs = attribute(
         rows, {"Alice": {"upper": "Alice Hart"}})
     assert len(conflicts) == 1
     _row, name, cls, alias, winner, why, unruled = conflicts[0]
@@ -204,7 +209,7 @@ def test_room_resolving_an_unaliased_name_is_its_own_bucket():
     """
     rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Beryl", p3="Carol")])
-    _c, unaliased, _us, _uv, settled = attribute(rows, {})
+    _c, unaliased, _us, _uv, settled, _rs = attribute(rows, {})
     assert len(unaliased) == 1 and settled == 0
     _row, name, _cls, winner, _why, _unruled = unaliased[0]
     assert (name, winner) == ("Alice", "Alice Hart")
@@ -213,7 +218,7 @@ def test_room_resolving_an_unaliased_name_is_its_own_bucket():
 def test_no_evidence_and_no_alias_is_the_only_bucket_that_needs_memory():
     rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Dexter", p3="Ernesto")])
-    _c, _ua, unsettled, _uv, _s = attribute(rows, {})
+    _c, _ua, unsettled, _uv, _s, _rs = attribute(rows, {})
     assert len(unsettled) == 1
     _row, name, cls, candidates = unsettled[0]
     assert (name, cls, candidates) == ("Alice", "upper", ["Alice Bek", "Alice Hart"])
@@ -227,7 +232,7 @@ def test_no_evidence_but_an_alias_standing_is_counted_not_reported():
     """
     rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Dexter", p3="Ernesto")])
-    _c, _ua, unsettled, unverified, _s = attribute(
+    _c, _ua, unsettled, unverified, _s, _rs = attribute(
         rows, {"Alice": {"upper": "Alice Hart"}})
     assert unsettled == [] and unverified == 1
 
@@ -235,7 +240,7 @@ def test_no_evidence_but_an_alias_standing_is_counted_not_reported():
 def test_a_tie_settles_nothing():
     rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Beryl")
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Beryl", p3="Carol")])
-    _c, unaliased, unsettled, _uv, _s = attribute(rows, {})
+    _c, unaliased, unsettled, _uv, _s, _rs = attribute(rows, {})
     assert unaliased == [] and len(unsettled) == 1
 
 
@@ -249,7 +254,7 @@ def test_a_thinly_written_winner_is_not_trusted():
     """
     rows = (attested("Alice Hart", "Beryl", n=1) + attested("Alice Bek", "Chantal")
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Beryl", p3="Carol")])
-    _c, unaliased, unsettled, _uv, _s = attribute(rows, {})
+    _c, unaliased, unsettled, _uv, _s, _rs = attribute(rows, {})
     assert unaliased == [] and len(unsettled) == 1
 
 
@@ -261,7 +266,7 @@ def test_a_thinly_written_alias_target_is_not_contradicted():
     """
     rows = (attested("Alice Hart", "Beryl", n=1) + attested("Alice Bek", "Chantal")
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Chantal", p3="Carol")])
-    conflicts, _ua, _us, unverified, _s = attribute(
+    conflicts, _ua, _us, unverified, _s, _rs = attribute(
         rows, {"Alice": {"upper": "Alice Hart"}})
     assert conflicts == [] and unverified == 1
 
@@ -278,7 +283,7 @@ def test_a_thinly_written_alias_target_is_not_contradicted_with_rivals_to_spare(
             + attested("Alice Bek", "Chantal")        # the winner
             + attested("Alice Chan", "Dexter")        # attested, does not match
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Chantal", p3="Carol")])
-    conflicts, _ua, _us, unverified, _s = attribute(
+    conflicts, _ua, _us, unverified, _s, _rs = attribute(
         rows, {"Alice": {"upper": "Alice Hart"}})
     assert conflicts == [] and unverified == 1
 
@@ -291,7 +296,7 @@ def test_a_verdict_needs_at_least_one_rival_the_sheet_has_named():
     """
     rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal", n=1)
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Beryl", p3="Carol")])
-    _c, unaliased, unsettled, _uv, _s = attribute(rows, {})
+    _c, unaliased, unsettled, _uv, _s, _rs = attribute(rows, {})
     assert unaliased == [] and len(unsettled) == 1
 
 
@@ -300,7 +305,7 @@ def test_rivals_that_cannot_be_ruled_out_are_disclosed_not_discarded():
     rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
             + attested("Alice Chan", "Dexter", n=1)
             + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Beryl", p3="Carol")])
-    _c, unaliased, _us, _uv, _s = attribute(rows, {})
+    _c, unaliased, _us, _uv, _s, _rs = attribute(rows, {})
     assert len(unaliased) == 1
     *_rest, winner, _why, unruled = unaliased[0]
     assert winner == "Alice Hart" and unruled == ["Alice Chan"]
@@ -320,7 +325,7 @@ def test_the_subjects_own_seat_is_excluded_positionally():
                + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Beryl", p3="Carol")])
     filled = [dict(r) for r in written]
     filled[-1]["Player 1"] = "Chantal"   # in Alice Bek's circle, not Alice Hart's
-    _c, unaliased, _us, _uv, _s = attribute(written, {}, filled=filled)
+    _c, unaliased, _us, _uv, _s, _rs = attribute(written, {}, filled=filled)
     assert len(unaliased) == 1
     *_rest, winner, why, _unruled = unaliased[0]
     assert winner == "Alice Hart"
@@ -336,10 +341,12 @@ def test_a_cell_the_sheet_resolved_itself_is_not_reported():
                + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Chantal", p3="Carol")])
     filled = [dict(r) for r in written]
     filled[-1]["Player 1"] = "Alice Hart"
-    conflicts, unaliased, unsettled, _uv, settled = attribute(
+    conflicts, unaliased, unsettled, _uv, settled, resolved_by_sheet = attribute(
         written, {"Alice": {"upper": "Alice Hart"}}, filled=filled)
     assert (conflicts, unaliased, unsettled) == ([], [], [])
-    assert settled == 1
+    # Counted apart from `settled`: no table was consulted, so folding them
+    # together would credit src/aliases.js with work fill-forward did.
+    assert (settled, resolved_by_sheet) == (0, 1)
 
 
 def test_evidence_comes_from_the_filled_row():
@@ -353,7 +360,54 @@ def test_evidence_comes_from_the_filled_row():
                + [row(ts="6/1/2024 11:00:00", others="Alice (v2)")])
     filled = [dict(r) for r in written]
     filled[-1].update({"Player 1": "Beryl", "Player 2": "Carol"})
-    _c, unaliased, unsettled, _uv, _s = attribute(written, {}, filled=filled)
+    _c, unaliased, unsettled, _uv, _s, _rs = attribute(written, {}, filled=filled)
+    assert unsettled == [] and len(unaliased) == 1
+    assert unaliased[0][3] == "Alice Hart"
+
+
+def test_one_person_in_two_cells_does_not_vote_twice():
+    """The score means "how many of this candidate's circle were here".
+
+    Someone written in a slot AND in Others? — which happens on exactly the
+    rows that push people out of the quartet layout — would otherwise count
+    twice, and two distinct mates for one candidate could tie with one
+    duplicated mate for another, dumping a settleable entry into NEEDS MEMORY.
+    """
+    # Hart has TWO distinct mates in the row; Bek has one, written twice.
+    # Deduped that is 2-1 for Hart; counted raw it is 2-2, a tie, and the
+    # entry falls into NEEDS MEMORY instead of being settled.
+    rows = ([row(ts=f"1/{i + 1}/2024 10:00:00", p1="Alice Hart",
+                 p2="Beryl", p3="Dexter") for i in range(5)]
+            + [row(ts=f"2/{i + 1}/2024 10:00:00", p1="Alice Bek",
+                   p2="Chantal", p3="Fernand") for i in range(5)]
+            + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Beryl", p3="Chantal",
+                   others="Chantal (v2); Dexter (va)")])
+    _c, unaliased, _us, _uv, _s, _rs = attribute(rows, {})
+    assert len(unaliased) == 1
+    *_rest, winner, why, _unruled = unaliased[0]
+    assert winner == "Alice Hart"
+    assert why.count("Chantal") <= 1
+
+
+def test_an_unannotated_others_entry_is_still_a_subject():
+    """The app counts that bare form as its own person, so it belongs in a
+    bucket. No alias can reach it either — canonicalize with a null class is a
+    no-op — so every namesake is in play and only the cell can be fixed."""
+    rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
+            + [row(ts="6/1/2024 10:00:00", p1="Beryl", others="Alice")])
+    _c, unaliased, unsettled, _uv, _s, _rs = attribute(rows, {})
+    assert len(unaliased) + len(unsettled) == 1
+
+
+def test_an_unannotated_others_entry_is_still_evidence():
+    """A name with no instrument still says who was in the room.
+
+    Dropping it produced a false NEEDS MEMORY on rows its presence settles —
+    the exact failure this feature exists to remove.
+    """
+    rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
+            + [row(ts="6/1/2024 10:00:00", p1="Alice", others="Beryl")])
+    _c, unaliased, unsettled, _uv, _s, _rs = attribute(rows, {})
     assert unsettled == [] and len(unaliased) == 1
     assert unaliased[0][3] == "Alice Hart"
 
@@ -407,6 +461,21 @@ def test_slot_annotation_classes_defers_to_the_real_module():
 
 def test_slot_annotation_classes_handles_an_empty_set():
     assert aa.slot_annotation_classes(set()) == {}
+
+
+def test_one_short_row_does_not_cost_the_file_its_filled_view():
+    """csv.DictReader pads a short row with None, which processRow's
+    `=== undefined` guard lets through until .trim() throws. Node exits 1 and
+    the whole file falls back to unfilled — and a third of the raw sheet is
+    continuation rows that then look answerless."""
+    # Exactly what DictReader hands back for a truncated line: the keys are
+    # all there, the missing trailing values are None.
+    short = row(ts="1/1/2024 11:00:00")
+    for key in ("Others?", "Location", "Comments"):
+        short[key] = None
+    rows = [row(ts="1/1/2024 10:00:00", p1="Alice", p2="Bob", p3="Carol"), short]
+    pairs = aa.fill_forward(rows)
+    assert pairs[1][1]["Player 1"] == "Alice"
 
 
 def test_fill_forward_returns_the_row_as_written_and_as_filled():
@@ -560,7 +629,10 @@ def test_session_window_hours_matches_the_app():
 def test_class_of_matches_the_app():
     samples = ["vc", "vc2", "cello", "violoncello", "c", "vlc", "Cello",
                "va", "vla", "viola", "v1", "v2", "piano", "p", "clarinet",
-               "asst v2", ""]
+               # The assistant prefix is anchored and takes any whitespace run
+               # in the app; a literal " " replace here read "asst  vc" as an
+               # upper part while the app read it as a cellist.
+               "asst v2", "asst vc", "asst  vc", "ast\tvc", "ASST VC", ""]
     assert [aa.class_of(s) for s in samples] == _js("m.classOf(x)", samples)
 
 

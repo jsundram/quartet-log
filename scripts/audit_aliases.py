@@ -91,7 +91,9 @@ CELLO_INSTRUMENT = re.compile(r"^(?:vc|vlc|cello|violoncello|c)(?![a-z])", re.I)
 def class_of(instrument: str | None) -> str | None:
     if not instrument:
         return None
-    s = instrument.lower().strip().replace("asst ", "").replace("ast ", "")
+    # Anchored, any whitespace run — normalizeInstrument in dataProcessor is
+    # /^as?st\s+/, and "asst  vc" with two spaces must strip the same way.
+    s = re.sub(r"^as?st\s+", "", instrument.lower().strip())
     return "cello" if CELLO_INSTRUMENT.match(s) else "upper"
 
 
@@ -222,9 +224,14 @@ def row_people(row: dict, slot_classes: dict[str, str]) -> list[tuple[str, str, 
     # written before the header fix used "Others" — accept both.
     for i, (name, instr) in enumerate(
             parse_others(row.get("Others?") or row.get("Others") or "")):
-        cls = class_of(instr)
-        if name and cls:
-            people.append((expand_abbrev(name), cls, f"o{i}"))
+        # class is None when the entry names no instrument. Kept anyway: a
+        # name with no instrument still tells you who was in the room, which
+        # is what the attribution below reads. Dropping them cost twice —
+        # such a name was invisible as a subject (the app counts it as its own
+        # person, so it belongs in a bucket) and missing as evidence, which
+        # produced false NEEDS MEMORY on rows their presence would settle.
+        if name:
+            people.append((expand_abbrev(name), class_of(instr), f"o{i}"))
     return people
 
 
@@ -258,8 +265,14 @@ def fill_forward(rows: list[dict]) -> list[tuple[dict, dict]]:
         ".catch(e=>{console.error(e.message);process.exit(1);}))"
     )
     try:
+        # csv.DictReader fills a short row's missing fields with None and
+        # parks extra fields under a None key; processRow's `=== undefined`
+        # guard lets null through and the first .trim() throws, so ONE
+        # malformed line would cost every row its filled view — and a third of
+        # the raw sheet is continuation rows that then look answerless.
+        clean = [{k: (v or "") for k, v in r.items() if k} for r in rows]
         result = subprocess.run(
-            ["node", "-e", js], input=json.dumps(rows),
+            ["node", "-e", js], input=json.dumps(clean),
             capture_output=True, text=True, check=True, cwd=REPO_ROOT,
         )
         out = json.loads(result.stdout)
@@ -293,7 +306,12 @@ def collect_appearances(rows: list[dict],
         people = row_people(row, slot_classes)
         for name, cls, seat in people:
             teammates = [n for n, _c, s2 in people if s2 != seat]
-            appearances[(name, cls)].append(teammates)
+            # Everyone present counts as a teammate, but only a classified
+            # entry gets its own (name, class) key — the alias table is keyed
+            # on the pair, and an unannotated Others? name has no class the
+            # app would use either (canonicalize with a null class is a no-op).
+            if cls is not None:
+                appearances[(name, cls)].append(teammates)
     return appearances
 
 
@@ -376,7 +394,8 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
     the same reason: a name someone typed in full is evidence, a name an alias
     supplied is the hypothesis.
 
-    Returns (conflicts, unaliased, unsettled, unverified, settled):
+    Returns (conflicts, unaliased, unsettled, unverified, settled,
+    resolved_by_sheet):
       conflicts  the room points somewhere other than the alias, so the entry
                  is credited to the wrong person today. Fix the sheet cell.
       unaliased  the room names someone but no alias covers this bare name, so
@@ -392,10 +411,15 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
                  is as misleading as reporting none.
       settled    count of entries the room settles in agreement with the table.
                  Not listed: nothing to do, and listing them buries the rest.
+      resolved_by_sheet
+                 count of cells fill-forward already answered, where no table
+                 was consulted at all. Kept apart from `settled` so the report
+                 does not credit src/aliases.js with fill-forward's work.
     """
     full_by_first, circles, written = candidate_index(appearances)
 
-    conflicts, unaliased, unsettled, unverified, settled = [], [], [], 0, 0
+    conflicts, unaliased, unsettled = [], [], []
+    unverified = settled = resolved_by_sheet = 0
     for row, filled in pairs:
         # Evidence from the filled row, subjects from the row as written: a
         # continuation row's blank slot is not a cell anyone can go and fix.
@@ -404,7 +428,14 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
         for name, cls, seat in row_people(row, slot_classes):
             if len(name.split()) > 1:
                 continue
-            candidates = full_by_first.get((base_token(name), cls), set())
+            if cls is None:
+                # An unannotated Others? entry: the app cannot alias it either
+                # (canonicalize with a null class is a no-op), so every class's
+                # namesakes are in play and only editing the cell can fix it.
+                candidates = {c for (token, _cls), names in full_by_first.items()
+                              if token == base_token(name) for c in names}
+            else:
+                candidates = full_by_first.get((base_token(name), cls), set())
             if len(candidates) < 2:
                 continue
             # The sheet may already have answered this itself: fill-forward
@@ -413,9 +444,16 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
             # so no alias ever sees this cell. Nothing to report.
             resolved = by_seat.get(seat, name)
             if resolved != name and base_token(resolved) == base_token(name):
-                settled += 1
+                # Counted apart from `settled`: no table was consulted here,
+                # so folding the two would credit the alias file with work
+                # fill-forward did.
+                resolved_by_sheet += 1
                 continue
-            mates = [n for n, _c, s2 in cast if s2 != seat]
+            # De-duplicated: someone written in a slot AND in Others? — which
+            # happens on exactly the rows that push people out of the quartet
+            # layout — would otherwise vote twice, and two distinct mates for
+            # one candidate could tie with one duplicated mate for another.
+            mates = list(dict.fromkeys(n for n, _c, s2 in cast if s2 != seat))
             scored = sorted(((len([m for m in mates if m in circles[c]]), c)
                              for c in candidates), reverse=True)
             top, runner = scored[0], scored[1]
@@ -448,7 +486,7 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
                 settled += 1
             else:
                 unaliased.append((row, name, cls, top[1], why, unruled))
-    return conflicts, unaliased, unsettled, unverified, settled
+    return conflicts, unaliased, unsettled, unverified, settled, resolved_by_sheet
 
 
 def describe_row(row: dict) -> str:
@@ -552,8 +590,8 @@ def report_ambiguity(pairs: list[tuple[dict, dict]],
     # people is not four problems if the stand says which one it was. Counted
     # per entry, not per row — a camp session's Others? column can hold two
     # ambiguous names, and each is its own cell to fix.
-    conflicts, unaliased, unsettled, unverified, settled = attribute_bare_entries(
-        pairs, appearances, slot_classes)
+    (conflicts, unaliased, unsettled, unverified, settled,
+     resolved_by_sheet) = attribute_bare_entries(pairs, appearances, slot_classes)
     if canonicalized:
         print("\n   !! Attribution below is measured on the CANONICALIZED export, where")
         print("      every bare slot name has already been replaced by whatever the")
@@ -592,9 +630,10 @@ def report_ambiguity(pairs: list[tuple[dict, dict]],
     for row, name, cls, candidates in unsettled:
         print(f"   {describe_row(row)}  {name!r} [{cls}]")
         print(f"   {'':10s} candidates: {', '.join(candidates)}")
-    print(f"\n   ({settled} more bare entries agree with the table, and {unverified}"
-          " have an alias\n   standing that this run has no evidence to"
-          " second-guess — nothing to do for either.)")
+    print(f"\n   ({settled} more agree with the table and {unverified} have an alias"
+          f" standing\n   that this run cannot second-guess; a further"
+          f" {resolved_by_sheet} were answered by the\n   sheet itself, where"
+          " fill-forward expanded the cell and no alias was consulted.)")
 
     # 2. Aliases keyed on a first name several people now share. Multi-token
     # keys ("Jo A", "Jo Alpha") are already disambiguated, so skip them.
