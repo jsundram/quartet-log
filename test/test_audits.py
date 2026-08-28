@@ -421,14 +421,6 @@ def test_fill_forward_returns_the_row_as_written_and_as_filled():
     assert filled["Player 1"] == "Alice"
 
 
-def test_fill_forward_fills_across_a_long_gap():
-    """A blank is a ditto mark however long the break (see fillForward)."""
-    rows = [row(ts="1/1/2024 10:00:00", p1="Alice", p2="Bob", p3="Carol"),
-            row(ts="1/1/2024 20:00:00")]
-    _written, filled = aa.fill_forward(rows)[1]
-    assert filled["Player 1"] == "Alice"
-
-
 # ------------------------------------------------------- audit_ensembles --
 
 @pytest.mark.parametrize("title,comments,expected", [
@@ -538,28 +530,6 @@ def test_an_uncatalogued_work_is_always_reported():
     """Suppress only on positive evidence; an unknown work is not evidence."""
     r = row(composer="Haydn", title="Unlisted")
     assert af.needs_the_extra_player(r, "Alice (va2)", set(), {("Haydn", "76#1")})
-
-
-def test_session_window_report_measures_shorthand_not_blanks(capsys):
-    """The window governs one rule: whether a short form abbreviates the name
-    above it. Blanks repeat regardless, so they are not what it decides."""
-    parsed = []
-    for ts, p1 in [("1/1/2024 10:00:00", "Alberto Stone"),
-                   ("1/1/2024 11:00:00", "Alberto")]:
-        r = row(ts=ts, p1=p1)
-        r["_t"] = af.datetime.strptime(ts, "%m/%d/%Y %H:%M:%S")
-        parsed.append(r)
-    af.session_window_report(parsed)
-    out = capsys.readouterr().out
-    assert "1 shorthand entries; 1 inside the window" in out
-    assert "'Alberto Stone'" in out
-
-
-def test_session_window_report_says_so_when_nothing_constrains_it(capsys):
-    r = row(ts="1/1/2024 10:00:00", p1="Alberto Stone")
-    r["_t"] = af.datetime.strptime(r["Timestamp"], "%m/%d/%Y %H:%M:%S")
-    af.session_window_report([r])
-    assert "unconstrained" in capsys.readouterr().out
 
 
 # --------------------------------------------- mirrors of the JavaScript --

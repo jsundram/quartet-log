@@ -118,55 +118,6 @@ def label(row: dict) -> str:
             f"{(row.get('Work Title') or '').strip()}")
 
 
-def session_window_report(rows: list[dict]) -> None:
-    """Check SESSION_WINDOW_HOURS against the log instead of asserting it.
-
-    Measure what the constant actually governs. A blank cell is a ditto mark
-    and fillForward repeats it however long the gap, so continuation rows are
-    not what the window decides. What it decides is the shorthand rule: a
-    written short form is read as an abbreviation of the fuller name above it
-    only inside the window, and outside it stands as a name of its own. Too
-    long a window merges two people who share a first name; too short a one
-    splits one person in two.
-
-    So the gaps that matter are the ones at which shorthand is actually
-    typed — a handful in this log, which is why the value is not delicate.
-    """
-    prefix_gaps = []
-    for column in ("Player 1", "Player 2", "Player 3"):
-        prev = None
-        for row in rows:
-            entry = (row.get(column) or "").strip()
-            if entry == "-":
-                continue
-            if prev is not None and entry and entry != prev[1]:
-                full = prev[1]
-                # Mirrors refersToPrevEntry in src/dataProcessor.js: a prefix
-                # ending at a word boundary, so "Grace" abbreviates "Grace
-                # Brown" but never "Gracie".
-                if full.startswith(entry) and len(full) > len(entry) \
-                        and full[len(entry)] == " ":
-                    prefix_gaps.append(
-                        ((row["_t"] - prev[0]).total_seconds() / 3600, row, full))
-            if entry:
-                prev = (row["_t"], entry)
-
-    print(f"\n=== SESSION WINDOW (currently {SESSION_WINDOW_HOURS}h) ===")
-    print("The window governs one rule only: whether a written short form is")
-    print("read as an abbreviation of the fuller name above it. A blank cell")
-    print("repeats regardless of the gap, so continuation rows never depend on")
-    print("it — only the entries below do.\n")
-    if not prefix_gaps:
-        print("  No shorthand entries in this file; the value is unconstrained.")
-        return
-    inside = [g for g, _r, _f in prefix_gaps if g < SESSION_WINDOW_HOURS]
-    print(f"  {len(prefix_gaps)} shorthand entries; {len(inside)} inside the window.")
-    for gap, row, full in sorted(prefix_gaps):
-        verdict = "expanded" if gap < SESSION_WINDOW_HOURS else "left as typed"
-        print(f"   {gap:7.2f}h  {label(row)}  -> {full!r}  [{verdict}]")
-    print("\n  Moving the window only changes entries whose gap straddles it.")
-
-
 def main() -> None:
     path = Path(sys.argv[1] if len(sys.argv) > 1 else "archive/data-raw.csv")
     if not path.exists():
@@ -174,7 +125,6 @@ def main() -> None:
               file=sys.stderr)
         sys.exit(1)
     rows = load(path)
-    session_window_report(rows)
     big, quartets = load_catalog()
 
     sessions: dict[str, list[dict]] = {}
@@ -184,15 +134,10 @@ def main() -> None:
         blank = all(s == "" for s in slots(row))
         others = (row.get("Others?") or "").strip()
         if anchor is not None:
-            # No window here: fillForward fills a blank cell from the row
-            # above however long the gap, so a blank row inherits its anchor's
-            # players — and loses its anchor's Others? — whatever the gap. The
-            # dinner-break rows this used to skip are exactly the ones worth
-            # reporting.
             gap = (row["_t"] - anchor["_t"]).total_seconds() / 3600
             anchor_others = (anchor.get("Others?") or "").strip()
             if blank and not others and anchor_others \
-                    and gap >= 0 \
+                    and 0 <= gap < SESSION_WINDOW_HOURS \
                     and needs_the_extra_player(row, anchor_others, big, quartets):
                 key = label(anchor)
                 if key not in sessions:

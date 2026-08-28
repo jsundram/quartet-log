@@ -776,8 +776,9 @@ function refersToPrevEntry(entry, prevEntry) {
 //
 // Cell semantics, pinned by tests:
 //   "-"    → no player; untouched.
-//   ""     → a ditto mark: always filled from the previous entry, however
-//            long the gap. It never becomes the reference entry itself.
+//   ""     → within SESSION_WINDOW_HOURS of the previous non-"-" row: filled
+//            with the previous entry. Outside the window: left empty, and
+//            becomes the new (empty) reference entry.
 //   prefix → same-session prefix-at-a-word-boundary of the previous entry:
 //            expanded to it. Otherwise treated as a new value.
 //
@@ -805,21 +806,7 @@ export function fillForward(data, abbreviations) {
                 // createEmptyRow placeholders, which never enter fillForward).
                 const hours = (Number(row.timestamp) - Number(prev.timestamp)) / 1000 / 60 / 60;
                 const sameSession = hours >= 0 && hours < SESSION_WINDOW_HOURS;
-                if (entry === '') {
-                    // A blank is a ditto mark, and it is one however long the
-                    // break was: nobody starts a session by leaving the names
-                    // out, so a blank cell can only mean "same as above". "-"
-                    // is how the sheet says "nobody in this seat" (handled
-                    // above), which is what keeps the two distinguishable.
-                    // Time-gating this instead cost a whole evening: one
-                    // dinner-break gap made the row take its own empty value,
-                    // and that empty value then anchored every row after it.
-                    row[column] = prevEntry;
-                } else if (sameSession && refersToPrevEntry(entry, prevEntry)) {
-                    // A written-out shorthand IS gated, because it is an
-                    // inference rather than a ditto: "Peter" abbreviates the
-                    // "Peter Ouyang" from an hour ago, but next month it is
-                    // just as likely to be a different Peter.
+                if (sameSession && refersToPrevEntry(entry, prevEntry)) {
                     row[column] = prevEntry;
                 } else if (Object.prototype.hasOwnProperty.call(abbreviations, entry)) {
                     prevEntry = abbreviations[entry];
