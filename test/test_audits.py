@@ -344,6 +344,30 @@ def test_rivals_that_cannot_be_ruled_out_are_disclosed_not_discarded():
     assert winner == "Alice Hart" and unruled == ["Alice Chan"]
 
 
+def test_the_subject_is_never_its_own_evidence():
+    """The same person can occupy two cells, and one of them is the subject.
+
+    Without the name test the bare subject scores for whichever candidate has
+    played with someone written bare the same way — and the report prints the
+    subject itself as the reason. Seat alone cannot catch this; name alone
+    cannot catch the fill-forward case below. Both exclusions are needed, in
+    both readers.
+    """
+    rows = ([row(ts=f"1/{i + 1}/2024 10:00:00", p1="Alice Hart",
+                 p2="Beryl", p3="Carol") for i in range(5)]
+            # Alice Bek has played with someone written bare as "Alice".
+            + [row(ts=f"2/{i + 1}/2024 10:00:00", p1="Alice Bek",
+                   p2="Alice", p3="Fernand") for i in range(5)]
+            + [row(ts="6/1/2024 10:00:00", p1="Alice", p2="Gaston",
+                   others="Alice (v2)")])
+    _c, unaliased, unsettled, _uv, _s, _rs = attribute(rows, {})
+    # No finding may cite the subject's own name as the reason for itself.
+    assert all("Alice" not in why for *_r, why, _u in unaliased)
+    # The two cells of the last row hold each other's only "evidence", so
+    # with that removed nothing settles them.
+    assert [r["Timestamp"] for r, *_ in unsettled] == ["6/1/2024 10:00:00"] * 2
+
+
 def test_the_subjects_own_seat_is_excluded_positionally():
     """Evidence is the filled row; the subject is the row as written.
 

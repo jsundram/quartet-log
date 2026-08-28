@@ -467,11 +467,16 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
                 # fill-forward did.
                 resolved_by_sheet += 1
                 continue
-            # De-duplicated: someone written in a slot AND in Others? — which
-            # happens on exactly the rows that push people out of the quartet
-            # layout — would otherwise vote twice, and two distinct mates for
-            # one candidate could tie with one duplicated mate for another.
-            mates = list(dict.fromkeys(n for n, _c, s2 in cast if s2 != seat))
+            # Same two exclusions as the teammate index, for the same reason:
+            # seat drops this cell, name drops the SAME person written again
+            # elsewhere in the row. Without the name test the subject can be
+            # its own evidence — a bare "Alice" in a slot and in Others? scores
+            # a point for whichever candidate has played with someone written
+            # bare as "Alice", and the report prints the subject as the reason.
+            # De-duplicated because two distinct mates for one candidate must
+            # not tie with one mate written twice for another.
+            mates = list(dict.fromkeys(
+                n for n, _c, s2 in cast if s2 != seat and n != name))
             scored = sorted(((len([m for m in mates if m in circles[c]]), c)
                              for c in candidates), reverse=True)
             top, runner = scored[0], scored[1]
