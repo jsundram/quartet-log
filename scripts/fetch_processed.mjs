@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { processRow, prepareRows, fillForward, normalizePlayerNames } from '../src/dataProcessor.js';
 import { serializeRows } from '../src/csvFormat.js';
+import { parseCsv } from './lib/parseCsv.mjs';
 // dataProcessor takes the name tables as arguments; this script is a writer of
 // the processed export, so it wires the same ones the app does.
 import { PLAYER_ALIASES, PLAYER_ABBREVIATIONS } from '../src/config.js';
@@ -24,48 +25,13 @@ if (!existsSync(URL_FILE)) {
 }
 const dataUrl = readFileSync(URL_FILE, 'utf8').trim();
 
-// Tiny RFC-4180-ish CSV parser. Handles quoted fields with embedded
-// commas/quotes/newlines and CRLF line endings.
-function parseCSV(text) {
-    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-    const rows = [];
-    let row = [];
-    let field = '';
-    let inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-        const c = text[i];
-        if (inQuotes) {
-            if (c === '"') {
-                if (text[i + 1] === '"') { field += '"'; i++; }
-                else inQuotes = false;
-            } else field += c;
-        } else if (c === '"') {
-            inQuotes = true;
-        } else if (c === ',') {
-            row.push(field); field = '';
-        } else if (c === '\n' || c === '\r') {
-            if (c === '\r' && text[i + 1] === '\n') i++;
-            row.push(field); field = '';
-            rows.push(row); row = [];
-        } else {
-            field += c;
-        }
-    }
-    if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
-    if (!rows.length) return [];
-    const headers = rows[0];
-    return rows.slice(1)
-        .filter(r => r.length > 1 || (r.length === 1 && r[0] !== ''))
-        .map(r => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ''])));
-}
-
 console.error(`Fetching ${dataUrl}`);
 const response = await fetch(dataUrl);
 if (!response.ok) {
     console.error(`HTTP ${response.status}: ${response.statusText}`);
     process.exit(1);
 }
-const rawRows = parseCSV(await response.text());
+const rawRows = parseCsv(await response.text());
 // Same pipeline as DataService.processData: sort + drop invalid timestamps,
 // fillForward, normalize names, drop partial-movement rows.
 const { rows: processed, dropped } = prepareRows(rawRows.map(processRow));

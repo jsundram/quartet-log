@@ -151,8 +151,13 @@ export function instrumentFromSlot(name) {
 
 // Split `s` on `,` or `;` at paren depth 0 only — so commas inside a
 // "(instrument, comment)" annotation don't tear an entry in half.
+// Exported because scripts/audit_fillforward.mjs needs the same entry
+// boundaries while keeping each entry's full parenthetical — parseOthers
+// discards the comment half, and that comment is what tells the audit an
+// entry was scoped to particular movements. Sharing the split is the point:
+// a second copy of it in the audit is exactly the drift issue #25 removed.
 /** @param {string} s */
-function splitOutsideParens(s) {
+export function splitOutsideParens(s) {
     /** @type {string[]} */
     const parts = [];
     let depth = 0;

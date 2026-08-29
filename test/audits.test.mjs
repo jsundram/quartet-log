@@ -1,0 +1,515 @@
+// Unit tests for the data-quality audits in scripts/.
+//
+// Two things shape this file.
+//
+// The audits are functions over Row objects, so most of what follows is a
+// table of cases. Anything that classifies an instrument, strips an annotation
+// or splits the Others? column is imported from src/dataProcessor.js by the
+// audits themselves and tested there — the retired Python port had local
+// copies of all three, two of them silently wrong, and mirror tests that
+// missed it because they sampled inputs where both answers agreed. There is
+// nothing left here to mirror.
+//
+// More importantly, the real PLAYER_ALIASES / PLAYER_ABBREVIATIONS live in
+// src/aliases.js, which is gitignored and machine-specific: the real tables
+// locally, the empty stub in CI. A test that read them would pass in both
+// places while testing two different things. So every function that consumes a
+// table takes it as a required argument and throws without one — a structural
+// guarantee rather than a convention, which is what the Python suite's autouse
+// fixture had to be. Only scripts/lib/cli.mjs reads the real file, only on a
+// command-line run, and the last test in this file holds that line.
+//
+// Placeholder names come from a published list (Alice/Bob/Carol, then Atlantic
+// hurricane names), never from the log, and are not screened against it — see
+// CLAUDE.md on why filtering would leak more than a collision does.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+import { processRow } from '../src/dataProcessor.js';
+import { parseCsv } from '../scripts/lib/parseCsv.mjs';
+import { buildViews, viewsHeader } from '../scripts/lib/views.mjs';
+import {
+    ANY_CLASS, baseToken, candidateIndex, candidatesFor, collectAppearances,
+    isFullName, namesByFirst, rowPeople,
+} from '../scripts/lib/people.mjs';
+import { ambiguityReport, groupVariants, runAliasAudit } from '../scripts/audit_aliases.mjs';
+import {
+    datestamp, expectedSize, hasKeyboardAnnotation, loggedPeople, mentionsKeyboard,
+} from '../scripts/audit_ensembles.mjs';
+import {
+    EXTRA_STRING_RE, needsTheExtraPlayer, workKey,
+} from '../scripts/audit_fillforward.mjs';
+
+const HEADERS = ['Timestamp', 'Composer', 'Work Title', 'Which Part',
+    'Player 1', 'Player 2', 'Player 3', 'Others?', 'Location', 'Comments'];
+
+/** One CSV-shaped row, the shape every view is built from. */
+function raw({
+    ts = '1/1/2024 10:00:00', composer = 'Haydn', title = '76#1', part = 'V1',
+    p1 = '', p2 = '', p3 = '', others = '', location = 'Home', comments = '',
+} = {}) {
+    return Object.fromEntries(HEADERS.map((h, i) => [h,
+        [ts, composer, title, part, p1, p2, p3, others, location, comments][i]]));
+}
+
+/** One processed Row, as every audit sees it. */
+const row = fields => processRow(raw(fields));
+
+const NO_TABLES = { aliases: {}, abbreviations: {} };
+
+// ------------------------------------------------------------------ views --
+
+test('the written view is what was typed and the filled view is the room', () => {
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice', p2: 'Bob', p3: 'Carol' }),
+        raw({ ts: '1/1/2024 11:00:00' })];
+    const { written, filled } = buildViews(rows, NO_TABLES);
+    // As written the continuation row is blank — there is no cell to edit.
+    assert.equal(written[1].player1, '');
+    // As filled it names the room, which is the evidence.
+    assert.equal(filled[1].player1, 'Alice');
+});
+
+test('written and filled are index-aligned', () => {
+    // Attribution (#27) pairs a row as written against the same row as filled,
+    // by index. Out of order they would report the wrong cell.
+    const rows = [raw({ ts: '3/1/2024 10:00:00', p1: 'Carol' }),
+        raw({ ts: '1/1/2024 10:00:00', p1: 'Alice' }),
+        raw({ ts: '2/1/2024 10:00:00', p1: 'Bob' })];
+    const { written, filled } = buildViews(rows, NO_TABLES);
+    assert.deepEqual(written.map(r => Number(r.timestamp)),
+        filled.map(r => Number(r.timestamp)));
+    assert.deepEqual(written.map(r => r.player1), ['Alice', 'Bob', 'Carol']);
+});
+
+test('the filled view fills from the sheet only, never from the abbreviations', () => {
+    // "nothing but the sheet's own repetition": an abbreviation expanded there
+    // would put a name in a cell the sheet never typed, and the written/filled
+    // pair exists precisely to keep those two apart.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice Hart' }),
+        raw({ ts: '1/1/2024 11:00:00', p1: 'A' })];
+    const tables = { aliases: {}, abbreviations: { A: 'Bob Jones' } };
+    const { filled, processed } = buildViews(rows, tables);
+    assert.equal(filled[1].player1, 'A');
+    assert.equal(processed[1].player1, 'Bob Jones');
+});
+
+test('the processed view drops partial movements and the others keep them', () => {
+    const rows = [raw({ ts: '1/1/2024 10:00:00', title: '76#1', p1: 'Alice' }),
+        raw({ ts: '1/1/2024 11:00:00', title: '17#2:I', p1: 'Bob' })];
+    const { written, filled, processed } = buildViews(rows, NO_TABLES);
+    assert.equal(written.length, 2);
+    assert.equal(filled.length, 2);
+    assert.deepEqual(processed.map(r => r.work.title), ['76#1']);
+});
+
+test('the processed view applies the alias table and the others do not', () => {
+    const rows = [raw({ p1: 'Alice' })];
+    const tables = { aliases: { Alice: { upper: 'Alice Hart' } }, abbreviations: {} };
+    const { written, filled, processed } = buildViews(rows, tables);
+    assert.equal(written[0].player1, 'Alice');
+    assert.equal(filled[0].player1, 'Alice');
+    assert.equal(processed[0].player1, 'Alice Hart');
+});
+
+test('one short row does not cost the file its filled view', () => {
+    // A truncated line has fewer fields than headers. Left undefined, they slip
+    // past processRow's `=== undefined` guard and the first .trim() throws —
+    // one malformed line costing every row its filled view, and a third of the
+    // raw sheet is continuation rows that then look answerless.
+    const csv = `${HEADERS.join(',')}\n`
+        + '1/1/2024 10:00:00,Haydn,76#1,V1,Alice,Bob,Carol,,Home,\n'
+        + '1/1/2024 11:00:00,Haydn,76#2,V1\n';
+    const { filled } = buildViews(parseCsv(csv), NO_TABLES);
+    assert.equal(filled.length, 2);
+    assert.equal(filled[1].player1, 'Alice');
+});
+
+test('a row with an unparseable timestamp is dropped and said so', () => {
+    // Every section reads the rows the loader returns, so a silent drop would
+    // shrink the counts below and leave the printed row total disagreeing with
+    // the file. In a data-quality audit an unparseable timestamp is a finding.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice' }),
+        raw({ ts: 'not a date', p1: 'Bob' })];
+    const views = buildViews(rows, NO_TABLES);
+    assert.equal(views.written.length, 1);
+    assert.equal(views.dropped, 1);
+    assert.match(viewsHeader(views, views.written).join('\n'),
+        /1 row\(s\) have a timestamp that will not parse/);
+});
+
+test('the header counts the view the audit read, not a view it ignored', () => {
+    const rows = [raw({ ts: '1/1/2024 10:00:00', title: '76#1' }),
+        raw({ ts: '1/1/2024 11:00:00', title: '17#2:I' })];
+    const views = buildViews(rows, NO_TABLES);
+    assert.match(viewsHeader(views, views.written)[0], /^Rows: 2/);
+    assert.match(viewsHeader(views, views.processed)[0], /^Rows: 1/);
+});
+
+test('building a view without name tables throws rather than guessing', () => {
+    // The guarantee this whole file rests on: a caller that forgets a table
+    // fails loudly instead of quietly reading the machine's real one.
+    assert.throws(() => buildViews([raw({ p1: 'Alice' })], {}), TypeError);
+});
+
+// ------------------------------------------------------------- row people --
+
+test('rowPeople labels every cell with its seat', () => {
+    assert.deepEqual(
+        rowPeople(row({ p1: 'Alice', p2: '-', p3: 'Bob', others: 'Carol (vc); Dexter (v2)' }), {}),
+        [{ name: 'Alice', cls: 'upper', seat: 'p1' },
+            { name: 'Bob', cls: 'cello', seat: 'p3' },
+            { name: 'Carol', cls: 'cello', seat: 'o0' },
+            { name: 'Dexter', cls: 'upper', seat: 'o1' }]);
+});
+
+test('rowPeople reads a slot annotation as the class', () => {
+    // The annotation states the class; the column only implies it.
+    assert.deepEqual(rowPeople(row({ p3: 'Alice (p)' }), {}),
+        [{ name: 'Alice', cls: 'upper', seat: 'p3' }]);
+    // ...but only when it names an instrument. "(sub)" is a note, and honoring
+    // it would reclass the player out of the cello column.
+    assert.deepEqual(rowPeople(row({ p3: 'Alice (sub)' }), {}),
+        [{ name: 'Alice', cls: 'cello', seat: 'p3' }]);
+});
+
+test('rowPeople expands from the injected abbreviation table', () => {
+    assert.deepEqual(rowPeople(row({ p1: 'A', p2: 'Bob' }), { A: 'Alice' })
+        .map(p => p.name), ['Alice', 'Bob']);
+});
+
+test('rowPeople demands an abbreviation table', () => {
+    assert.throws(() => rowPeople(row({ p1: 'Alice' })), TypeError);
+});
+
+test('rowPeople reads the processed view through its parsed fields', () => {
+    // normalizePlayerNames moves each slot's annotation into playerInstruments
+    // and the Others? column into othersList. A reader that only looked at the
+    // raw cells would lose the annotation's class on that view.
+    const [processedRow] = buildViews(
+        [raw({ p3: 'Alice (p)', others: 'Bob (vc)' })], NO_TABLES).processed;
+    assert.deepEqual(rowPeople(processedRow, {}),
+        [{ name: 'Alice', cls: 'upper', seat: 'p3' },
+            { name: 'Bob', cls: 'cello', seat: 'o0' }]);
+});
+
+test('nobody is their own teammate', () => {
+    // Someone written in a slot AND in Others? — how the rows that overflow the
+    // quartet layout get logged — must not land in their own circle, or a bare
+    // name beside its own full form scores a point for being the person already
+    // named in that row.
+    const rows = [row({ p1: 'Alice Hart', p2: 'Bob', others: 'Alice Hart (v2)' })];
+    const { circles } = candidateIndex(collectAppearances(rows, {}));
+    assert.deepEqual([...circles.get('Alice Hart')], ['Bob']);
+});
+
+// --------------------------------------------------------- candidate index --
+
+test('candidates are keyed by instrument class', () => {
+    // PLAYER_ALIASES is class-keyed, so the candidate set must be too.
+    // Otherwise a cello-slot bare name draws the upper-class person of the same
+    // first name, whose larger circle then wins, and the CORRECT class-keyed
+    // alias gets reported as crediting the wrong person.
+    const rows = [row({ p1: 'Alice Hart', p3: 'Alice Bek' })];
+    const { byFirst } = candidateIndex(collectAppearances(rows, {}));
+    assert.deepEqual([...candidatesFor(byFirst, 'alice', 'upper')], ['Alice Hart']);
+    assert.deepEqual([...candidatesFor(byFirst, 'alice', 'cello')], ['Alice Bek']);
+});
+
+test('a one-letter surname is an abbreviation, not a rival', () => {
+    // "Alice H" is Alice Hart with the surname abbreviated. Admitting it as a
+    // candidate invents a rival for the real person.
+    const rows = [row({ p1: 'Alice Hart' }), row({ p1: 'Alice H' })];
+    const { byFirst } = candidateIndex(collectAppearances(rows, {}));
+    assert.deepEqual([...candidatesFor(byFirst, 'alice', 'upper')], ['Alice Hart']);
+    assert.equal(isFullName('Alice H'), false);
+    assert.equal(isFullName('Alice H.'), false);
+    assert.equal(isFullName('Alice Hart'), true);
+});
+
+test('bare names are not candidates', () => {
+    const rows = [row({ p1: 'Alice Hart' }), row({ p1: 'Alice' })];
+    const { byFirst } = candidateIndex(collectAppearances(rows, {}));
+    assert.deepEqual([...candidatesFor(byFirst, 'alice', 'upper')], ['Alice Hart']);
+});
+
+test('an unclassified full name is still a candidate', () => {
+    // A full name in an unannotated Others? cell has no class of its own, but
+    // it is still a person with that first name. Indexed under the pseudo-class
+    // so it reaches both the per-name list and any subject's candidate set —
+    // the two halves of the report must not disagree about who exists.
+    const rows = [row({ p1: 'Alice Hart' }), row({ p1: 'Bob', others: 'Alice Bek' })];
+    const { byFirst } = candidateIndex(collectAppearances(rows, {}));
+    assert.deepEqual([...candidatesFor(byFirst, 'alice', ANY_CLASS)].sort(),
+        ['Alice Bek', 'Alice Hart']);
+    assert.deepEqual([...candidatesFor(byFirst, 'alice', 'upper')].sort(),
+        ['Alice Bek', 'Alice Hart']);
+    assert.deepEqual([...candidatesFor(byFirst, 'alice', null)].sort(),
+        ['Alice Bek', 'Alice Hart']);
+});
+
+test('circles and written counts come from the rows given', () => {
+    const rows = [row({ p1: 'Alice Hart', p2: 'Bob', p3: 'Carol' }),
+        row({ p1: 'Alice Hart', p2: 'Dexter', p3: 'Carol' })];
+    const { circles, written } = candidateIndex(collectAppearances(rows, {}));
+    assert.deepEqual([...circles.get('Alice Hart')].sort(), ['Bob', 'Carol', 'Dexter']);
+    assert.equal(written.get('Alice Hart'), 2);
+});
+
+test('circles read the filled view while counts read the written one', () => {
+    // The two answer different questions about the same rows.
+    //
+    // Who someone played with is a fact about the room, and fill-forward is how
+    // the sheet states it: on the written view a continuation row names nobody,
+    // so a full name in its Others? cell would carry an empty circle however
+    // many sessions it played. How often a name was TYPED is the opposite —
+    // counting fill-forward there lets one typing clear an attestation
+    // threshold several times over.
+    const rows = [];
+    for (let i = 1; i <= 6; i++) {
+        rows.push(raw({ ts: `${i}/1/2024 10:00:00`, p1: 'Bob Smith', p2: 'Carol Jones', p3: 'Dan Ray' }));
+        // Named only on the continuation row, which states no players itself.
+        rows.push(raw({ ts: `${i}/1/2024 11:00:00`, others: 'Zoe Hart' }));
+    }
+    const { written, filled } = buildViews(rows, NO_TABLES);
+    const index = candidateIndex(collectAppearances(written, {}),
+        collectAppearances(filled, {}));
+    assert.deepEqual([...index.circles.get('Zoe Hart')].sort(),
+        ['Bob Smith', 'Carol Jones', 'Dan Ray']);
+    assert.equal(index.written.get('Zoe Hart'), 6);   // typed six times, not thirty
+});
+
+test('baseToken groups a name with its own short form', () => {
+    assert.equal(baseToken('Alice Hart'), 'alice');
+    assert.equal(baseToken(' alice '), 'alice');
+});
+
+test('namesByFirst is the class-blind view the alias keys need', () => {
+    // An alias key is not class-scoped, so the check for "several people share
+    // this first name" must not be either.
+    const rows = [row({ p1: 'Alice Hart', p3: 'Alice Bek' })];
+    const { byFirst } = candidateIndex(collectAppearances(rows, {}));
+    assert.deepEqual([...(namesByFirst(byFirst).get('alice') ?? [])].sort(),
+        ['Alice Bek', 'Alice Hart']);
+});
+
+// ------------------------------------------------------- ambiguity buckets --
+
+const ambiguity = (rows, aliases = {}) =>
+    ambiguityReport(collectAppearances(rows, {}), { aliases, abbreviations: {} }).join('\n');
+
+test('an unclassified bare name reaches the per-name list', () => {
+    // It was reported per ENTRY under the pseudo-class but never counted per
+    // NAME, so the summary — which reads the per-name number — could not see it.
+    const rows = [row({ p1: 'Alice Hart' }), row({ p1: 'Alice Bek' }),
+        row({ p1: 'Beryl', others: 'Alice' })];
+    assert.match(ambiguity(rows), /bare names in the sheet with 2\+ candidates \(1\)/);
+});
+
+test('an unclassified subject prints as the pseudo-class, not as null', () => {
+    // cls is null for an unannotated Others? entry — every namesake is in
+    // play — and printing a literal [null] beside every other line's [upper] is
+    // not what that means.
+    const rows = [row({ p1: 'Alice Hart' }), row({ p1: 'Alice Bek' }),
+        row({ p1: 'Beryl', others: 'Alice' })];
+    const out = ambiguity(rows);
+    assert.doesNotMatch(out, /\[null/);
+    assert.match(out, /'Alice' *\[any/);
+});
+
+test('a surname the sheet never writes is the backup bucket', () => {
+    // The gitignored table is the only record of it, which is a standing risk.
+    const out = ambiguity([row({ p1: 'Alice', p2: 'Bob Jones' })],
+        { Alice: { upper: 'Alice Hart' } });
+    assert.match(out, /ONLY record of a surname \(1\)/);
+    assert.match(out, /absent and unrelated \(0\)/);
+});
+
+test('a live alias is reported as neither', () => {
+    // A canonical name the sheet resolves to is working, not broken. Reporting
+    // it sends you to delete a live alias — the failure this section prevents.
+    const out = ambiguity([row({ p1: 'Alberto Stone', p2: 'Beryl Stone' })],
+        { 'Alberto Stone': { upper: 'Al Stone' } });
+    assert.match(out, /ONLY record of a surname \(0\)/);
+    assert.match(out, /absent and unrelated \(0\)/);
+});
+
+test('a drifted spelling is the bug bucket', () => {
+    const out = ambiguity([row({ p1: 'Dexter Stone', p2: 'Ernesto Stone' })],
+        { Chantal: { upper: 'Chantal Stone' } });
+    assert.match(out, /absent and unrelated \(1\)/);
+});
+
+test('an alias keyed on an ambiguous first name is reported', () => {
+    const out = ambiguity([row({ p1: 'Alice Hart', p2: 'Alice Bek' })],
+        { Alice: { upper: 'Alice Hart' } });
+    assert.match(out, /aliases keyed on an ambiguous first name \(1\)/);
+    assert.match(out, /also in sheet: Alice Bek/);
+});
+
+test('the pseudo-class never reaches the alias proposal or the review table', () => {
+    // canonicalize only ever looks up 'upper'/'cello'. A proposed { any: ... }
+    // entry is inert when pasted, then makes the name read as handled on the
+    // next run, and is re-proposed forever because alreadyAliased can never be
+    // true for it.
+    const rows = [];
+    for (let i = 1; i <= 3; i++) {
+        rows.push(raw({ ts: `${i}/1/2024 10:00:00`, p1: 'Bob Smith', p2: 'Carol Jones',
+            p3: 'Dan Ray', others: 'Zoe Hart' }));
+    }
+    rows.push(raw({ ts: '5/1/2024 10:00:00', p1: 'Bob Smith', p2: 'Carol Jones',
+        p3: 'Dan Ray', others: 'Zoe' }));
+    const out = runAliasAudit(buildViews(rows, NO_TABLES), NO_TABLES).join('\n');
+    // The pseudo-class is in the index — that is its job — but the paste-ready
+    // block and the REVIEW table must never offer it.
+    const proposal = out.slice(out.indexOf('PLAYER_ALIASES proposal'));
+    assert.doesNotMatch(proposal, new RegExp(`${ANY_CLASS}:`));
+    const review = out.slice(out.indexOf('REVIEW:'), out.indexOf('=== AMBIGUITY'));
+    assert.doesNotMatch(review, new RegExp(`\\[${ANY_CLASS}`));
+});
+
+test('variant grouping keys on the first token', () => {
+    const rows = [row({ p1: 'Alice Hart', p2: 'Alice', p3: 'Bob Jones' })];
+    const groups = groupVariants(collectAppearances(rows, {}));
+    assert.deepEqual([...(groups.get('alice') ?? [])].map(v => v.name).sort(),
+        ['Alice', 'Alice Hart']);
+    assert.deepEqual([...(groups.get('bob') ?? [])].map(v => v.name), ['Bob Jones']);
+});
+
+// ------------------------------------------------------------- ensembles --
+
+const QUARTETS = new Set([workKey('Haydn', '50#5')]);
+
+test('expectedSize reads the title, then an instrumentation phrase', () => {
+    for (const [title, comments, need, stated] of [
+        ['Piano Quintet', '', 5, true],
+        ['Sextet 1', '', 6, true],
+        ['K478', 'Piano Quartet', 4, true],
+        ['K478', 'Notturno for Piano Trio', 3, true],
+        // Prose, not instrumentation: a bare ensemble word means nothing here.
+        ['K478', 'quintets were averted briefly', 4, false],
+        ['K478', 'more piano the second time', 4, false],
+        ['76#1', '', 4, false],
+    ]) {
+        assert.deepEqual(expectedSize(row({ title, comments }), new Set()),
+            { need, stated }, `${title} / ${comments}`);
+    }
+});
+
+test('a catalogued quartet ignores prose about another piece', () => {
+    // "Post-Mexican food after piano quartet afternoon" parses as an
+    // instrumentation phrase. The row settles it: this work is a string
+    // quartet, so whatever the comment is about, it is not this piece.
+    const comments = 'Post-Mexican food after piano quartet afternoon';
+    const r = row({ composer: 'Haydn', title: '50#5', comments });
+    assert.deepEqual(expectedSize(r, QUARTETS), { need: 4, stated: false });
+    assert.equal(mentionsKeyboard(r, QUARTETS), false);
+    // The same comment on an uncatalogued work is still trusted.
+    assert.equal(expectedSize(row({ title: 'K478', comments }), QUARTETS).stated, true);
+});
+
+test('mentionsKeyboard trusts the title and gates the comment', () => {
+    for (const [title, comments, expected] of [
+        ['Piano Quartet', '', true],
+        ['K478', 'Piano Quartet', true],
+        ['76#1', 'more piano the second time', false],
+        ['76#1', '', false],
+    ]) {
+        assert.equal(mentionsKeyboard(row({ title, comments }), new Set()), expected,
+            `${title} / ${comments}`);
+    }
+});
+
+test('hasKeyboardAnnotation reads slots as well as Others?', () => {
+    assert.equal(hasKeyboardAnnotation(row({ p3: 'Alice (p)' })), true);
+    assert.equal(hasKeyboardAnnotation(row({ others: 'Alice (piano)' })), true);
+    assert.equal(hasKeyboardAnnotation(row({ p3: 'Alice (vc)' })), false);
+    assert.equal(hasKeyboardAnnotation(row({ p3: 'Alice' })), false);
+    // A parenthetical naming no instrument is not an annotation at all.
+    assert.equal(hasKeyboardAnnotation(row({ p1: 'Alice (sub)' })), false);
+});
+
+test('a slot annotation the app cannot read is not a keyboard annotation', () => {
+    // The question this section asks is whether the APP sees a keyboard here,
+    // because its whole point is that an unseen pianist is counted as a string
+    // player. instrumentFromSlot refuses "(klavier)" — it is not in the app's
+    // instrument vocabulary — so normalizePlayerNames leaves that player in
+    // their positional class and the row genuinely still needs annotating.
+    // Reading the parenthetical directly, as the retired Python port did, would
+    // call the row handled while the app went on miscounting it.
+    assert.equal(hasKeyboardAnnotation(row({ p1: 'Alice (klavier)' })), false);
+    // In Others? there is no such gate — parseOthers keeps any parenthetical,
+    // and so does the app — so the same word does mark a keyboard player there.
+    assert.equal(hasKeyboardAnnotation(row({ others: 'Alice (klavier)' })), true);
+});
+
+test('loggedPeople counts the logger and ignores empty seats', () => {
+    // "-" marks a seat the work does not have; it is not a person.
+    assert.equal(loggedPeople(row({ p1: 'Alice', p2: '-', p3: 'Bob' })), 3);
+    assert.equal(loggedPeople(
+        row({ p1: 'Alice', p2: 'Bob', p3: 'Carol', others: 'Dexter (v2)' })), 5);
+});
+
+test('datestamp survives an unpadded timestamp', () => {
+    // csvFormat writes M/D/YYYY H:mm:ss, so a fixed slice cuts into the time.
+    assert.equal(datestamp(row({ ts: '1/1/2024 1:05:00' })), '1/1/2024');
+    assert.equal(datestamp(row({ ts: '12/31/2024 13:05:00' })), '12/31/2024');
+});
+
+// ---------------------------------------------------------- fill-forward --
+
+test('extra-string parts are the ones a quartet cannot seat', () => {
+    for (const [part, isExtra] of [
+        ['va2', true], ['vc2', true], ['vla2', true], ['v3', true],
+        // A quartet HAS a second violin seat, so an Others? "v2" is a fifth
+        // body in the room and the next quartet has nowhere to put them either.
+        ['v2', false], ['v1', false], ['va', false], ['vc', false],
+    ]) {
+        assert.equal(EXTRA_STRING_RE.test(part), isExtra, part);
+    }
+});
+
+test('needsTheExtraPlayer suppresses only on positive evidence', () => {
+    const quartets = new Set([workKey('Haydn', '76#1')]);
+    const r = row({ composer: 'Haydn', title: '76#1' });
+    for (const [others, needed] of [
+        ['Alice (p)', true],                    // a pianist has no seat either way
+        ['Alice (va2)', false],                 // a quartet has no second viola
+        ['Alice (va2); Bob (vc2)', false],
+        ['Alice (v2)', true],                   // ...but it has no spare v2 chair
+        ['Alice', true],                        // unannotated: not inferable
+        ['Alice (v1, on II, III)', false],      // scoped to this piece; must not carry
+        // One scoped entry must not silence the rest of the line: the pianist
+        // is still dropped by the next row.
+        ['Alice (v1, on II, III); Bob (p)', true],
+        // The entry split is paren-aware, so a comma inside an annotation does
+        // not tear an entry in half and leave a fragment arguing for itself.
+        ['Alice (va2, doubling, second half)', false],
+    ]) {
+        assert.equal(needsTheExtraPlayer(r, others, new Set(), quartets), needed, others);
+    }
+});
+
+test('an uncatalogued work is always reported', () => {
+    // Suppress only on positive evidence; an unknown work is not evidence.
+    assert.equal(needsTheExtraPlayer(row({ composer: 'Haydn', title: 'Unlisted' }),
+        'Alice (va2)', new Set(), new Set([workKey('Haydn', '76#1')])), true);
+});
+
+// ------------------------------------------------- the injection guarantee --
+
+test('no audit module reaches the real alias file at import time', () => {
+    // src/aliases.js is gitignored and machine-specific. An audit module that
+    // imported it (directly, or via src/config.js) would make every test that
+    // imports the module depend on which machine it runs on — the failure this
+    // repo has already had twice. scripts/lib/cli.mjs is the one reader, and it
+    // imports dynamically, inside a function only a command-line run calls.
+    for (const file of ['scripts/audit_aliases.mjs', 'scripts/audit_ensembles.mjs',
+        'scripts/audit_fillforward.mjs', 'scripts/lib/people.mjs',
+        'scripts/lib/views.mjs']) {
+        const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+        assert.doesNotMatch(source, /^import .*(config|aliases)\.js/m,
+            `${file} must take its name tables as an argument`);
+    }
+});
