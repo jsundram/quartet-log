@@ -108,7 +108,11 @@ fi
 # The bare-entry findings the summary counts, printed from the raw pass so the
 # rows are reachable. Everything else in that pass duplicates the run above.
 rule "BARE NAMES        scripts/audit_aliases.py archive/data-raw.csv"
-sed -n '/^-- bare entries whose alias contradicts the room/,/no alias was consulted/p' \
+# Starts at the per-name list, not at the first per-entry section: the SUMMARY
+# takes its "bare names with 2+ candidates" from this pass, and printing only
+# the per-entry sections left that number with no list a reader could count —
+# the processed pass's list is shorter, by exactly the names an alias covers.
+sed -n '/^-- bare names in the sheet with 2+ candidates/,/no alias was consulted/p' \
     "$RAW_OUT" 2>/dev/null || true
 
 rule "SUMMARY"

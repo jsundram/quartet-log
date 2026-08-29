@@ -25,6 +25,7 @@ CLAUDE.md on why filtering would leak more than a collision does.
 
 from __future__ import annotations
 
+import csv
 import re
 import sys
 from pathlib import Path
@@ -198,6 +199,33 @@ def test_nobody_is_their_own_teammate():
     assert circles["Alice Hart"] == {"Bob"}
 
 
+def test_circles_read_the_filled_view_while_counts_read_the_written_one():
+    """The two answer different questions about the same rows.
+
+    Who someone played with is a fact about the room, and fill-forward is how
+    the sheet states it: on the raw view a continuation row names nobody, so a
+    full name written in its Others? cell would carry an empty circle however
+    many sessions it played — and every bare form it could settle would be
+    reported as needing memory. How often a name was TYPED is the opposite:
+    counting fill-forward there lets one typing clear MIN_WRITTEN_IN_FULL
+    several times over.
+    """
+    written = []
+    for i in range(6):
+        written.append(row(ts=f"{i + 1}/1/2024 10:00:00", p1="Bob Smith",
+                           p2="Carol Jones", p3="Dan Ray"))
+        # Named only on the continuation row, which states no players itself.
+        written.append(row(ts=f"{i + 1}/1/2024 11:00:00", others="Zoe Hart"))
+    filled = [dict(r) for r in written]
+    for i in range(1, len(filled), 2):
+        filled[i].update({"Player 1": "Bob Smith", "Player 2": "Carol Jones",
+                          "Player 3": "Dan Ray"})
+    _b, circles, counts = aa.candidate_index(
+        appearances_for(written), appearances_for(filled))
+    assert circles["Zoe Hart"] == {"Bob Smith", "Carol Jones", "Dan Ray"}
+    assert counts["Zoe Hart"] == 6      # typed six times, not thirty
+
+
 def test_circles_and_written_come_from_the_rows_given():
     rows = [row(p1="Alice Hart", p2="Bob", p3="Carol"),
             row(p1="Alice Hart", p2="Dexter", p3="Carol")]
@@ -364,6 +392,31 @@ def test_rivals_that_cannot_be_ruled_out_are_disclosed_not_discarded():
     assert len(unaliased) == 1
     *_rest, winner, _why, unruled = unaliased[0]
     assert winner == "Alice Hart" and unruled == ["Alice Chan"]
+
+
+def test_attribution_takes_its_circles_from_the_filled_view():
+    """End to end, not just candidate_index in isolation.
+
+    This is the raw sheet's own convention — state the quartet on the first
+    row of a session, name the extra player in Others? on the next — so a
+    candidate established that way must not arrive with an empty circle.
+    """
+    written = []
+    for i in range(6):
+        written.append(row(ts=f"{i + 1}/1/2024 10:00:00", p1="Bob Smith",
+                           p2="Carol Jones", p3="Dan Ray"))
+        written.append(row(ts=f"{i + 1}/1/2024 11:00:00", others="Zoe Hart"))
+    written += [row(ts=f"{i + 1}/15/2024 10:00:00", p1="Zoe Bek",
+                    p2="Erin Vale", p3="Fay Nunn") for i in range(5)]
+    written.append(row(ts="12/1/2024 10:00:00", p1="Zoe", p2="Bob Smith",
+                       p3="Carol Jones"))
+    filled = [dict(r) for r in written]
+    for i in range(1, 12, 2):
+        filled[i].update({"Player 1": "Bob Smith", "Player 2": "Carol Jones",
+                          "Player 3": "Dan Ray"})
+    _c, unaliased, unsettled, _uv, _s, _rs = attribute(written, {}, filled=filled)
+    assert unsettled == []
+    assert [u[3] for u in unaliased] == ["Zoe Hart"]
 
 
 def test_the_subject_is_never_its_own_evidence():
@@ -547,6 +600,35 @@ def test_a_drifted_spelling_is_the_bug_bucket(capsys):
     rows = [row(p1="Dexter Stone", p2="Ernesto Stone")]
     aa.report_ambiguity(list(zip(rows, rows)), appearances_for(rows), {})
     assert "absent and unrelated (1)" in capsys.readouterr().out
+
+
+def test_the_pseudo_class_never_reaches_the_alias_proposal(tmp_path, capsys,
+                                                          monkeypatch):
+    """canonicalize only ever looks up 'upper'/'cello'.
+
+    A proposed { any: ... } entry is inert when pasted, then makes the name
+    read as handled on the next run, and is re-proposed forever because
+    already_aliased can never be true for it. Runs main() because the leak was
+    in the printer, not in the index the rest of these tests exercise.
+    """
+    rows = [row(ts=f"{i + 1}/1/2024 10:00:00", p1="Bob Smith", p2="Carol Jones",
+                p3="Dan Ray", others="Zoe Hart") for i in range(3)]
+    rows.append(row(ts="5/1/2024 10:00:00", p1="Bob Smith", p2="Carol Jones",
+                    p3="Dan Ray", others="Zoe"))
+    path = tmp_path / "fixture.csv"
+    with path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=HEADERS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    monkeypatch.setattr(sys, "argv", ["audit_aliases.py", str(path)])
+    aa.main()
+    out = capsys.readouterr().out
+    proposal = out[out.index("PLAYER_ALIASES proposal"):]
+    # The pseudo-class is in the index — that is its job — but the paste-ready
+    # block and the REVIEW table must never offer it.
+    assert f"{aa.ANY_CLASS}:" not in proposal
+    assert f"[{aa.ANY_CLASS}" not in out[out.index("REVIEW:"):out.index("=== AMBIGUITY")]
 
 
 # ------------------------------------------------------- the node bridges --

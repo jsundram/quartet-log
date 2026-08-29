@@ -37,13 +37,17 @@ jobs:
       # No new action to pin: the uv-or-venv fallback lives in the script.
       #
       # ubuntu-latest ships no uv, so the venv path runs and pip fetches the
-      # pinned pytest. Cached so that is a one-time cost rather than a PyPI
-      # round-trip on every PR, inside a job with a 10-minute timeout.
+      # pinned pytest. This cache helps re-runs WITHIN a PR only: Actions
+      # scopes a cache to the ref that wrote it, and nothing here populates
+      # one on main, so a new PR always starts cold and does hit PyPI. Kept
+      # for the re-run case, not relied on — see #21, which removes the Python
+      # toolchain and this step with it.
       - name: Cache pip downloads
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pip
           key: pip-pytest-${{ hashFiles('scripts/run_audit_tests.sh') }}
+          restore-keys: pip-pytest-
 
       - name: Run audit tests
         run: npm run test:audits

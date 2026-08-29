@@ -31,8 +31,9 @@ fi
 # "use whatever pytest is already importable" either: that is what the
 # previous version did, and it made the pin above fictional — CI ran the
 # image's pytest and only happened to match. The venv is reused on a dev
-# machine; in CI it is rebuilt per run from the pip cache the workflow
-# restores, so the install does not depend on PyPI being reachable.
+# machine; in CI it is rebuilt per run, and the workflow's pip cache only
+# helps re-runs within one PR (Actions scopes caches by ref), so a first run
+# on a new PR does fetch from PyPI.
 echo "note: uv not found, using a cached venv" >&2
 VENV="${XDG_CACHE_HOME:-$HOME/.cache}/quartet-log/pytest-$PYTEST_VERSION"
 if [ ! -x "$VENV/bin/pytest" ]; then

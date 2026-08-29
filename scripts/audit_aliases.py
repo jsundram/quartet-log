@@ -357,7 +357,18 @@ def already_aliased(variant: str, cls: str) -> bool:
     return variant in EXISTING_ALIASES and cls in EXISTING_ALIASES[variant]
 
 
-def candidate_index(appearances: dict[tuple[str, str], list[list[str]]]
+def _is_full_name(name: str) -> bool:
+    """A written-out name, not a bare first name and not an initialled one.
+
+    "Peter O" is Peter Ouyang with the surname abbreviated, not a second
+    Peter; admitting it as a candidate invents a rival for the real person.
+    """
+    tokens = name.split()
+    return len(tokens) > 1 and len(tokens[-1].rstrip(".")) > 1
+
+
+def candidate_index(appearances: dict[tuple[str, str], list[list[str]]],
+                    circle_appearances: dict[tuple[str, str], list[list[str]]] | None = None
                     ) -> tuple[dict[tuple[str, str], set[str]], dict[str, set[str]], Counter]:
     """Who a bare first name could be, plus the evidence about each.
 
@@ -372,22 +383,33 @@ def candidate_index(appearances: dict[tuple[str, str], list[list[str]]]
         keyed on, so a cello-slot "Jo" never draws the upper-class Jo.
 
     Also returns each full name's teammate circle and how often it was written
-    out. Both come from `appearances`, which must be built from the rows AS
-    WRITTEN: a typed name is evidence, while an alias-supplied one is the
-    hypothesis under test and a fill-forwarded one is the sheet repeating
-    itself. Counting the latter would let a name typed once in a five-piece
-    session clear MIN_WRITTEN_IN_FULL five times over — and that is exactly
-    the population the threshold exists to protect against.
+    out, and those two want DIFFERENT views of the same rows.
+
+    `written` counts must come from the rows AS WRITTEN: a typed name is
+    evidence, an alias-supplied one is the hypothesis under test, and a
+    fill-forwarded one is the sheet repeating itself — counting the last would
+    let a name typed once in a five-piece session clear MIN_WRITTEN_IN_FULL
+    five times over, which is the population the threshold protects against.
+
+    `circles` are the opposite. Who someone played with is a fact about the
+    room, and fill-forward is how the sheet states it: on the raw view a
+    continuation row names nobody, so a full name written in its Others? cell
+    would get an empty circle however many sessions it played, and every bare
+    form it could settle would be reported as needing memory instead. Pass
+    `circle_appearances` from the FILLED view for that reason.
     """
+    if circle_appearances is None:
+        circle_appearances = appearances
     by_first: dict[tuple[str, str], set[str]] = defaultdict(set)
     circles: dict[str, set[str]] = defaultdict(set)
     written: Counter = Counter()
     for (name, cls), apps in appearances.items():
-        tokens = name.split()
-        if len(tokens) > 1 and len(tokens[-1].rstrip(".")) > 1:
+        if _is_full_name(name):
             by_first[(base_token(name), cls)].add(name)
-            circles[name].update(teammate_counter(apps))
             written[name] += len(apps)
+    for (name, _cls), apps in circle_appearances.items():
+        if _is_full_name(name):
+            circles[name].update(teammate_counter(apps))
     return by_first, circles, written
 
 
@@ -449,7 +471,8 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
                  was consulted at all. Kept apart from `settled` so the report
                  does not credit src/aliases.js with fill-forward's work.
     """
-    full_by_first, circles, written = candidate_index(appearances)
+    full_by_first, circles, written = candidate_index(
+        appearances, collect_appearances([f for _w, f in pairs], slot_classes))
 
     conflicts, unaliased, unsettled = [], [], []
     unverified = settled = resolved_by_sheet = 0
@@ -790,6 +813,13 @@ def main() -> None:
             by_class[cls].append((name, count, apps))
 
         for cls, vs in by_class.items():
+            # ANY_CLASS is an index key, not a class the app can alias on:
+            # canonicalize only ever looks up 'upper'/'cello', so a proposed
+            # { any: ... } entry is inert when pasted, makes the name read as
+            # handled on the next run, and — since already_aliased can never
+            # be true for it — is re-proposed forever.
+            if cls == ANY_CLASS:
+                continue
             # Canonical = the variant with the most whitespace-separated tokens,
             # tie-broken by count. Heuristic for full-name preference.
             vs_sorted = sorted(vs, key=lambda v: (-len(v[0].split()), -v[1]))
@@ -829,7 +859,7 @@ def main() -> None:
         for name, cls, count, apps in variants:
             by_class[cls].append((name, count, apps))
         for cls, vs in by_class.items():
-            if len(vs) < 2:
+            if len(vs) < 2 or cls == ANY_CLASS:   # see the proposal loop above
                 continue
             # Within a class, every shorter variant is a candidate for every longer one.
             for short_name, scount, sapps in vs:
