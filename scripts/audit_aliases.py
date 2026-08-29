@@ -74,6 +74,12 @@ if not EXISTING_ALIASES and not ABBREVIATIONS:
 # Slot semantics from src/dataProcessor.js
 SLOT_CLASS = ["upper", "upper", "cello"]
 
+# The class of an Others? entry that names no instrument. Not a real class —
+# the app cannot alias such an entry either (canonicalize with a null class is
+# a no-op) — but a key it can be indexed under, so it appears in the per-name
+# list and can be a candidate for any subject, instead of vanishing.
+ANY_CLASS = "any"
+
 # How many times a full name must appear, written out, before its teammate
 # circle counts as evidence in attribute_bare_entries. The people most often
 # logged bare are exactly the ones whose full name is rarest, so below this a
@@ -259,9 +265,9 @@ def fill_forward(rows: list[dict]) -> list[tuple[dict, dict]]:
     js = (
         "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>Promise.all(["
         "import('./src/dataProcessor.js'),import('./src/csvFormat.js')])"
-        ".then(([dp,cf])=>{const {rows}=dp.prepareRows(JSON.parse(s).map(dp.processRow));"
+        ".then(([dp,cf])=>{const {rows,dropped}=dp.prepareRows(JSON.parse(s).map(dp.processRow));"
         "const before=cf.serializeRows(rows);dp.fillForward(rows,{});"
-        "process.stdout.write(JSON.stringify({before,after:cf.serializeRows(rows)}));})"
+        "process.stdout.write(JSON.stringify({before,after:cf.serializeRows(rows),dropped}));})"
         ".catch(e=>{console.error(e.message);process.exit(1);}))"
     )
     try:
@@ -276,6 +282,16 @@ def fill_forward(rows: list[dict]) -> list[tuple[dict, dict]]:
             capture_output=True, text=True, check=True, cwd=REPO_ROOT,
         )
         out = json.loads(result.stdout)
+        # prepareRows drops rows whose Timestamp will not parse as a Date, and
+        # every section of this report now reads the rows it returns — so a
+        # silent drop would shrink the variant grouping, the teammate counts
+        # and the bare-name counts, and leave the printed row total quietly
+        # disagreeing with the file. In a data-quality audit an unparseable
+        # timestamp is itself a finding, so say so.
+        if out.get("dropped"):
+            print(f"\n  !! {out['dropped']} row(s) have a timestamp that will not"
+                  " parse and are absent from\n     everything below — they are"
+                  " dropped by the app too, so they count for nothing.")
         return list(zip(csv.DictReader(io.StringIO(out["before"])),
                         csv.DictReader(io.StringIO(out["after"]))))
     except (OSError, subprocess.CalledProcessError, ValueError) as e:
@@ -312,12 +328,8 @@ def collect_appearances(rows: list[dict],
             # contains X, and a bare name sitting beside its own full form
             # scores a point for being the person already named in that row.
             teammates = [n for n, _c, s2 in people if s2 != seat and n != name]
-            # Everyone present counts as a teammate, but only a classified
-            # entry gets its own (name, class) key — the alias table is keyed
-            # on the pair, and an unannotated Others? name has no class the
-            # app would use either (canonicalize with a null class is a no-op).
-            if cls is not None:
-                appearances[(name, cls)].append(teammates)
+            appearances[(name, cls if cls is not None else ANY_CLASS)].append(
+                teammates)
     return appearances
 
 
@@ -379,6 +391,21 @@ def candidate_index(appearances: dict[tuple[str, str], list[list[str]]]
     return by_first, circles, written
 
 
+def candidates_for(by_first: dict[tuple[str, str], set[str]],
+                   token: str, cls: str | None) -> set[str]:
+    """Who a bare name in this class could be.
+
+    Always includes the ANY_CLASS bucket: a full name written in an
+    unannotated Others? cell has no class of its own, but it is still a person
+    with that first name and so still a candidate. A subject with no class of
+    its own draws from every bucket, since nothing narrows it.
+    """
+    if cls is None or cls == ANY_CLASS:
+        return {c for (tok, _cls), names in by_first.items() if tok == token
+                for c in names}
+    return by_first.get((token, cls), set()) | by_first.get((token, ANY_CLASS), set())
+
+
 def attribute_bare_entries(pairs: list[tuple[dict, dict]],
                            appearances: dict[tuple[str, str], list[list[str]]],
                            slot_classes: dict[str, str],
@@ -434,14 +461,7 @@ def attribute_bare_entries(pairs: list[tuple[dict, dict]],
         for name, cls, seat in row_people(row, slot_classes):
             if len(name.split()) > 1:
                 continue
-            if cls is None:
-                # An unannotated Others? entry: the app cannot alias it either
-                # (canonicalize with a null class is a no-op), so every class's
-                # namesakes are in play and only editing the cell can fix it.
-                candidates = {c for (token, _cls), names in full_by_first.items()
-                              if token == base_token(name) for c in names}
-            else:
-                candidates = full_by_first.get((base_token(name), cls), set())
+            candidates = candidates_for(full_by_first, base_token(name), cls)
             if len(candidates) < 2:
                 continue
             alias = EXISTING_ALIASES.get(name, {}).get(cls)
@@ -591,9 +611,9 @@ def report_ambiguity(pairs: list[tuple[dict, dict]],
     # 1. Bare names still in the sheet that several full names could match.
     unresolvable = sorted(
         (
-            (n, cls, cnt, sorted(by_first[(base_token(n), cls)]))
+            (n, cls, cnt, sorted(candidates_for(by_first, base_token(n), cls)))
             for (n, cls), cnt in bare_count.items()
-            if len(by_first.get((base_token(n), cls), ())) >= 2
+            if len(candidates_for(by_first, base_token(n), cls)) >= 2
         ),
         key=lambda r: (-r[2], r[0]),
     )

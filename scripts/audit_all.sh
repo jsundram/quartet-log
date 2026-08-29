@@ -78,6 +78,7 @@ rule "DROPPED BY FILL-FORWARD   scripts/audit_fillforward.py"
 # Each audit heads its sections "<label> (<n>)"; pull the n off the first
 # line matching the label.
 count() { grep -E "$1" "$2" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
+n_of() { printf '%s' "$RAWALIAS" | grep -E "$1" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
 # Taken from the raw sheet, not the run above: on a canonicalized export
 # every live alias's canonical name is present by construction, so both
 # counts collapse to near-nothing there and would read as "nothing to see".
@@ -93,8 +94,12 @@ count() { grep -E "$1" "$2" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
 RAW_OUT="$OUT/aliases-raw.txt"
 if ! "${PY[@]}" scripts/audit_aliases.py archive/data-raw.csv > "$RAW_OUT" 2>"$OUT/raw.err"; then
     echo "  !! the raw-sheet pass FAILED — the counts below are missing, not zero:"
-    sed 's/^/     /' "$OUT/raw.err"
 fi
+# Printed whatever the exit status, because the degradation that matters most
+# does not change it: slot_annotation_classes warns and returns {} on a node
+# failure, every annotated slot reverts to positional classing, and the class
+# keyed candidate sets — and so the verdicts below — quietly differ.
+if [ -s "$OUT/raw.err" ]; then sed 's/^/     /' "$OUT/raw.err"; fi
 RAWALIAS=$(cat "$RAW_OUT" 2>/dev/null || true)
 if printf '%s' "$RAWALIAS" | grep -q 'could not fill-forward'; then
     echo "  !! fill-forward degraded on the raw pass — NEEDS MEMORY below is inflated."
@@ -107,10 +112,12 @@ sed -n '/^-- bare entries whose alias contradicts the room/,/no alias was consul
     "$RAW_OUT" 2>/dev/null || true
 
 rule "SUMMARY"
+# From the raw pass, like every other bare-name number here: a bare form an
+# alias covers is GONE from the processed export, so its per-name list is
+# systematically short — 10 names there against 12 raw, as it stands.
 printf '  %-46s %s\n' \
-  "bare names with 2+ candidates (for context)" "$(count 'bare names in the sheet with 2\+ candidates' "$OUT/aliases.txt")" \
-  "aliases keyed on an ambiguous first name" "$(count 'aliases keyed on an ambiguous first name' "$OUT/aliases.txt")"
-n_of() { printf '%s' "$RAWALIAS" | grep -E "$1" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
+  "bare names with 2+ candidates (for context)" "$(n_of 'bare names in the sheet with 2\+ candidates')" \
+  "aliases keyed on an ambiguous first name" "$(n_of 'aliases keyed on an ambiguous first name')"
 printf '  %-46s %s\n' \
   "aliases that are a surname's only record" "$(n_of 'ONLY record of a surname') (back up src/aliases.js)" \
   "aliases pointing at an unrelated name" "$(n_of 'absent and unrelated')"

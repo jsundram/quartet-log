@@ -34,7 +34,17 @@ jobs:
 
       # The audits are Python and node:test cannot see them; this is where
       # every bug in the alias/ensemble tooling has surfaced, so it gates too.
-      # No new action to pin: uv-or-python3 fallback lives in the script.
+      # No new action to pin: the uv-or-venv fallback lives in the script.
+      #
+      # ubuntu-latest ships no uv, so the venv path runs and pip fetches the
+      # pinned pytest. Cached so that is a one-time cost rather than a PyPI
+      # round-trip on every PR, inside a job with a 10-minute timeout.
+      - name: Cache pip downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/pip
+          key: pip-pytest-${{ hashFiles('scripts/run_audit_tests.sh') }}
+
       - name: Run audit tests
         run: npm run test:audits
 

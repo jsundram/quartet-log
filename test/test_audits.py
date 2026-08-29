@@ -159,6 +159,28 @@ def test_a_one_letter_surname_is_an_abbreviation_not_a_rival():
     assert by_first[("alice", "upper")] == {"Alice Hart"}
 
 
+def test_an_unclassified_full_name_is_still_a_candidate():
+    """A full name in an unannotated Others? cell has no class of its own, but
+    it is still a person with that first name. Indexed under ANY_CLASS so it
+    reaches both the per-name list and any subject's candidate set — the two
+    halves of the report must not disagree about who exists."""
+    rows = [row(p1="Alice Hart"), row(p1="Bob", others="Alice Bek")]
+    by_first, _c, _w = aa.candidate_index(appearances_for(rows))
+    assert by_first[("alice", aa.ANY_CLASS)] == {"Alice Bek"}
+    assert aa.candidates_for(by_first, "alice", "upper") == {"Alice Hart", "Alice Bek"}
+    assert aa.candidates_for(by_first, "alice", None) == {"Alice Hart", "Alice Bek"}
+
+
+def test_an_unclassified_bare_name_reaches_the_per_name_list(capsys):
+    """It was reported per ENTRY under [any] but never counted per NAME, so
+    the summary — which reads the per-name number — could not see it."""
+    rows = (attested("Alice Hart", "Beryl") + attested("Alice Bek", "Chantal")
+            + [row(ts="6/1/2024 10:00:00", p1="Beryl", others="Alice")])
+    aa.report_ambiguity(list(zip(rows, rows)), appearances_for(rows), {})
+    out = capsys.readouterr().out
+    assert "bare names in the sheet with 2+ candidates (1)" in out
+
+
 def test_bare_names_are_not_candidates():
     rows = [row(p1="Alice Hart"), row(p1="Alice")]
     by_first, _c, _w = aa.candidate_index(appearances_for(rows))
@@ -558,6 +580,18 @@ def test_one_short_row_does_not_cost_the_file_its_filled_view():
     rows = [row(ts="1/1/2024 10:00:00", p1="Alice", p2="Bob", p3="Carol"), short]
     pairs = aa.fill_forward(rows)
     assert pairs[1][1]["Player 1"] == "Alice"
+
+
+def test_a_row_the_bridge_drops_is_reported(capsys):
+    """prepareRows discards a row whose timestamp will not parse, and every
+    section reads what the bridge returns — so a silent drop would shrink the
+    variant grouping and the bare-name counts, and leave the printed row total
+    disagreeing with the file. An unparseable timestamp is itself a defect."""
+    rows = [row(ts="1/1/2024 10:00:00", p1="Alice", p2="Bob", p3="Carol"),
+            row(ts="not a date", p1="Dexter")]
+    pairs = aa.fill_forward(rows)
+    assert len(pairs) == 1
+    assert "1 row(s) have a timestamp that will not parse" in capsys.readouterr().out
 
 
 def test_fill_forward_returns_the_row_as_written_and_as_filled():
