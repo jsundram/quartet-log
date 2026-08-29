@@ -24,6 +24,24 @@ export async function readNameTables() {
 }
 
 /**
+ * Say so when the tables are the empty stub.
+ *
+ * Every alias-aware count then means something else: no short form resolves,
+ * so each looks like a person of its own and every bare entry looks like one
+ * nobody has decided. Those are big, alarming numbers, and they are an
+ * artefact of the missing file rather than a finding about the sheet.
+ * @param {NameTables} tables
+ */
+export function warnIfStub({ aliases, abbreviations }) {
+    if (Object.keys(aliases).length || Object.keys(abbreviations).length) return;
+    console.error(
+        'Warning: src/aliases.js has empty tables (the stub copy?) — no short\n'
+        + 'form resolves, so every one looks like a person of its own and every\n'
+        + 'bare entry looks undecided. Put your real tables in src/aliases.js\n'
+        + '(gitignored) before trusting this report.');
+}
+
+/**
  * Run `report` and print it, but only when this module's file was the one node
  * was asked to execute. Importing an audit for its functions must not run it.
  * @param {string} moduleUrl - the caller's import.meta.url

@@ -22,7 +22,7 @@ import {
     jaccard, namesByFirst, teammateCounts,
 } from './lib/people.mjs';
 import { loadViews, viewsHeader } from './lib/views.mjs';
-import { readNameTables, runAudit } from './lib/cli.mjs';
+import { readNameTables, runAudit, warnIfStub } from './lib/cli.mjs';
 
 /** @typedef {import('../src/dataProcessor.js').Row} Row */
 /** @typedef {import('./lib/views.mjs').Views} Views */
@@ -409,11 +409,6 @@ export function runAliasAudit(views, tables) {
 
 await runAudit(import.meta.url, 'archive/data-raw.csv', async csvPath => {
     const tables = await readNameTables();
-    if (!Object.keys(tables.aliases).length && !Object.keys(tables.abbreviations).length) {
-        console.error(
-            'Warning: src/aliases.js has empty tables (the stub copy?) — every\n'
-            + "variant will look new and abbreviations won't expand. Put your real\n"
-            + 'tables in src/aliases.js (gitignored) before trusting this audit.');
-    }
+    warnIfStub(tables);
     return runAliasAudit(loadViews(csvPath, tables), tables);
 });

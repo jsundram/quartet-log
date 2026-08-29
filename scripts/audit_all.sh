@@ -15,6 +15,13 @@
 #   audit_fillforward  the WRITTEN view by necessity. It looks for exactly the
 #                      blank player slots that mark a continuation row, and
 #                      fill-forward is what erases them.
+#   attribution        WRITTEN for the subjects (a finding asks you to edit a
+#                      cell, and only that view has cells) and FILLED for the
+#                      evidence (who was in the room). Its own module, printer
+#                      and entry point — `npm run attribution` — because its
+#                      findings decay and the descriptive audits can batch. It
+#                      is run here too so one command still gives the whole
+#                      picture.
 #
 # archive/data.csv is no longer an input: the processed view is derived here
 # from the raw file rather than read from a second path that could be a
@@ -66,6 +73,9 @@ node scripts/audit_ensembles.mjs "$RAW" | tee "$OUT/ensembles.txt"
 rule "DROPPED BY FILL-FORWARD   scripts/audit_fillforward.mjs"
 node scripts/audit_fillforward.mjs "$RAW" | tee "$OUT/fillforward.txt"
 
+rule "WHICH PERSON      scripts/attribution.mjs"
+node scripts/attribution.mjs "$RAW" | tee "$OUT/attribution.txt"
+
 # The full output runs to hundreds of lines, most of it groups that are fine.
 # This is the part worth reading on a routine run: what needs a decision, and
 # which decisions decay if left (only you know who "Alice" was last month).
@@ -86,6 +96,9 @@ printf '  %-46s %s\n' \
 printf '  %-46s %s\n' \
   "rows that dropped an Others? player (mechanical)" \
   "$(grep -oE '^[0-9]+ rows in' "$OUT/fillforward.txt" | grep -oE '[0-9]+' | head -1)"
+printf '  %-46s %s\n' \
+  "bare entries to edit in the sheet" "$(count 'edit this cell' "$OUT/attribution.txt")" \
+  "bare entries nobody has decided (NEEDS MEMORY)" "$(count 'answer this now' "$OUT/attribution.txt")"
 echo
 echo "  Lines marked NEEDS MEMORY are the ones that get harder to answer the"
 echo "  longer they wait. The rest can safely accumulate — a dropped Others?"

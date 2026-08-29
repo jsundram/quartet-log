@@ -506,8 +506,8 @@ test('no audit module reaches the real alias file at import time', () => {
     // repo has already had twice. scripts/lib/cli.mjs is the one reader, and it
     // imports dynamically, inside a function only a command-line run calls.
     for (const file of ['scripts/audit_aliases.mjs', 'scripts/audit_ensembles.mjs',
-        'scripts/audit_fillforward.mjs', 'scripts/lib/people.mjs',
-        'scripts/lib/views.mjs']) {
+        'scripts/audit_fillforward.mjs', 'scripts/attribution.mjs',
+        'scripts/lib/people.mjs', 'scripts/lib/views.mjs']) {
         const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
         assert.doesNotMatch(source, /^import .*(config|aliases)\.js/m,
             `${file} must take its name tables as an argument`);
