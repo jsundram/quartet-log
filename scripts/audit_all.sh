@@ -61,15 +61,20 @@ fi
 
 rule() { printf '\n%s\n%s\n%s\n' "$(printf '=%.0s' {1..72})" "  $1" "$(printf '=%.0s' {1..72})"; }
 
-# An audit that printed nothing is a failure, and `set -euo pipefail` cannot
-# see one that exited 0 (a symlinked invocation path used to do exactly that).
-# Without this the SUMMARY below prints blank counts, and a run that examined
-# nothing reads as a run that found nothing.
+# An audit that examined nothing is a failure, and `set -euo pipefail` cannot
+# see one that exited 0 — a symlinked invocation path used to do exactly that.
+# Without this the SUMMARY below prints blank counts and a run that read no
+# rows reads as a run that found nothing wrong.
+#
+# The test is the row-count header every audit prints first (viewsHeader), not
+# an empty file: `console.log(lines.join())` emits a newline even for an empty
+# report, so `[ -s ]` would pass on one. This checks that an audit got as far
+# as counting its rows.
 run() {
     local out=$1; shift
     node "$@" | tee "$out"
-    if [ ! -s "$out" ]; then
-        echo "error: $2 produced no output — refusing to summarize it." >&2
+    if ! grep -q '^Rows:' "$out"; then
+        echo "error: $1 never reported a row count — refusing to summarize it." >&2
         exit 1
     fi
 }
