@@ -545,6 +545,27 @@ test('the session-window report expands an abbreviation the way the app does', (
         /No shorthand entries in this file/);
 });
 
+test('a prefix that is also an abbreviation follows the app outside the window', () => {
+    // fillForward gates its prefix branch on the window and falls through to
+    // the abbreviation table. Consulting the prefix rule first said "left as
+    // typed" for a cell the app rewrote from the table — and made "J" the
+    // reference instead of "Jane Doe", so the later "Jane" was compared
+    // against the wrong name and never reported as shorthand at all.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'J Smith' }),
+        raw({ ts: '1/1/2024 20:00:00', p1: 'J' }),
+        raw({ ts: '1/1/2024 21:00:00', p1: 'Jane' })];
+    const tables = { aliases: {}, abbreviations: { J: 'Jane Doe' } };
+    const views = buildViews(rows, tables);
+    // What the app does with the same table: outside the window "J" expands
+    // from the table, and "Jane" then abbreviates the expansion.
+    assert.deepEqual(views.processed.map(r => r.player1),
+        ['J Smith', 'Jane Doe', 'Jane Doe']);
+    const out = sessionWindowReport(views, tables.abbreviations).join('\n');
+    assert.match(out, /2 shorthand entries; 1 inside the window/);
+    assert.match(out, /10\.00h.*-> 'Jane Doe'\s+\[expanded via table\]/);
+    assert.match(out, /1\.00h.*-> 'Jane Doe'\s+\[expanded\]/);
+});
+
 
 test('extra-string parts are the ones a quartet cannot seat', () => {
     for (const [part, isExtra] of [
@@ -622,5 +643,22 @@ test('no audit module reaches the real alias file at import time', () => {
         const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
         assert.doesNotMatch(source, /^import .*(config|aliases)\.js/m,
             `${file} must take its name tables as an argument`);
+    }
+});
+
+test('every table-dependent entry point warns when the tables are the stub', () => {
+    // With the stub, alias-aware counts inflate and the session-window
+    // section can call a real shorthand entry "unconstrained" — artefacts of
+    // the missing file, not findings about the sheet. warnIfStub is the flag
+    // for that, and it can only fire from the entry point, which reads the
+    // real tables; a behavioural test would depend on which machine it runs
+    // on, so pin the wiring in the source instead. audit_ensembles is exempt:
+    // an unexpanded letter still occupies a seat, so its counts do not move
+    // with the tables.
+    for (const file of ['scripts/audit_aliases.mjs', 'scripts/audit_fillforward.mjs',
+        'scripts/attribution.mjs']) {
+        const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+        assert.match(source, /warnIfStub\(tables\)/,
+            `${file}'s entry point must call warnIfStub`);
     }
 });

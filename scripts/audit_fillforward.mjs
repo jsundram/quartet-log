@@ -26,7 +26,7 @@ import {
     refersToPrevEntry, SESSION_WINDOW_HOURS, splitOutsideParens,
 } from '../src/dataProcessor.js';
 import { loadViews, viewsHeader } from './lib/views.mjs';
-import { readNameTables, runAudit } from './lib/cli.mjs';
+import { readNameTables, runAudit, warnIfStub } from './lib/cli.mjs';
 
 /** @typedef {import('../src/dataProcessor.js').Row} Row */
 /** @typedef {import('./lib/views.mjs').Views} Views */
@@ -153,8 +153,8 @@ export function label(row) {
  * typed — a handful in this log, which is why the value is not delicate.
  *
  * The loop below mirrors fillForward's, and has to, because the report's
- * claim is about what the app does. Two details are load-bearing and both
- * were wrong before:
+ * claim is about what the app does. Three details are load-bearing and all
+ * three were wrong before:
  *
  *   - the time anchor advances on EVERY row whose cell is not "-", blank
  *     continuation rows included, because fillForward's `prev = row` does.
@@ -167,6 +167,12 @@ export function label(row) {
  *   - the reference entry does NOT advance when a shorthand is expanded
  *     (fillForward keeps `prevEntry` in that branch), and outside the window
  *     the entry stands as a name of its own and becomes the new reference.
+ *   - the branch ORDER is fillForward's: the prefix rule applies only inside
+ *     the window, and outside it the abbreviation table sees the entry first.
+ *     Consulting the prefix rule before the table said "left as typed" for a
+ *     cell the app rewrote from the table — and made the short form the
+ *     reference instead of its expansion, so every later shorthand for that
+ *     person was compared against the wrong name and went unreported.
  *
  * @param {{ written: Row[] }} views
  * @param {Record<string, string>} abbreviations - the app expands these before
@@ -175,7 +181,7 @@ export function label(row) {
  * @returns {string[]}
  */
 export function sessionWindowReport({ written }, abbreviations) {
-    /** @type {{ gap: number, row: Row, full: string, expanded: boolean }[]} */
+    /** @type {{ gap: number, row: Row, full: string, verdict: string }[]} */
     const prefixGaps = [];
     for (const column of /** @type {const} */ (['player1', 'player2', 'player3'])) {
         if (!written.length) break;
@@ -189,23 +195,36 @@ export function sessionWindowReport({ written }, abbreviations) {
             if (entry === '-') continue;
             const gap = (Number(row.timestamp) - Number(prev.timestamp)) / 3600e3;
             const sameSession = gap >= 0 && gap < SESSION_WINDOW_HOURS;
+            const isShorthand = refersToPrevEntry(entry, prevEntry) && entry !== prevEntry;
             if (entry === '') {
                 // A ditto mark. It repeats however long the gap, so it is not
                 // what the window decides, and it does not become the
                 // reference entry itself.
-            } else if (refersToPrevEntry(entry, prevEntry)) {
+            } else if (sameSession && refersToPrevEntry(entry, prevEntry)) {
                 // The one thing the window governs. `entry === prevEntry` also
-                // satisfies refersToPrevEntry and is not shorthand.
-                if (entry !== prevEntry) {
-                    prefixGaps.push({ gap, row, full: prevEntry, expanded: sameSession });
+                // satisfies refersToPrevEntry and is not shorthand. The app
+                // rewrites the cell and keeps the fuller name as the
+                // reference.
+                if (isShorthand) {
+                    prefixGaps.push({ gap, row, full: prevEntry, verdict: 'expanded' });
                 }
-                // Inside the window the app rewrites the cell and keeps the
-                // fuller name as the reference; outside it, the short form is
-                // a name of its own and takes over.
-                if (!sameSession) prevEntry = entry;
             } else if (Object.prototype.hasOwnProperty.call(abbreviations, entry)) {
+                // Outside the window the table sees the entry first. When the
+                // entry is ALSO a prefix of the reference, the window is what
+                // pushed it into this branch, so it is still a shorthand gap —
+                // reported with what the app actually wrote.
+                if (isShorthand) {
+                    prefixGaps.push({
+                        gap, row, full: abbreviations[entry], verdict: 'expanded via table',
+                    });
+                }
                 prevEntry = abbreviations[entry];
             } else {
+                // Outside the window the short form is a name of its own and
+                // takes over as the reference.
+                if (isShorthand) {
+                    prefixGaps.push({ gap, row, full: prevEntry, verdict: 'left as typed' });
+                }
                 prevEntry = entry;
             }
             prev = row;
@@ -225,10 +244,9 @@ export function sessionWindowReport({ written }, abbreviations) {
         lines.push('  No shorthand entries in this file; the value is unconstrained.');
         return lines;
     }
-    const inside = prefixGaps.filter(g => g.expanded);
+    const inside = prefixGaps.filter(g => g.verdict === 'expanded');
     lines.push(`  ${prefixGaps.length} shorthand entries; ${inside.length} inside the window.`);
-    for (const { gap, row, full, expanded } of [...prefixGaps].sort((a, b) => a.gap - b.gap)) {
-        const verdict = expanded ? 'expanded' : 'left as typed';
+    for (const { gap, row, full, verdict } of [...prefixGaps].sort((a, b) => a.gap - b.gap)) {
         lines.push(`   ${gap.toFixed(2).padStart(7)}h  ${label(row)}  -> '${full}'  [${verdict}]`);
     }
     lines.push('', '  Moving the window only changes entries whose gap straddles it.');
@@ -317,5 +335,9 @@ export function runFillForwardAudit(views, { abbreviations }) {
 
 await runAudit(import.meta.url, 'archive/data-raw.csv', async csvPath => {
     const tables = await readNameTables();
+    // The session-window section is table-dependent: with the stub, a real
+    // shorthand entry can read as "unconstrained" — an artefact of the
+    // missing file, not a finding about the sheet.
+    warnIfStub(tables);
     return runFillForwardAudit(loadViews(csvPath, tables), tables);
 });
