@@ -762,11 +762,16 @@ export const SESSION_WINDOW_HOURS = 4;
 //     abbreviates a previous "Fred Brown". The boundary requirement is what
 //     keeps "Fred" from silently merging with a previous "Freddy": a
 //     prefix that ends mid-word is a different name, not an abbreviation.
+// Exported so scripts/audit_fillforward.mjs can measure SESSION_WINDOW_HOURS
+// against the log with the app's own predicate rather than a copy of it. That
+// report's whole claim is "here is what fillForward does at each gap", so a
+// second implementation of the prefix rule would be the one thing able to make
+// it quietly untrue.
 /**
  * @param {string} entry
  * @param {string} prevEntry
  */
-function refersToPrevEntry(entry, prevEntry) {
+export function refersToPrevEntry(entry, prevEntry) {
     if (entry === '' || entry === prevEntry) return true;
     return prevEntry.startsWith(entry) && /\s/.test(prevEntry[entry.length]);
 }

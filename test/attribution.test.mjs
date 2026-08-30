@@ -423,6 +423,34 @@ test('an Others? entry naming no instrument is still evidence', () => {
     assert.equal(findings[0].winner, 'Alice Hart');
 });
 
+test('a gate failure keeps the evidence it measured', () => {
+    // Two ways into answer-this-now, and they know different amounts. A gate
+    // failure has a clear leading candidate and knows which rivals it could
+    // not rule out; discarding those told the reader "no teammate matches"
+    // when a teammate had matched, and hid the one fact that would let them
+    // answer it from memory months later.
+    const rows = [...attested('Alice Hart', 'Beryl', { month: 1 }),
+        ...attested('Alice Bek', 'Chantal', { n: 1, month: 2 }),
+        seatless({ ts: SUBJECT_TS, p1: 'Alice', p2: 'Beryl', p3: 'Carol' })];
+    const { findings } = run(rows);
+    assert.equal(findings.length, 1);
+    const [f] = findings;
+    assert.equal(f.action, 'answer-this-now');
+    assert.equal(f.winner, 'Alice Hart');
+    assert.deepEqual(f.why, ['Beryl', 'Carol']);
+    assert.deepEqual(f.unruled, ['Alice Bek']);
+});
+
+test('a tie carries no evidence, because it measured nothing that separates', () => {
+    const rows = [...attested('Alice Hart', 'Beryl', { month: 1 }),
+        ...attested('Alice Bek', 'Beryl', { month: 2 }),
+        seatless({ ts: SUBJECT_TS, p1: 'Alice', p2: 'Beryl', p3: 'Carol' })];
+    const { findings } = run(rows);
+    assert.equal(findings[0].action, 'answer-this-now');
+    assert.equal(findings[0].winner, null);
+    assert.deepEqual([findings[0].why, findings[0].unruled], [[], []]);
+});
+
 // --------------------------------------------------------------- the report --
 
 const report = (rows, aliases = {}) =>
@@ -437,6 +465,21 @@ test('unruled rivals are labelled by what was measured', () => {
         seatless({ ts: SUBJECT_TS, p1: 'Alice', p2: 'Beryl', p3: 'Carol' })]);
     assert.doesNotMatch(out, /never written out/);
     assert.match(out, new RegExp(`fewer than ${MIN_WRITTEN_IN_FULL} times`));
+});
+
+test('the report prints what a gate failure measured, and says so when nothing did', () => {
+    const gated = report([...attested('Alice Hart', 'Beryl', { month: 1 }),
+        ...attested('Alice Bek', 'Chantal', { n: 1, month: 2 }),
+        seatless({ ts: SUBJECT_TS, p1: 'Alice', p2: 'Beryl', p3: 'Carol' })]);
+    assert.doesNotMatch(gated, /no candidate's teammates single one out/);
+    assert.match(gated, /leading candidate 'Alice Hart' {2}\(played with Beryl, Carol\)/);
+    assert.match(gated, /could not rule out: Alice Bek/);
+
+    const tied = report([...attested('Alice Hart', 'Beryl', { month: 1 }),
+        ...attested('Alice Bek', 'Beryl', { month: 2 }),
+        seatless({ ts: SUBJECT_TS, p1: 'Alice', p2: 'Beryl', p3: 'Carol' })]);
+    assert.match(tied, /no candidate's teammates single one out/);
+    assert.doesNotMatch(tied, /leading candidate/);
 });
 
 test('an unclassified subject prints as the pseudo-class, not as null', () => {

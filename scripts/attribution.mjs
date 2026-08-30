@@ -53,7 +53,9 @@ export const MIN_WRITTEN_IN_FULL = 5;
  * @property {string} name - the bare name in the cell
  * @property {string} cls
  * @property {string|null} alias - what the table says today, if anything
- * @property {string|null} winner - who the other players point to
+ * @property {string|null} winner - who the other players point to. Set on
+ *   every edit-this-cell finding, and on an answer-this-now finding where a
+ *   gate declined a clear leader; null only when nothing discriminated.
  * @property {string[]} why - the teammates that decided it
  * @property {string[]} unruled - rivals too thinly written out to rule out
  * @property {string[]} candidates - everyone who shares the first name
@@ -192,8 +194,22 @@ export function attribute({ written, filled }, { aliases, abbreviations }) {
                 } else {
                     // Nobody has answered this and nobody else can. `alias` is
                     // null on every entry that reaches here, by construction.
+                    //
+                    // Two ways in, and they know different amounts. A tie —
+                    // including the all-zero one where nobody matched —
+                    // measured nothing that discriminates, so there is nothing
+                    // to carry. A gate failure has a clear leading candidate
+                    // and knows exactly which rivals it could not rule out;
+                    // discarding those made the report tell the reader "no
+                    // teammate matches" when a teammate had matched, and hid
+                    // the one fact that would let them answer it from memory.
+                    const tied = top.score === runner.score;
                     findings.push({
-                        ...base, action: 'answer-this-now', winner: null, why: [], unruled: [],
+                        ...base,
+                        action: 'answer-this-now',
+                        winner: tied ? null : top.name,
+                        why: tied ? [] : why,
+                        unruled: tied ? [] : unruled,
                     });
                 }
             } else if (!alias || alias !== top.name) {
@@ -255,12 +271,27 @@ export function runAttribution(views, tables) {
     }
 
     lines.push('', `-- answer this now (${answers.length}) --`,
-        '   No alias covers them and no teammate matches — a one-off group or a',
-        '   reading party. The only findings here that decay: answer them first.');
+        '   No alias covers them and the row does not settle them: either nothing',
+        '   pointed at one person — a one-off group or a reading party — or the',
+        '   evidence was too thin to act on, and the line below says which.',
+        '   The only findings that decay: answer them first.');
     if (!answers.length) lines.push('   (none)');
     for (const f of answers) {
         lines.push(`   ${describeRow(f.row)}  '${f.name}' [${f.cls}]`);
         lines.push(`   ${''.padEnd(10)} candidates: ${f.candidates.join(', ')}`);
+        // What the run measured but declined to act on. Printed rather than
+        // dropped: the gate is there so the tool does not assert, not so the
+        // reader is kept from what it saw.
+        if (f.winner) {
+            lines.push(`   ${''.padEnd(10)} leading candidate '${f.winner}'`
+                + `  (played with ${f.why.slice(0, 3).join(', ')})`);
+            if (f.unruled.length) {
+                lines.push(`   ${''.padEnd(10)} could not rule out: ${f.unruled.join(', ')}`
+                    + ` (written out fewer than ${MIN_WRITTEN_IN_FULL} times)`);
+            }
+        } else {
+            lines.push(`   ${''.padEnd(10)} no candidate's teammates single one out`);
+        }
     }
 
     // Everything else is deliberately not a finding, and not given buckets

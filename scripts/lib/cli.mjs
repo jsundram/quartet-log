@@ -3,7 +3,7 @@
 // the name tables, print the report. Kept together so an audit module is
 // importable by tests without running anything on import.
 
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -21,6 +21,20 @@ import { resolve } from 'node:path';
 export async function readNameTables() {
     const { PLAYER_ALIASES, PLAYER_ABBREVIATIONS } = await import('../../src/config.js');
     return { aliases: PLAYER_ALIASES, abbreviations: PLAYER_ABBREVIATIONS };
+}
+
+/**
+ * Is `p` the same file as the already-resolved `self`? A path that does not
+ * exist cannot be, and realpathSync throws rather than saying so.
+ * @param {string} p
+ * @param {string} self
+ */
+function samePath(p, self) {
+    try {
+        return realpathSync(resolve(p)) === self;
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -50,8 +64,16 @@ export function warnIfStub({ aliases, abbreviations }) {
  * @returns {Promise<void>}
  */
 export async function runAudit(moduleUrl, defaultPath, report) {
-    const self = fileURLToPath(moduleUrl);
-    if (!process.argv[1] || resolve(process.argv[1]) !== self) return;
+    // Both sides must be realpath'd. Node's ESM loader resolves symlinks
+    // before it sets import.meta.url, while resolve() only normalizes "."
+    // and ".." — so with any symlink in the invocation path the two never
+    // match and the audit returns having done nothing, at exit 0. That is
+    // the ordinary case on macOS (/tmp -> /private/tmp) and for any checkout
+    // under a symlinked directory, and a silent success is the worst possible
+    // failure here: audit_all.sh's `set -euo pipefail` cannot see it, and a
+    // SUMMARY of blank counts reads as "nothing to fix".
+    const self = realpathSync(fileURLToPath(moduleUrl));
+    if (!process.argv[1] || !samePath(process.argv[1], self)) return;
     const csvPath = process.argv[2] ?? defaultPath;
     if (!existsSync(csvPath)) {
         console.error(`CSV not found: ${csvPath}`);

@@ -25,7 +25,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { processRow } from '../src/dataProcessor.js';
 import { parseCsv } from '../scripts/lib/parseCsv.mjs';
@@ -39,7 +43,7 @@ import {
     datestamp, expectedSize, hasKeyboardAnnotation, loggedPeople, mentionsKeyboard,
 } from '../scripts/audit_ensembles.mjs';
 import {
-    EXTRA_STRING_RE, needsTheExtraPlayer, workKey,
+    EXTRA_STRING_RE, needsTheExtraPlayer, sessionWindowReport, workKey,
 } from '../scripts/audit_fillforward.mjs';
 
 const HEADERS = ['Timestamp', 'Composer', 'Work Title', 'Which Part',
@@ -177,6 +181,18 @@ test('rowPeople reads a slot annotation as the class', () => {
 test('rowPeople expands from the injected abbreviation table', () => {
     assert.deepEqual(rowPeople(row({ p1: 'A', p2: 'Bob' }), { A: 'Alice' })
         .map(p => p.name), ['Alice', 'Bob']);
+});
+
+test('rowPeople expands a slot abbreviation but never an Others? one', () => {
+    // fillForward walks only player1/2/3 and location, and
+    // normalizePlayerNames runs canonicalize — not the abbreviation table —
+    // over othersList. So a single-letter Others? entry stays literal in the
+    // app and is counted as its own person; expanding it here would make the
+    // variant and ambiguity counts describe a sheet that does not exist, and
+    // send a reader to edit a cell that actually reads "A".
+    assert.deepEqual(
+        rowPeople(row({ p1: 'A', others: 'A (v2)' }), { A: 'Alice' }).map(p => p.name),
+        ['Alice', 'A']);
 });
 
 test('rowPeople demands an abbreviation table', () => {
@@ -459,6 +475,77 @@ test('datestamp survives an unpadded timestamp', () => {
 
 // ---------------------------------------------------------- fill-forward --
 
+test('a blank is a ditto mark however long the break', () => {
+    // Ported from the retired branch with #24's behaviour (issue #26): the
+    // window governs the shorthand rule only, never a blank cell.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice', p2: 'Bob', p3: 'Carol' }),
+        raw({ ts: '1/1/2024 20:00:00' })];
+    assert.equal(buildViews(rows, NO_TABLES).filled[1].player1, 'Alice');
+});
+
+test('the session-window report measures shorthand, not blanks', () => {
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alberto Stone' }),
+        raw({ ts: '1/1/2024 11:00:00', p1: 'Alberto' })];
+    const out = sessionWindowReport(buildViews(rows, NO_TABLES), {}).join('\n');
+    assert.match(out, /1 shorthand entries; 1 inside the window/);
+    assert.match(out, /'Alberto Stone'/);
+});
+
+test('the session-window report says so when nothing constrains the value', () => {
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alberto Stone' })];
+    assert.match(sessionWindowReport(buildViews(rows, NO_TABLES), {}).join('\n'),
+        /unconstrained/);
+});
+
+test('the session-window gap is measured from the row above, as fillForward does', () => {
+    // fillForward advances its time anchor on EVERY row whose cell is not "-",
+    // blank continuation rows included. Measuring from the row where the full
+    // name was TYPED reports a gap the app never used — and ~39% of raw rows
+    // are blank continuation rows, so the two differ on exactly the sessions
+    // this section exists to describe.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Grace Brown', p2: 'Beryl', p3: 'Carol' }),
+        raw({ ts: '1/1/2024 12:00:00' }),
+        raw({ ts: '1/1/2024 15:00:00' }),
+        raw({ ts: '1/1/2024 16:00:00', p1: 'Grace', p2: 'Beryl', p3: 'Carol' })];
+    const views = buildViews(rows, NO_TABLES);
+    // The app expanded it: the gap it saw was 1h, from the blank row above.
+    assert.equal(views.filled[3].player1, 'Grace Brown');
+    const out = sessionWindowReport(views, {}).join('\n');
+    assert.match(out, /1 shorthand entries; 1 inside the window/);
+    assert.match(out, /1\.00h.*\[expanded\]/);
+});
+
+test('an expanded shorthand does not become the reference entry', () => {
+    // fillForward keeps `prevEntry` when it expands, so a second short form
+    // later in the session still abbreviates the FULL name. Advancing the
+    // reference to the short form hid every repeat after the first — three of
+    // them on the real sheet.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Grace Brown', p2: 'Beryl', p3: 'Carol' }),
+        raw({ ts: '1/1/2024 11:00:00', p1: 'Grace', p2: 'Beryl', p3: 'Carol' }),
+        raw({ ts: '1/1/2024 12:00:00', p1: 'Grace', p2: 'Beryl', p3: 'Carol' })];
+    const views = buildViews(rows, NO_TABLES);
+    assert.deepEqual(views.filled.map(r => r.player1),
+        ['Grace Brown', 'Grace Brown', 'Grace Brown']);
+    assert.match(sessionWindowReport(views, {}).join('\n'),
+        /2 shorthand entries; 2 inside the window/);
+});
+
+test('the session-window report expands an abbreviation the way the app does', () => {
+    // "A" is not a word-boundary prefix of "Alice Hart", so it falls to the
+    // abbreviation branch and "Alice" — not "A" — becomes the reference the
+    // next short form is compared against.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Bob Jones' }),
+        raw({ ts: '1/1/2024 11:00:00', p1: 'A' }),
+        raw({ ts: '1/1/2024 12:00:00', p1: 'Alice' })];
+    const views = buildViews(rows, NO_TABLES);
+    assert.match(sessionWindowReport(views, { A: 'Alice Hart' }).join('\n'),
+        /1 shorthand entries; 1 inside the window/);
+    // Without the table "A" would stand as its own name and nothing follows it.
+    assert.match(sessionWindowReport(views, {}).join('\n'),
+        /No shorthand entries in this file/);
+});
+
+
 test('extra-string parts are the ones a quartet cannot seat', () => {
     for (const [part, isExtra] of [
         ['va2', true], ['vc2', true], ['vla2', true], ['v3', true],
@@ -498,6 +585,30 @@ test('an uncatalogued work is always reported', () => {
 });
 
 // ------------------------------------------------- the injection guarantee --
+
+test('an audit invoked through a symlinked path still runs', () => {
+    // Node's ESM loader realpaths import.meta.url, but resolve() does not
+    // resolve symlinks. Compared without realpath the two never match, and
+    // runAudit returns having done nothing — at exit 0, so audit_all.sh's
+    // `set -euo pipefail` cannot see it and a SUMMARY of blank counts reads
+    // as "nothing to fix". This is the ordinary case on macOS
+    // (/tmp -> /private/tmp) and for any checkout under a symlinked directory.
+    const repo = fileURLToPath(new URL('..', import.meta.url));
+    const dir = mkdtempSync(join(tmpdir(), 'ql-audit-'));
+    try {
+        const csv = join(dir, 'rows.csv');
+        writeFileSync(csv, `${HEADERS.join(',')}\n`
+            + '1/1/2024 10:00:00,Haydn,76#1,V1,Alice,Bob,Carol,,Home,\n');
+        const link = join(dir, 'repo');
+        symlinkSync(repo, link);
+        const out = execFileSync('node',
+            [join(link, 'scripts', 'audit_fillforward.mjs'), csv],
+            { encoding: 'utf8', env: { ...process.env, TZ: 'America/New_York' } });
+        assert.match(out, /^Rows: 1/);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
 
 test('no audit module reaches the real alias file at import time', () => {
     // src/aliases.js is gitignored and machine-specific. An audit module that

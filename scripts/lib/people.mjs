@@ -90,11 +90,18 @@ export function rowPeople(row, abbreviations) {
     // twice — such a name was invisible as a subject (the app counts it as its
     // own person, so it belongs in a bucket) and missing as evidence, which
     // produced false "needs memory" findings on rows their presence settles.
+    //
+    // NOT expanded, unlike the slots above. fillForward walks only
+    // player1/2/3 and location, and normalizePlayerNames runs canonicalize —
+    // not the abbreviation table — over othersList, so a single-letter
+    // Others? entry stays literal in the app and peopleKeysFor counts it as
+    // its own person. Expanding it here would make the audit describe a sheet
+    // that does not exist and send a reader to a cell that reads "A".
     const others = row.othersList ?? parseOthers(row.others);
     others.forEach((o, i) => {
         if (!o.name) return;
         people.push({
-            name: expand(o.name),
+            name: o.name,
             cls: o.class ?? classOf(o.instrument),
             seat: `o${i}`,
         });

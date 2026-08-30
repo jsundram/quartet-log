@@ -61,20 +61,33 @@ fi
 
 rule() { printf '\n%s\n%s\n%s\n' "$(printf '=%.0s' {1..72})" "  $1" "$(printf '=%.0s' {1..72})"; }
 
+# An audit that printed nothing is a failure, and `set -euo pipefail` cannot
+# see one that exited 0 (a symlinked invocation path used to do exactly that).
+# Without this the SUMMARY below prints blank counts, and a run that examined
+# nothing reads as a run that found nothing.
+run() {
+    local out=$1; shift
+    node "$@" | tee "$out"
+    if [ ! -s "$out" ]; then
+        echo "error: $2 produced no output — refusing to summarize it." >&2
+        exit 1
+    fi
+}
+
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 
 rule "PLAYER NAMES        scripts/audit_aliases.mjs"
-node scripts/audit_aliases.mjs "$RAW" | tee "$OUT/aliases.txt"
+run "$OUT/aliases.txt" scripts/audit_aliases.mjs "$RAW"
 
 rule "ENSEMBLE HEADCOUNT  scripts/audit_ensembles.mjs"
-node scripts/audit_ensembles.mjs "$RAW" | tee "$OUT/ensembles.txt"
+run "$OUT/ensembles.txt" scripts/audit_ensembles.mjs "$RAW"
 
 rule "DROPPED BY FILL-FORWARD   scripts/audit_fillforward.mjs"
-node scripts/audit_fillforward.mjs "$RAW" | tee "$OUT/fillforward.txt"
+run "$OUT/fillforward.txt" scripts/audit_fillforward.mjs "$RAW"
 
 rule "WHICH PERSON      scripts/attribution.mjs"
-node scripts/attribution.mjs "$RAW" | tee "$OUT/attribution.txt"
+run "$OUT/attribution.txt" scripts/attribution.mjs "$RAW"
 
 # The full output runs to hundreds of lines, most of it groups that are fine.
 # This is the part worth reading on a routine run: what needs a decision, and
