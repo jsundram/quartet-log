@@ -658,30 +658,52 @@ export function disambiguateLabels(nodes) {
 // preferred (longest) form down. `measure` returns the rendered pixel width
 // of a string — injected so this stays pure and testable; the dashboard
 // passes an SVG <text> node's getComputedTextLength(). When nothing fits,
-// the last (shortest) candidate is clipped with an ellipsis, so a label is
-// never silently cut off by the viewport edge.
+// the last candidate is clipped with an ellipsis, so a label is never
+// silently cut off by the viewport edge.
+//
+// Empty/nullish candidates are skipped, and the list need not strictly
+// decrease in length: the dashboard's second candidate is `disambiguateLabels`'
+// output, which returns the FULL name when even "First L." collides, so
+// `[name, name]` is a normal input. It costs one redundant measurement and
+// the result is still correct — the invariant is a preference order, not a
+// length guarantee.
 //
 // A measure() that returns 0 (the element isn't rendered — a hidden view)
 // makes the first candidate "fit", which is the right degradation: the full
 // name, exactly as before, and the caller re-renders when the view is shown.
 /**
- * @param {string[]} candidates preferred form first, shortest form last
+ * @param {(string|null|undefined)[]} candidates preferred form first
  * @param {number} maxWidth
  * @param {(s: string) => number} measure
  * @returns {string}
  */
 export function fitText(candidates, maxWidth, measure) {
-    const options = candidates.filter(c => c);
+    // Built by hand rather than .filter() so the nullable entries the
+    // signature accepts are narrowed away for the typechecker too.
+    /** @type {string[]} */
+    const options = [];
+    candidates.forEach(c => { if (c) options.push(c); });
     if (options.length === 0) return '';
     for (const candidate of options) {
         if (measure(candidate) <= maxWidth) return candidate;
     }
+    // Nothing fits: clip the last candidate. Width is monotonic in prefix
+    // length, so binary-search the longest prefix that fits — each measure()
+    // here writes textContent and reads getComputedTextLength(), forcing a
+    // synchronous layout, and render() runs on an undebounced resize.
     const shortest = options[options.length - 1];
-    for (let n = shortest.length - 1; n > 0; n--) {
-        const clipped = shortest.slice(0, n) + '…';
-        if (measure(clipped) <= maxWidth) return clipped;
+    let lo = 1, hi = shortest.length - 1, best = '…';
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const clipped = shortest.slice(0, mid) + '…';
+        if (measure(clipped) <= maxWidth) {
+            best = clipped;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
     }
-    return '…';
+    return best;
 }
 
 /**

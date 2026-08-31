@@ -353,8 +353,12 @@ export class DashboardComponent {
         // Person names get a shorter fallback form; composer names don't
         // (disambiguateLabels is first-name/last-initial logic, which would
         // turn "Vaughan Williams" into "Vaughan"). Built from every musician
-        // in the chart's data, not just the visible top N, so a name that
-        // shortens to "Aaron" is unambiguous across the whole filtered range.
+        // in the chart's data, not just the visible top N, so a bare "Aaron"
+        // is unambiguous across the whole filtered range and not merely
+        // within the rows on screen. That is honesty, not stability: widening
+        // the date range can flip a visible row from "Aaron" to "Aaron J."
+        // with the top 20 unchanged, because a second Aaron entered the range
+        // off-screen. The label is right in both cases.
         const shortLabels = dimensionKey === 'musician' ? disambiguateLabels(allData) : null;
 
         // Each row is a <g> holding the name (left), bar (group of one or
@@ -440,11 +444,11 @@ export class DashboardComponent {
                 );
                 node.textContent = label;
                 // Native hover tooltip carrying the name we couldn't show.
-                // Set after textContent, which would otherwise drop it.
-                const titleSel = d3.select(node).selectAll('title')
-                    .data(label === d.name ? [] : [d.name]);
-                titleSel.exit().remove();
-                titleSel.enter().append('title').merge(titleSel).text(t => t);
+                // Appended AFTER textContent, which replaces every child of
+                // the <text> and would otherwise drop it — which is also why
+                // this needs no data-join: there is never an existing <title>
+                // here to update or remove.
+                if (label !== d.name) d3.select(node).append('title').text(d.name);
             });
 
         rows2.select('text.ranked-label')

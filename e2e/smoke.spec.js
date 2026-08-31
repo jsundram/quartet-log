@@ -22,9 +22,12 @@ const FIXTURE_CSV = [
     `${day(370, '19:00:00')},Mozart,465,V1,Alice,Bob,Carol,,Home,`,
     `${day(9, '19:00:00')},Haydn,20#2,V1,Alice,Bob,Carol,,Home,fun`,
     `${day(9, '20:00:00')},Mozart,421,V1,Alice,Bob,Carol,,Home,`,
-    `${day(8, '19:00:00')},Haydn,76#3,V2,Dave,Erin,Frank,Grace (piano),Hall,`,
+    `${day(8, '19:00:00')},Haydn,76#3,V2,Dave,Erin,Frank Vandermeer,Grace (piano),Hall,`,
     `${day(7, '19:00:00')},Beethoven,18#4,VA,Alice,Dave,Carol,,Home,`,
     `${day(7, '19:30:00')},Haydn,64#5:I,VA,,,,,Home,partial movement — must be filtered`,
+    // Frank carries a surname while everyone else is a bare first name: it's
+    // the one name too wide for the ranked charts' name gutter, which is what
+    // the narrow-viewport test below measures. Counts are unaffected.
     // 20#2 again on a NEW part, then a REPEAT of that (work, part), so the
     // in-window Pieces (6) / Unique pieces (4) / Unique parts (5) KPIs are
     // three different numbers — a tile wired to the wrong agg field can't
@@ -78,4 +81,33 @@ test('dashboard view renders KPI tiles and charts', async ({ page }) => {
     await expect(tiles.nth(0)).toContainText('6'); // Pieces
     await expect(tiles.nth(1)).toContainText('4'); // Unique pieces
     await expect(tiles.nth(2)).toContainText('5'); // Unique parts
+});
+
+test('dashboard musician names stay inside the chart at a narrow width', async ({ page }) => {
+    // The row name is right-anchored inside a fixed left margin (96px on
+    // mobile) and the <svg> clips, so a name wider than the margin used to
+    // run off the left edge with no indication. This also pins the wiring
+    // the fix depends on: the first dashboard render happens while
+    // #dashboard is still display:none, where every getComputedTextLength()
+    // is 0, every name "fits" and the chart is the old overflowing one —
+    // correctness rests on notifyShown() re-rendering at the real width. A
+    // regression there is invisible to the unit tests, because the fallback
+    // IS the pre-fix rendering.
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.evaluate(() => { window.location.hash = '#dashboard'; });
+    await expect(page.locator('#dashboard')).toBeVisible();
+    const chart = page.locator('#dashboardMusicianChart');
+    await expect(chart.locator('svg')).toBeVisible();
+
+    const svgBox = await chart.locator('svg').boundingBox();
+    const lefts = await chart.locator('text.ranked-name')
+        .evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().left));
+    expect(lefts.length).toBeGreaterThan(0);
+    lefts.forEach(left => expect(left).toBeGreaterThanOrEqual(svgBox.x));
+
+    // The one over-wide name is shortened, and keeps the full name in a
+    // <title>. Reading firstChild skips that <title>'s own text.
+    const labels = await chart.locator('text.ranked-name').evaluateAll(nodes =>
+        nodes.map(n => ({ shown: n.firstChild?.nodeValue, full: n.querySelector('title')?.textContent })));
+    expect(labels.filter(l => l.full)).toEqual([{ shown: 'Frank', full: 'Frank Vandermeer' }]);
 });
