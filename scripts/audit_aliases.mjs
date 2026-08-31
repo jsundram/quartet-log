@@ -390,7 +390,14 @@ export function ambiguityReport(appearances, { aliases }) {
         const t = n.trim().split(/\s+/);
         return t[t.length - 1].toLowerCase();
     };
-    const expected = dangling.filter(d => !sheetSurnames.has(lastToken(d.canon)));
+    // A single-token canonical records no surname at all, so "the only record
+    // of a surname" cannot describe it — lastToken of a bare name is the name
+    // itself, which sheetSurnames (last tokens of multi-token names) can never
+    // hold, so without this guard a full-name → bare-name mapping always
+    // landed here and fed the "back up src/aliases.js" summary line. It
+    // belongs in the suspect bucket below, where the did-you-mean hint is.
+    const expected = dangling.filter(d => d.canon.trim().split(/\s+/).length > 1
+        && !sheetSurnames.has(lastToken(d.canon)));
     // A canonical name the sheet resolves to is a working alias, not a broken
     // one — the normal shape of a spelling normalization ("Carol Hart" logged,
     // "Caro Hart" canonical) leaves the target absent from the sheet by

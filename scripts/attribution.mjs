@@ -58,6 +58,11 @@ export const MIN_WRITTEN_IN_FULL = 5;
  *   gate declined a clear leader; null only when nothing discriminated.
  * @property {string[]} why - the teammates that decided it
  * @property {string[]} unruled - rivals too thinly written out to rule out
+ * @property {number|null} winnerWritten - how often the winner's own full name
+ *   was written out; null when winner is null. On an answer-this-now finding a
+ *   value below MIN_WRITTEN_IN_FULL IS the gate that declined the leader — the
+ *   unruled line names rivals only, so without this the one case where every
+ *   rival is attested printed a clear leader with no reason it was not acted on.
  * @property {string[]} candidates - everyone who shares the first name
  */
 
@@ -210,6 +215,7 @@ export function attribute({ written, filled }, { aliases, abbreviations }) {
                         winner: tied ? null : top.name,
                         why: tied ? [] : why,
                         unruled: tied ? [] : unruled,
+                        winnerWritten: tied ? null : writtenCount.get(top.name) ?? 0,
                     });
                 }
             } else if (!alias || alias !== top.name) {
@@ -219,6 +225,7 @@ export function attribute({ written, filled }, { aliases, abbreviations }) {
                 // statistic. Either way the fix is the same cell.
                 findings.push({
                     ...base, action: 'edit-this-cell', winner: top.name, why, unruled,
+                    winnerWritten: writtenCount.get(top.name) ?? 0,
                 });
             } else {
                 settled++;
@@ -285,6 +292,15 @@ export function runAttribution(views, tables) {
         if (f.winner) {
             lines.push(`   ${''.padEnd(10)} leading candidate '${f.winner}'`
                 + `  (played with ${f.why.slice(0, 3).join(', ')})`);
+            // The header above promises the reader is told why the run
+            // declined to act, and the unruled line names rivals only. When
+            // the failing gate is the winner's OWN attestation and every
+            // rival is attested, that line is empty — so say it directly.
+            if ((f.winnerWritten ?? 0) < MIN_WRITTEN_IN_FULL) {
+                lines.push(`   ${''.padEnd(10)} but '${f.winner}' is written out only `
+                    + `${f.winnerWritten} time${f.winnerWritten === 1 ? '' : 's'}`
+                    + ` (fewer than ${MIN_WRITTEN_IN_FULL}) — too thin to act on`);
+            }
             if (f.unruled.length) {
                 lines.push(`   ${''.padEnd(10)} could not rule out: ${f.unruled.join(', ')}`
                     + ` (written out fewer than ${MIN_WRITTEN_IN_FULL} times)`);

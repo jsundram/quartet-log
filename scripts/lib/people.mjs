@@ -195,14 +195,23 @@ export function baseToken(name) {
 }
 
 /**
- * A written-out name: not a bare first name, and not an initialled one.
+ * A written-out name: not a bare first name, not an initialled one, and not a
+ * cell the app failed to parse.
  *
  * "Peter O" is Peter Ouyang with the surname abbreviated, not a second Peter.
  * Admitting it as a candidate invents a rival for the real person.
+ *
+ * So is "Peter Ouyang (va2)?": stripParens and parseOthers strip only a
+ * TRAILING "(...)", so a stray character after the annotation keeps it inside
+ * the name. Admitted, it rivals its own clean form — the reader is told to
+ * confirm against a person who does not exist, and, always thinly "written",
+ * it lands in every unruled list, where one phantom can demote a genuine
+ * edit-this-cell finding into the silent unverified count.
  * @param {string} name
  * @returns {boolean}
  */
 export function isFullName(name) {
+    if (name.includes('(')) return false;
     const tokens = name.trim().split(/\s+/);
     return tokens.length > 1 && tokens[tokens.length - 1].replace(/\.+$/, '').length > 1;
 }

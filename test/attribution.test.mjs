@@ -474,12 +474,29 @@ test('the report prints what a gate failure measured, and says so when nothing d
     assert.doesNotMatch(gated, /no candidate's teammates single one out/);
     assert.match(gated, /leading candidate 'Alice Hart' {2}\(played with Beryl, Carol\)/);
     assert.match(gated, /could not rule out: Alice Bek/);
+    // Here the winner is attested — the failing gate is the rival one, which
+    // the line above names — so the winner's-own-attestation line stays out.
+    assert.doesNotMatch(gated, /is written out only/);
 
     const tied = report([...attested('Alice Hart', 'Beryl', { month: 1 }),
         ...attested('Alice Bek', 'Beryl', { month: 2 }),
         seatless({ ts: SUBJECT_TS, p1: 'Alice', p2: 'Beryl', p3: 'Carol' })]);
     assert.match(tied, /no candidate's teammates single one out/);
     assert.doesNotMatch(tied, /leading candidate/);
+});
+
+test("the report names the failing gate when it is the winner's own attestation", () => {
+    // The section header promises "the line below says which" gate declined
+    // to act, but the unruled line names RIVALS only. When the leader is the
+    // thinly-written one and every rival is attested, unruled is empty — a
+    // clear leader with matching evidence printed with no reason at all.
+    const out = report([...attested('Alice Hart', 'Beryl', { n: 1, month: 1 }),
+        ...attested('Alice Bek', 'Chantal', { month: 2 }),
+        seatless({ ts: SUBJECT_TS, p1: 'Alice', p2: 'Beryl', p3: 'Carol' })]);
+    assert.match(out, /leading candidate 'Alice Hart'/);
+    assert.doesNotMatch(out, /could not rule out/);
+    assert.match(out,
+        /but 'Alice Hart' is written out only 1 time \(fewer than 5\) — too thin to act on/);
 });
 
 test('an unclassified subject prints as the pseudo-class, not as null', () => {

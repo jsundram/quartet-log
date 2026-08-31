@@ -12,9 +12,12 @@
 // Reads the WRITTEN view: it looks for exactly the blank player slots that
 // mark a continuation row, and fill-forward is what erases them.
 //
-// Only rows with EVERY player slot blank are reported: those unambiguously
-// mean "same group as before". A row that re-types some players may be
-// deliberately dropping the extra person, so those are left alone.
+// Only rows whose player slots hold nothing but blanks and "-" — with at
+// least one blank — are reported: a blank unambiguously means "same group as
+// before" and "-" types no player, it empties a seat. A row that re-types some
+// players may be deliberately dropping the extra person, so those are left
+// alone. (An all-"-" row states every seat empty, fills nothing, and is not a
+// continuation at all.)
 //
 // Usage: node scripts/audit_fillforward.mjs [path/to/data-raw.csv]
 //        (defaults to archive/data-raw.csv)
@@ -279,7 +282,15 @@ export function droppedOthers({ written }, big, quartets) {
     /** @type {Row|null} */
     let anchor = null;
     for (const row of written) {
-        const blank = slots(row).every(s => s === '');
+        // A continuation row may mix "-" with its blanks — the ordinary
+        // "trio, no cellist" shape. fillForward fills the blank slots from
+        // above and drops the anchor's Others? exactly as it does for an
+        // all-blank row, so requiring every slot to be '' hid those losses;
+        // "-" types no player, so the re-typed-cast rationale for skipping
+        // does not apply to it. At least one blank is still required: an
+        // all-"-" row inherits nothing.
+        const s = slots(row);
+        const blank = s.every(x => x === '' || x === '-') && s.some(x => x === '');
         const others = (row.others ?? '').trim();
         if (anchor) {
             // No window here: fillForward fills a blank cell from the row

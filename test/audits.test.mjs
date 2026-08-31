@@ -250,6 +250,20 @@ test('bare names are not candidates', () => {
     assert.deepEqual([...candidatesFor(byFirst, 'alice', 'upper')], ['Alice Hart']);
 });
 
+test('an unparsed annotation is not a candidate', () => {
+    // stripParens and parseOthers strip only a TRAILING "(...)", so a stray
+    // character after the annotation — "Zelda Quinton (va2)?" — keeps it
+    // inside the name. Admitted as a full name it rivals its own clean form:
+    // the reader is told to confirm against a person who does not exist, and
+    // the phantom (always thinly "written") lands in every unruled list,
+    // where it can demote a genuine edit-this-cell finding.
+    const rows = [row({ p1: 'Zelda Quinton' }),
+        row({ p1: 'Bob', others: 'Zelda Quinton (va2)?' })];
+    const { byFirst } = candidateIndex(collectAppearances(rows, {}));
+    assert.deepEqual([...candidatesFor(byFirst, 'zelda', 'upper')], ['Zelda Quinton']);
+    assert.equal(isFullName('Zelda Quinton (va2)?'), false);
+});
+
 test('an unclassified full name is still a candidate', () => {
     // A full name in an unannotated Others? cell has no class of its own, but
     // it is still a person with that first name. Indexed under the pseudo-class
@@ -355,6 +369,19 @@ test('a live alias is reported as neither', () => {
 test('a drifted spelling is the bug bucket', () => {
     const out = ambiguity([row({ p1: 'Dexter Stone', p2: 'Ernesto Stone' })],
         { Chantal: { upper: 'Chantal Stone' } });
+    assert.match(out, /absent and unrelated \(1\)/);
+});
+
+test('an alias whose canonical has no surname is not the backup bucket', () => {
+    // "The ONLY record of a surname" cannot describe a mapping whose target
+    // is a bare name — {"Bo Karlsson": {upper: "Bo"}} records no surname, so
+    // feeding it to the "back up src/aliases.js" summary line inflates a
+    // count that means something else. When its target leaves the sheet it
+    // is a stale entry, which is the suspect bucket's job (and where the
+    // did-you-mean hint lives).
+    const out = ambiguity([row({ p1: 'Dexter Stone' })],
+        { 'Bo Karlsson': { upper: 'Bo' } });
+    assert.match(out, /ONLY record of a surname \(0\)/);
     assert.match(out, /absent and unrelated \(1\)/);
 });
 
@@ -740,9 +767,22 @@ test('a "-"-only row does not steal the anchor', () => {
     const sessions = droppedOthers(views, ...NO_CATALOG);
     assert.equal(sessions.length, 1);
     assert.equal((sessions[0].anchor.others ?? '').trim(), 'Dan Fox (p)');
-    // Only the all-blank 12:00 row is a continuation; the "-" row is not
-    // all-blank, so it is never itself reported.
-    assert.deepEqual(sessions[0].rows.map(r => r.timestamp.getHours()), [12]);
+    // BOTH rows are continuations of the 10:00 anchor. The "-" row's blank
+    // slots are filled from it and its Others? is lost just like the
+    // all-blank row's — "-" types no player, so the re-typed-cast rationale
+    // for skipping does not cover it, and requiring every slot to be blank
+    // hid exactly the "trio, no cellist" shape this fixture is.
+    assert.deepEqual(sessions[0].rows.map(r => r.timestamp.getHours()), [11, 12]);
+});
+
+test('an all-"-" row is not a continuation', () => {
+    // Every seat stated empty: fillForward fills nothing, so nothing is
+    // inherited and there is no drop to report. (It does not take the anchor
+    // either — see above.)
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice', p2: 'Bob', p3: 'Carol',
+        others: 'Dan Fox (p)' }),
+        raw({ ts: '1/1/2024 11:00:00', p1: '-', p2: '-', p3: '-' })];
+    assert.equal(droppedOthers(buildViews(rows, NO_TABLES), ...NO_CATALOG).length, 0);
 });
 
 test('a row that re-types a player takes the anchor', () => {

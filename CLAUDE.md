@@ -32,7 +32,7 @@ npm run audit -- --no-fetch   # ...against whatever is already in archive/
 npm run attribution # just the decaying findings: which person a bare name was
 ```
 
-`npm run audit` (`scripts/audit_all.sh`) runs all three audits — Node, `node:test`-covered, one process each — against a single input, the raw sheet `archive/data-raw.csv`, and prints a summary.
+`npm run audit` (`scripts/audit_all.sh`) runs all four tools — the three descriptive audits plus attribution; Node, `node:test`-covered, one process each — against a single input, the raw sheet `archive/data-raw.csv`, and prints a summary.
 
 **The data view is an input, not a convention.** `scripts/lib/views.mjs` derives all three views from that one file in-process, and each audit names the view it reads by destructuring it (`function f({ written })`), so a reader cannot be handed a view it did not ask for and a reader of the code can see which one it got. This is the fix for the recurring bug the old Python audits had: the view was chosen by picking a file path in shell, invisible to the code and to the reader, and every review round found a section reading the wrong one.
 
