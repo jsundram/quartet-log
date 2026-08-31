@@ -654,6 +654,36 @@ export function disambiguateLabels(nodes) {
     return labels;
 }
 
+// Pick the widest label that fits `maxWidth`, walking `candidates` from the
+// preferred (longest) form down. `measure` returns the rendered pixel width
+// of a string — injected so this stays pure and testable; the dashboard
+// passes an SVG <text> node's getComputedTextLength(). When nothing fits,
+// the last (shortest) candidate is clipped with an ellipsis, so a label is
+// never silently cut off by the viewport edge.
+//
+// A measure() that returns 0 (the element isn't rendered — a hidden view)
+// makes the first candidate "fit", which is the right degradation: the full
+// name, exactly as before, and the caller re-renders when the view is shown.
+/**
+ * @param {string[]} candidates preferred form first, shortest form last
+ * @param {number} maxWidth
+ * @param {(s: string) => number} measure
+ * @returns {string}
+ */
+export function fitText(candidates, maxWidth, measure) {
+    const options = candidates.filter(c => c);
+    if (options.length === 0) return '';
+    for (const candidate of options) {
+        if (measure(candidate) <= maxWidth) return candidate;
+    }
+    const shortest = options[options.length - 1];
+    for (let n = shortest.length - 1; n > 0; n--) {
+        const clipped = shortest.slice(0, n) + '…';
+        if (measure(clipped) <= maxWidth) return clipped;
+    }
+    return '…';
+}
+
 /**
  * @param {string} title
  * @returns {Work}
