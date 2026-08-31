@@ -152,8 +152,7 @@ export class DateFilterWidget {
                 start.setFullYear(start.getFullYear() - 1);
                 break;
             case '6M':
-                start = new Date(now);
-                start.setMonth(start.getMonth() - 6);
+                start = monthsAgo(now, 6);
                 break;
             case '1M':
                 start = monthsAgo(now, 1);

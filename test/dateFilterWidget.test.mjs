@@ -53,7 +53,12 @@ describe('monthsAgo', () => {
     });
 
     it('handles multi-month offsets', () => {
+        // The 6M range: Aug 31 back six months lands in February, so it
+        // clamps for the same reason 1M does.
         assert.equal(ymd(monthsAgo(new Date(2025, 7, 31), 6)), '2025-02-28');
+        assert.equal(ymd(monthsAgo(new Date(2024, 7, 31), 6)), '2024-02-29');
+        assert.equal(ymd(monthsAgo(new Date(2025, 7, 15), 6)), '2025-02-15');
+        assert.equal(ymd(monthsAgo(new Date(2025, 2, 31), 6)), '2024-09-30');
         assert.equal(ymd(monthsAgo(new Date(2025, 7, 15), 12)), '2024-08-15');
     });
 });
