@@ -1,10 +1,16 @@
 import * as d3 from "d3";
 import { getBegin } from './config.js';
+import { presetBounds } from './dateRange.js';
 
-// Segmented date-range filter (All / YTD / 1Y / 6M / Custom) plus inline
+// Segmented date-range filter (All / YTD / 1Y / 6M / 1M / Custom) plus inline
 // Custom date inputs. Owns its own state and uses class-based selectors
 // scoped to its mount point, so multiple instances can coexist on the
 // page (e.g. one on Home, one on Dashboard) without colliding.
+//
+// The range arithmetic lives in ./dateRange.js; this class is the chrome
+// around it plus the CUSTOM pair, which is the one range the clock doesn't
+// determine.
+
 export class DateFilterWidget {
     constructor(mountSelector, onRangeChange, { defaultRange = '1Y' } = {}) {
         this.mountSelector = mountSelector;
@@ -33,6 +39,7 @@ export class DateFilterWidget {
             { id: 'YTD', label: 'YTD' },
             { id: '1Y', label: '1Y' },
             { id: '6M', label: '6M' },
+            { id: '1M', label: '1M' },
             { id: 'CUSTOM', label: 'Custom' },
         ];
 
@@ -109,31 +116,13 @@ export class DateFilterWidget {
         this.onRangeChange();
     }
 
+    // Seeds the stored pair so a later CUSTOM click has sensible defaults to
+    // prefill its inputs with. Preset ranges do NOT read the stored pair —
+    // getRange() re-derives them, so they can't go stale between clicks.
     updateDatesFromRange(rangeId) {
-        const now = new Date();
-        let start;
-
-        switch (rangeId) {
-            case 'ALL':
-                start = getBegin();
-                break;
-            case 'YTD':
-                start = new Date(now.getFullYear(), 0, 1);
-                break;
-            case '1Y':
-                start = new Date(now);
-                start.setFullYear(start.getFullYear() - 1);
-                break;
-            case '6M':
-                start = new Date(now);
-                start.setMonth(start.getMonth() - 6);
-                break;
-            default:
-                start = getBegin();
-        }
-
+        const [start, end] = presetBounds(rangeId, new Date(), getBegin);
         this.startDate = start;
-        this.endDate = now;
+        this.endDate = end;
     }
 
     toDateInputValue(date) {
@@ -151,6 +140,10 @@ export class DateFilterWidget {
     }
 
     getRange() {
-        return [this.startDate, this.endDate];
+        // CUSTOM is an explicit pair the user typed; everything else is a
+        // window relative to right now, so it is derived per read rather
+        // than served from whenever the button was last pressed.
+        if (this.currentRange === 'CUSTOM') return [this.startDate, this.endDate];
+        return presetBounds(this.currentRange, new Date(), getBegin);
     }
 }
