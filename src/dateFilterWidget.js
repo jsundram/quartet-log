@@ -31,6 +31,26 @@ export function monthsAgo(date, months) {
     return target;
 }
 
+/**
+ * Midnight at the start of `date`'s day, in local time.
+ *
+ * Every preset range start is anchored through this, so a window is a whole
+ * number of days: clicking 1M at 14:00 on Aug 31 starts at Jul 31 00:00 and
+ * counts a session logged that morning. Without it, monthsAgo (and getBegin)
+ * carry the current clock time onto the boundary day and silently drop the
+ * earlier part of it — and since the Custom inputs already anchor at midnight
+ * (fromDateInputValue), the same two visible dates meant two different
+ * windows depending on which control produced them.
+ *
+ * @param {Date} date
+ * @returns {Date}
+ */
+export function startOfDay(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
 export class DateFilterWidget {
     constructor(mountSelector, onRangeChange, { defaultRange = '1Y' } = {}) {
         this.mountSelector = mountSelector;
@@ -160,7 +180,7 @@ export class DateFilterWidget {
                 start = getBegin();
         }
 
-        this.startDate = start;
+        this.startDate = startOfDay(start);
         this.endDate = now;
     }
 
