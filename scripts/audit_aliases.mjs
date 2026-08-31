@@ -19,7 +19,7 @@
 
 import {
     ANY_CLASS, baseToken, candidateIndex, candidatesFor, collectAppearances,
-    jaccard, namesByFirst, teammateCounts,
+    isFullName, jaccard, namesByFirst, teammateCounts,
 } from './lib/people.mjs';
 import { loadViews, viewsHeader } from './lib/views.mjs';
 import { readNameTables, runAudit, warnIfStub } from './lib/cli.mjs';
@@ -53,6 +53,22 @@ const OVERLAP_THRESHOLD = 0.20;
 function alreadyAliased(aliases, variant, cls) {
     return Object.prototype.hasOwnProperty.call(aliases, variant)
         && cls in aliases[variant];
+}
+
+/**
+ * Could `short` be an abbreviated writing of `long`? Fewer tokens always
+ * qualifies ("Zelda" for "Zelda Quinton"). At equal token count only an
+ * initialled surname does — "Zelda Q" is Zelda Quinton with the surname
+ * abbreviated (isFullName's rule), while two equal-length FULL names are two
+ * people. Token count alone declared the initialled form a second person, and
+ * since attribution skips 2-token subjects and isFullName bars 1-char-surname
+ * candidates, no tool could then alias or even report it.
+ * @param {string} short @param {string} long
+ */
+function abbreviates(short, long) {
+    const s = short.trim().split(/\s+/).length;
+    const l = long.trim().split(/\s+/).length;
+    return s < l || (s === l && !isFullName(short) && isFullName(long));
 }
 
 /**
@@ -102,9 +118,12 @@ function byClass(variants) {
  * The per-first-token variant listing, and the alias proposals it yields.
  * @param {Map<string, Variant[]>} groups
  * @param {NameTables} tables
+ * @param {Map<string, Set<string>>} byFirst - candidate index over the same
+ *   appearances; the proposal gate below asks it the AMBIGUITY section's
+ *   hazard-1 question before proposing.
  * @returns {{ lines: string[], proposals: Map<string, Map<string, string>> }}
  */
-export function variantReport(groups, { aliases }) {
+export function variantReport(groups, { aliases }, byFirst) {
     /** @type {string[]} */
     const lines = [];
     /** @type {Map<string, Map<string, string>>} */
@@ -129,11 +148,16 @@ export function variantReport(groups, { aliases }) {
                 + `   teammates: ${top}`);
         }
 
-        // Within each class the longest-multi-token name is canonical; shorter
-        // names mapping into it need teammate overlap above the threshold.
+        // Within each class the fullest name is canonical — most tokens, and
+        // at equal token count a written-out surname beats an initialled one,
+        // so "Zelda Q" can never outrank "Zelda Quinton" on appearance count
+        // and then read its own full form as a rival person. Shorter names
+        // mapping into the canonical need teammate overlap above the threshold.
         for (const [cls, vs] of byClass(variants)) {
             const sorted = [...vs].sort((a, b) =>
-                b.name.split(/\s+/).length - a.name.split(/\s+/).length || b.count - a.count);
+                b.name.split(/\s+/).length - a.name.split(/\s+/).length
+                || Number(isFullName(b.name)) - Number(isFullName(a.name))
+                || b.count - a.count);
             const canonical = sorted[0];
             const canonMates = new Set(teammateCounts(canonical.teammates).keys());
             for (const variant of sorted.slice(1)) {
@@ -142,18 +166,31 @@ export function variantReport(groups, { aliases }) {
                 const overlap = jaccard(canonMates,
                     new Set(teammateCounts(variant.teammates).keys()));
                 const evidence = `overlap=${pct(overlap)}, ${variant.count}×`;
-                // An alias abbreviates. A name with as many tokens as the
-                // canonical (sorted is descending, so >= means equal) is a
-                // second person sharing a first name — the AMBIGUITY hazard —
-                // and proposing it would merge two people in every people
-                // statistic, from a block advertised as paste-ready. Same
-                // guard as reviewReport's; said out loud rather than skipped
-                // silently, since it used to be a proposal.
-                if (variant.name.split(/\s+/).length
-                    >= canonical.name.split(/\s+/).length) {
+                // An alias abbreviates (see `abbreviates`). An equal-length
+                // full name is a second person sharing a first name — the
+                // AMBIGUITY hazard — and proposing it would merge two people
+                // in every people statistic, from a block advertised as
+                // paste-ready. Same guard as reviewReport's; said out loud
+                // rather than skipped silently, since it used to be a
+                // proposal.
+                if (!abbreviates(variant.name, canonical.name)) {
                     lines.push(`    ≠ person  ${q(variant.name)} [${cls}] vs `
                         + `${q(canonical.name)}  (${evidence}) — equal-length `
                         + 'names are different people, not an alias');
+                    continue;
+                }
+                // The hazard-1 gate: a bare first name that 2+ full names
+                // could match is exactly what the AMBIGUITY section tells the
+                // reader an alias can only guess at, so the paste-ready block
+                // must not hand out that guess. Said out loud like the guard
+                // above — a proposal that vanished silently would read as
+                // "nothing to do here".
+                const candidates = variant.name.trim().split(/\s+/).length === 1
+                    ? [...candidatesFor(byFirst, token, cls)].sort() : [];
+                if (candidates.length >= 2) {
+                    lines.push(`    ≠ ambiguous  ${q(variant.name)} [${cls}]  `
+                        + `(${evidence}) — could be ${candidates.map(q).join(' or ')}; `
+                        + 'no alias can pick, fix the rows (see AMBIGUITY)');
                     continue;
                 }
                 if (overlap >= OVERLAP_THRESHOLD) {
@@ -193,7 +230,7 @@ export function reviewReport(groups, { aliases }) {
             for (const short of vs) {
                 for (const long of vs) {
                     if (long.name === short.name) continue;
-                    if (short.name.split(/\s+/).length >= long.name.split(/\s+/).length) continue;
+                    if (!abbreviates(short.name, long.name)) continue;
                     if (alreadyAliased(aliases, short.name, cls)) continue;
                     rows.push({
                         scount: short.count, cls, short: short.name, long: long.name,
@@ -232,8 +269,13 @@ export function reviewReport(groups, { aliases }) {
  *   1. A bare first name still in the sheet that two or more full names could
  *      match. No alias can express "this row is Alice Hart and that one is
  *      Alice Bek" — the ROWS have to be edited.
- *   2. An existing alias keyed on such a name. It resolves silently, so every
- *      future bare entry lands on whichever person the table names.
+ *   2. An existing alias keyed on such a name — judged per (key, class),
+ *      because the table is class-keyed and resolves per class: the worked
+ *      { "Jo": { upper: "Jo Alpha", cello: "Jo Beta" } } shape is the FIX for
+ *      two namesakes on different instruments, not a hazard. A key is risky
+ *      only in a class whose own candidate set holds someone besides that
+ *      class's target; there it resolves silently, so every future bare entry
+ *      lands on whichever person the table names.
  *   3. An alias whose canonical name appears nowhere in the sheet and isn't
  *      what any sheet name resolves to — usually a spelling fix applied to the
  *      data but not here.
@@ -248,8 +290,9 @@ export function reviewReport(groups, { aliases }) {
  */
 export function ambiguityReport(appearances, { aliases }) {
     // One candidate definition for the whole section: byFirst is class-keyed
-    // for the per-name verdicts, and namesByFirst is the class-blind view the
-    // alias-key checks want, since an alias key is not class-scoped.
+    // for the per-name verdicts and the per-(key, class) alias check, and
+    // namesByFirst is the class-blind view the hazard-3 "did you mean" hint
+    // wants, since a drifted spelling can hide in either class.
     const { byFirst } = candidateIndex(appearances);
     const names = namesByFirst(byFirst);
     /** @type {Map<string, { name: string, cls: string, count: number }>} */
@@ -299,24 +342,35 @@ export function ambiguityReport(appearances, { aliases }) {
         lines.push(`   ${pad('', 18)}         candidates: ${candidates.join(', ')}`);
     }
 
-    // 2. Aliases keyed on a first name several people now share. Multi-token
-    // keys ("Jo A", "Jo Alpha") are already disambiguated, so skip them.
-    const risky = Object.entries(aliases)
-        .filter(([key]) => key.trim().split(/\s+/).length === 1
-            && (names.get(key.toLowerCase())?.size ?? 0) >= 2)
-        .map(([key, mapping]) => ({
-            key, mapping, candidates: [...(names.get(key.toLowerCase()) ?? [])].sort(),
-        }))
-        .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    // 2. Aliases keyed on a first name several people share IN THE KEY'S OWN
+    // CLASS. The table resolves per class, so the check must too: folding the
+    // classes together flagged { "Jo": { upper: "Jo Alpha", cello: "Jo Beta" } }
+    // — the shape the class-keyed table exists for, where a bare "Jo" in every
+    // class resolves correctly by construction — and the count fed the SUMMARY
+    // as work to do. candidatesFor includes the unclassified bucket, exactly
+    // as hazard 1 counts it: a full namesake in an unannotated Others? cell is
+    // a rival in every class. Multi-token keys ("Jo A", "Jo Alpha") are
+    // already disambiguated, so skip them.
+    /** @type {{ key: string, cls: string, target: string, rivals: string[] }[]} */
+    const risky = [];
+    for (const [aliasKey, mapping] of Object.entries(aliases)) {
+        if (aliasKey.trim().split(/\s+/).length !== 1) continue;
+        for (const [cls, target] of Object.entries(mapping)) {
+            const cands = candidatesFor(byFirst, aliasKey.toLowerCase(), cls);
+            if (cands.size < 2) continue;
+            risky.push({
+                key: aliasKey, cls, target: /** @type {string} */ (target),
+                rivals: [...cands].filter(c => c !== target).sort(),
+            });
+        }
+    }
+    risky.sort((a, b) => a.key.localeCompare(b.key) || a.cls.localeCompare(b.cls));
     lines.push('', `-- aliases keyed on an ambiguous first name (${risky.length}) --`,
-        '   Each silently resolves future bare entries to one person.');
+        '   Each silently resolves future bare entries in its class to one person.');
     if (!risky.length) lines.push('   (none)');
-    for (const { key, mapping, candidates } of risky) {
-        const targets = Object.entries(mapping).sort()
-            .map(([cls, n]) => `${cls}→${n}`).join(', ');
-        const others = candidates.filter(c => !Object.values(mapping).includes(c));
-        lines.push(`   ${pad(q(key), 18)} ${targets}`);
-        lines.push(`   ${pad('', 18)} also in sheet: ${others.join(', ') || '—'}`);
+    for (const { key, cls, target, rivals } of risky) {
+        lines.push(`   ${pad(q(key), 18)} [${pad(cls, 5)}] -> ${q(target)}`);
+        lines.push(`   ${pad('', 18)}         could also be: ${rivals.join(', ')}`);
     }
 
     // 3. Aliases pointing at a name the sheet no longer contains.
@@ -410,10 +464,11 @@ export function proposalBlock({ aliases }, proposals) {
 export function runAliasAudit(views, tables) {
     const appearances = collectAppearances(views.written, tables.abbreviations);
     const groups = groupVariants(appearances);
+    const { byFirst } = candidateIndex(appearances);
     const lines = viewsHeader(views, views.written,
         `    Unique (name, class) pairs: ${appearances.size}`);
     lines.push('');
-    const { lines: variantLines, proposals } = variantReport(groups, tables);
+    const { lines: variantLines, proposals } = variantReport(groups, tables, byFirst);
     lines.push(...variantLines);
     lines.push(...reviewReport(groups, tables));
     lines.push(...ambiguityReport(appearances, tables));

@@ -301,9 +301,10 @@ test('baseToken groups a name with its own short form', () => {
     assert.equal(baseToken(' alice '), 'alice');
 });
 
-test('namesByFirst is the class-blind view the alias keys need', () => {
-    // An alias key is not class-scoped, so the check for "several people share
-    // this first name" must not be either.
+test('namesByFirst is the class-blind view the did-you-mean hint needs', () => {
+    // A drifted canonical spelling can hide in either class, so hazard 3's
+    // "did you mean" hint searches both. (The hazard-2 alias-key check is the
+    // opposite: the table resolves per class, so it reads byFirst directly.)
     const rows = [row({ p1: 'Alice Hart', p3: 'Alice Bek' })];
     const { byFirst } = candidateIndex(collectAppearances(rows, {}));
     assert.deepEqual([...(namesByFirst(byFirst).get('alice') ?? [])].sort(),
@@ -361,7 +362,29 @@ test('an alias keyed on an ambiguous first name is reported', () => {
     const out = ambiguity([row({ p1: 'Alice Hart', p2: 'Alice Bek' })],
         { Alice: { upper: 'Alice Hart' } });
     assert.match(out, /aliases keyed on an ambiguous first name \(1\)/);
-    assert.match(out, /also in sheet: Alice Bek/);
+    assert.match(out, /'Alice'\s+\[upper\] -> 'Alice Hart'/);
+    assert.match(out, /could also be: Alice Bek/);
+});
+
+test('a class-keyed pair of namesakes is not an ambiguous alias key', () => {
+    // { "Jo": { upper: ..., cello: ... } } is the shape the class-keyed table
+    // exists for: a bare upper "Jo" resolves to Jo Alpha and a cello one to
+    // Jo Beta, correctly, by construction. The class-blind check flagged it —
+    // and the count feeds the SUMMARY line, where it reads as work to do.
+    const out = ambiguity([row({ p1: 'Jo Alpha', p3: 'Jo Beta' })],
+        { Jo: { upper: 'Jo Alpha', cello: 'Jo Beta' } });
+    assert.match(out, /aliases keyed on an ambiguous first name \(0\)/);
+});
+
+test('an unclassified namesake is a rival in every class', () => {
+    // A full name in an unannotated Others? cell has no class of its own, so
+    // it could be the bare "Jo" in any slot — hazard 2 must count it the way
+    // hazard 1 does, or the two sections disagree about who exists.
+    const out = ambiguity(
+        [row({ p1: 'Jo Alpha', others: 'Jo Gamma' })],
+        { Jo: { upper: 'Jo Alpha' } });
+    assert.match(out, /aliases keyed on an ambiguous first name \(1\)/);
+    assert.match(out, /could also be: Jo Gamma/);
 });
 
 test('the pseudo-class never reaches the alias proposal or the review table', () => {
@@ -387,8 +410,8 @@ test('the pseudo-class never reaches the alias proposal or the review table', ()
 
 test('two full names sharing a first token are never proposed as one person', () => {
     // `sorted` is descending by token count, so a variant can tie the
-    // canonical's length but never exceed it — and an equal-length name is
-    // not an abbreviation, it is a second person (the AMBIGUITY hazard).
+    // canonical's length but never exceed it — and an equal-length FULL name
+    // is not an abbreviation, it is a second person (the AMBIGUITY hazard).
     // Proposing it merges two people in every people statistic, from a block
     // advertised as paste-ready. Same guard reviewReport already had.
     const rows = [];
@@ -409,6 +432,48 @@ test('two full names sharing a first token are never proposed as one person', ()
     // 'Zoe' (fewer tokens, same 33% overlap) still proposes into 'Zoe Hart'.
     assert.match(out, /propose 'Zoe' \[upper\] → 'Zoe Hart'/);
     assert.match(block, /"Zoe": \{ upper: "Zoe Hart" \}/);
+});
+
+test('an initialled surname proposes into the full name', () => {
+    // "Zelda Q" is Zelda Quinton with the surname abbreviated — isFullName's
+    // own rule — not a second Zelda. The equal-length guard must not fire on
+    // it: attribution skips 2-token subjects and bars 1-char-surname
+    // candidates, so a guard on token count alone left the initialled form
+    // aliasable by no tool and counted as its own person in every people
+    // statistic, forever. The full name outranks it as canonical even when
+    // the initialled form is written more often.
+    const rows = [
+        raw({ ts: '1/1/2024 10:00:00', p1: 'Zelda Quinton', p2: 'Beryl Ray', p3: 'Carol Fox' }),
+        raw({ ts: '2/1/2024 10:00:00', p1: 'Zelda Q', p2: 'Beryl Ray', p3: 'Carol Fox' }),
+        raw({ ts: '3/1/2024 10:00:00', p1: 'Zelda Q', p2: 'Beryl Ray', p3: 'Carol Fox' }),
+    ];
+    const out = runAliasAudit(buildViews(rows, NO_TABLES), NO_TABLES).join('\n');
+    assert.match(out, /propose 'Zelda Q' \[upper\] → 'Zelda Quinton'/);
+    assert.doesNotMatch(out, /≠ person\s+'Zelda Q'/);
+    const review = out.slice(out.indexOf('REVIEW:'), out.indexOf('=== AMBIGUITY'));
+    assert.match(review, /'Zelda Q'.*→\s+'Zelda Quinton'/);
+    const block = out.slice(out.indexOf('PLAYER_ALIASES proposal'));
+    assert.match(block, /"Zelda Q": \{ upper: "Zelda Quinton" \}/);
+});
+
+test('a bare name with two candidates is never proposed', () => {
+    // The AMBIGUITY section says an alias can only guess one of them; the
+    // paste-ready block must not hand out that guess. Pasting it would
+    // convert the hazard-1 finding into a silent hazard-2 and make the next
+    // run report the name as handled.
+    const rows = [
+        raw({ ts: '1/1/2024 10:00:00', p1: 'Alice Hart', p2: 'Beryl Ray', p3: 'Carol Fox' }),
+        raw({ ts: '2/1/2024 10:00:00', p1: 'Alice', p2: 'Beryl Ray', p3: 'Carol Fox' }),
+        raw({ ts: '3/1/2024 10:00:00', p1: 'Alice Bek', p2: 'Dan Ray', p3: 'Ernesto Fox' }),
+    ];
+    const out = runAliasAudit(buildViews(rows, NO_TABLES), NO_TABLES).join('\n');
+    // The bare 'Alice' clears the overlap threshold against Alice Hart, so
+    // without the gate it is proposed — while the AMBIGUITY section lists it.
+    assert.match(out, /bare names in the sheet with 2\+ candidates \(1\)/);
+    assert.match(out, /≠ ambiguous\s+'Alice' \[upper\].*Alice Bek.*Alice Hart/);
+    assert.doesNotMatch(out, /propose 'Alice'/);
+    const block = out.slice(out.indexOf('PLAYER_ALIASES proposal'));
+    assert.doesNotMatch(block, /"Alice"/);
 });
 
 test('variant grouping keys on the first token', () => {
@@ -593,6 +658,21 @@ test('a prefix that is also an abbreviation follows the app outside the window',
 });
 
 
+test('the session-window report measures the location column too', () => {
+    // fillForward applies the same window-gated prefix rule to all four
+    // columns it walks. A report measuring only the players would say a
+    // window change was free while it silently stopped a location shorthand
+    // from expanding.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice', location: 'Oak Hall' }),
+        raw({ ts: '1/1/2024 13:30:00', p1: 'Alice', location: 'Oak' })];
+    const views = buildViews(rows, NO_TABLES);
+    // The app really does expand it — 3.5h is inside the 4h window.
+    assert.equal(views.filled[1].location, 'Oak Hall');
+    const out = sessionWindowReport(views, {}).join('\n');
+    assert.match(out, /1 shorthand entries; 1 inside the window/);
+    assert.match(out, /3\.50h.*-> 'Oak Hall'\s+\[expanded\]/);
+});
+
 test('extra-string parts are the ones a quartet cannot seat', () => {
     for (const [part, isExtra] of [
         ['va2', true], ['vc2', true], ['vla2', true], ['v3', true],
@@ -620,6 +700,12 @@ test('needsTheExtraPlayer suppresses only on positive evidence', () => {
         // The entry split is paren-aware, so a comma inside an annotation does
         // not tear an entry in half and leave a fragment arguing for itself.
         ['Alice (va2, doubling, second half)', false],
+        // A trailing separator leaves an empty fragment, which names nobody
+        // and must not defeat the suppression — parseOthers filters the same
+        // way. Reporting it sends someone to "fix" correct data.
+        ['Alice (va2);', false],
+        ['Alice (va2), ', false],
+        ['Alice (va2); -', false],
     ]) {
         assert.equal(needsTheExtraPlayer(r, others, new Set(), quartets), needed, others);
     }

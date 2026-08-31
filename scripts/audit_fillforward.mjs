@@ -106,7 +106,13 @@ export function needsTheExtraPlayer(row, others, big, quartets) {
     // it keeps only the instrument code, and the COMMENT half is what says an
     // entry was scoped to particular movements.
     for (const frag of splitOutsideParens(others)) {
-        const m = frag.trim().match(/^.+?\(([^)]+)\)/);
+        const t = frag.trim();
+        // splitOutsideParens returns every fragment, blank ones included, so a
+        // trailing ";" yields a '' that matches no annotation and defeats the
+        // `every` below — reporting a correct quintet anchor as a mistake.
+        // Filter as parseOthers does: '' and '-' name nobody.
+        if (!t || t === '-') continue;
+        const m = t.match(/^.+?\(([^)]+)\)/);
         const inside = m ? m[1] : '';
         // A scoped entry argues for nothing: drop it and let the rest of the
         // line decide. Suppressing the whole row on one is what hid the
@@ -183,7 +189,11 @@ export function label(row) {
 export function sessionWindowReport({ written }, abbreviations) {
     /** @type {{ gap: number, row: Row, full: string, verdict: string }[]} */
     const prefixGaps = [];
-    for (const column of /** @type {const} */ (['player1', 'player2', 'player3'])) {
+    // All four columns fillForward walks, location included: the app applies
+    // the same window-gated prefix rule to it, so a report measuring only the
+    // players would call a window change free while it silently stopped a
+    // location shorthand from expanding.
+    for (const column of /** @type {const} */ (['player1', 'player2', 'player3', 'location'])) {
         if (!written.length) break;
         // fillForward seeds from row 0 and iterates from row 1; so does this.
         let prev = written[0];
