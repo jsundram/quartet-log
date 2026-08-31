@@ -142,6 +142,20 @@ export function variantReport(groups, { aliases }) {
                 const overlap = jaccard(canonMates,
                     new Set(teammateCounts(variant.teammates).keys()));
                 const evidence = `overlap=${pct(overlap)}, ${variant.count}×`;
+                // An alias abbreviates. A name with as many tokens as the
+                // canonical (sorted is descending, so >= means equal) is a
+                // second person sharing a first name — the AMBIGUITY hazard —
+                // and proposing it would merge two people in every people
+                // statistic, from a block advertised as paste-ready. Same
+                // guard as reviewReport's; said out loud rather than skipped
+                // silently, since it used to be a proposal.
+                if (variant.name.split(/\s+/).length
+                    >= canonical.name.split(/\s+/).length) {
+                    lines.push(`    ≠ person  ${q(variant.name)} [${cls}] vs `
+                        + `${q(canonical.name)}  (${evidence}) — equal-length `
+                        + 'names are different people, not an alias');
+                    continue;
+                }
                 if (overlap >= OVERLAP_THRESHOLD) {
                     if (!proposals.has(variant.name)) proposals.set(variant.name, new Map());
                     /** @type {Map<string, string>} */

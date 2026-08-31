@@ -43,7 +43,7 @@ import {
     datestamp, expectedSize, hasKeyboardAnnotation, loggedPeople, mentionsKeyboard,
 } from '../scripts/audit_ensembles.mjs';
 import {
-    EXTRA_STRING_RE, needsTheExtraPlayer, sessionWindowReport, workKey,
+    droppedOthers, EXTRA_STRING_RE, needsTheExtraPlayer, sessionWindowReport, workKey,
 } from '../scripts/audit_fillforward.mjs';
 
 const HEADERS = ['Timestamp', 'Composer', 'Work Title', 'Which Part',
@@ -385,6 +385,32 @@ test('the pseudo-class never reaches the alias proposal or the review table', ()
     assert.doesNotMatch(review, new RegExp(`\\[${ANY_CLASS}`));
 });
 
+test('two full names sharing a first token are never proposed as one person', () => {
+    // `sorted` is descending by token count, so a variant can tie the
+    // canonical's length but never exceed it — and an equal-length name is
+    // not an abbreviation, it is a second person (the AMBIGUITY hazard).
+    // Proposing it merges two people in every people statistic, from a block
+    // advertised as paste-ready. Same guard reviewReport already had.
+    const rows = [];
+    for (let i = 1; i <= 3; i++) {
+        rows.push(raw({ ts: `${i}/1/2024 10:00:00`,
+            p1: 'Alice Hart', p2: 'Zoe Hart', p3: 'Carol Ray' }));
+        rows.push(raw({ ts: `${i}/2/2024 10:00:00`,
+            p1: 'Alice Bek', p2: 'Zoe', p3: 'Carol Ray' }));
+    }
+    const out = runAliasAudit(buildViews(rows, NO_TABLES), NO_TABLES).join('\n');
+    // The two Alices share Carol (overlap 33%, above the 20% threshold), so
+    // without the guard one is proposed as an alias of the other.
+    assert.doesNotMatch(out, /propose 'Alice (Hart|Bek)'/);
+    assert.match(out, /≠ person\s+'Alice (Hart|Bek)'/);
+    const block = out.slice(out.indexOf('PLAYER_ALIASES proposal'));
+    assert.doesNotMatch(block, /"Alice/);
+    // The guard is about equal length, not about sharing a token: the bare
+    // 'Zoe' (fewer tokens, same 33% overlap) still proposes into 'Zoe Hart'.
+    assert.match(out, /propose 'Zoe' \[upper\] → 'Zoe Hart'/);
+    assert.match(block, /"Zoe": \{ upper: "Zoe Hart" \}/);
+});
+
 test('variant grouping keys on the first token', () => {
     const rows = [row({ p1: 'Alice Hart', p2: 'Alice', p3: 'Bob Jones' })];
     const groups = groupVariants(collectAppearances(rows, {}));
@@ -597,6 +623,51 @@ test('needsTheExtraPlayer suppresses only on positive evidence', () => {
     ]) {
         assert.equal(needsTheExtraPlayer(r, others, new Set(), quartets), needed, others);
     }
+});
+
+// Uncatalogued works, so needsTheExtraPlayer always says "report".
+const NO_CATALOG = /** @type {[Set<string>, Set<string>]} */ ([new Set(), new Set()]);
+
+test('a blank continuation row that loses its anchor Others? is reported', () => {
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice', p2: 'Bob', p3: 'Carol',
+        others: 'Dan Fox (p)' }),
+        raw({ ts: '1/1/2024 11:00:00' })];
+    const sessions = droppedOthers(buildViews(rows, NO_TABLES), ...NO_CATALOG);
+    assert.equal(sessions.length, 1);
+    assert.equal((sessions[0].anchor.others ?? '').trim(), 'Dan Fox (p)');
+    assert.equal(sessions[0].rows.length, 1);
+});
+
+test('a "-"-only row does not steal the anchor', () => {
+    // "-" states a seat is EMPTY, not who is playing: fillForward neither
+    // fills nor advances on it, so the later blank row still inherits the
+    // 10:00 group — and still loses 'Dan Fox (p)'. With the "-" row as
+    // anchor (it carries no Others?), that drop was never reported, and the
+    // shape is the ordinary "trio, no cellist" continuation row.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice', p2: 'Bob', p3: 'Carol',
+        others: 'Dan Fox (p)' }),
+        raw({ ts: '1/1/2024 11:00:00', p1: '-' }),
+        raw({ ts: '1/1/2024 12:00:00' })];
+    const views = buildViews(rows, NO_TABLES);
+    // The app really does inherit the 10:00 group across the "-" row.
+    assert.equal(views.filled[2].player1, 'Alice');
+    const sessions = droppedOthers(views, ...NO_CATALOG);
+    assert.equal(sessions.length, 1);
+    assert.equal((sessions[0].anchor.others ?? '').trim(), 'Dan Fox (p)');
+    // Only the all-blank 12:00 row is a continuation; the "-" row is not
+    // all-blank, so it is never itself reported.
+    assert.deepEqual(sessions[0].rows.map(r => r.timestamp.getHours()), [12]);
+});
+
+test('a row that re-types a player takes the anchor', () => {
+    // A re-typed cast may be deliberately dropping the extra person, so the
+    // blank row after it inherits from IT (which has no Others?) and nothing
+    // is reported — the conservative rule the module header promises.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice', p2: 'Bob', p3: 'Carol',
+        others: 'Dan Fox (p)' }),
+        raw({ ts: '1/1/2024 11:00:00', p1: 'Alice' }),
+        raw({ ts: '1/1/2024 12:00:00' })];
+    assert.equal(droppedOthers(buildViews(rows, NO_TABLES), ...NO_CATALOG).length, 0);
 });
 
 test('an uncatalogued work is always reported', () => {

@@ -290,7 +290,13 @@ export function droppedOthers({ written }, big, quartets) {
                 session.rows.push(row);
             }
         }
-        if (others || slots(row).some(s => s !== '')) anchor = row;
+        // Only a row that states a cast takes the anchor. "-" states a seat is
+        // EMPTY, not who is playing: fillForward neither fills nor advances on
+        // it, so a later blank row still inherits the players from above the
+        // "-" row — and still loses that row's Others?. Letting a "-"-only row
+        // (the ordinary "trio, no cellist" continuation) become the anchor hid
+        // every drop that followed it.
+        if (others || slots(row).some(s => s !== '' && s !== '-')) anchor = row;
     }
     return sessions;
 }
