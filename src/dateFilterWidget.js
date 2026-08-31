@@ -1,10 +1,36 @@
 import * as d3 from "d3";
 import { getBegin } from './config.js';
 
-// Segmented date-range filter (All / YTD / 1Y / 6M / Custom) plus inline
+// Segmented date-range filter (All / YTD / 1Y / 6M / 1M / Custom) plus inline
 // Custom date inputs. Owns its own state and uses class-based selectors
 // scoped to its mount point, so multiple instances can coexist on the
 // page (e.g. one on Home, one on Dashboard) without colliding.
+
+/**
+ * The same day-of-month `months` months before `date`, clamped to that
+ * month's last day when it is shorter (Mar 31 → Feb 29 in a leap year,
+ * Feb 28 otherwise). Time-of-day is preserved.
+ *
+ * The naive `setMonth(getMonth() - n)` overflows instead of clamping —
+ * Mar 31 becomes Feb 31, which Date rolls forward to Mar 2/3, landing the
+ * start of the window AFTER the month it should cover. Shifting from the
+ * 1st sidesteps that, then the day is set explicitly.
+ *
+ * @param {Date} date
+ * @param {number} months
+ * @returns {Date}
+ */
+export function monthsAgo(date, months) {
+    const day = date.getDate();
+    const target = new Date(date);
+    target.setDate(1);
+    target.setMonth(target.getMonth() - months);
+    // Day 0 of the following month is the last day of the target month.
+    const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+    target.setDate(Math.min(day, lastDay));
+    return target;
+}
+
 export class DateFilterWidget {
     constructor(mountSelector, onRangeChange, { defaultRange = '1Y' } = {}) {
         this.mountSelector = mountSelector;
@@ -33,6 +59,7 @@ export class DateFilterWidget {
             { id: 'YTD', label: 'YTD' },
             { id: '1Y', label: '1Y' },
             { id: '6M', label: '6M' },
+            { id: '1M', label: '1M' },
             { id: 'CUSTOM', label: 'Custom' },
         ];
 
@@ -127,6 +154,9 @@ export class DateFilterWidget {
             case '6M':
                 start = new Date(now);
                 start.setMonth(start.getMonth() - 6);
+                break;
+            case '1M':
+                start = monthsAgo(now, 1);
                 break;
             default:
                 start = getBegin();
