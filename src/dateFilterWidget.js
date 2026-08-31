@@ -1,55 +1,15 @@
 import * as d3 from "d3";
 import { getBegin } from './config.js';
+import { presetBounds } from './dateRange.js';
 
 // Segmented date-range filter (All / YTD / 1Y / 6M / 1M / Custom) plus inline
 // Custom date inputs. Owns its own state and uses class-based selectors
 // scoped to its mount point, so multiple instances can coexist on the
 // page (e.g. one on Home, one on Dashboard) without colliding.
-
-/**
- * The same day-of-month `months` months before `date`, clamped to that
- * month's last day when it is shorter (Mar 31 → Feb 29 in a leap year,
- * Feb 28 otherwise). Time-of-day is preserved.
- *
- * The naive `setMonth(getMonth() - n)` overflows instead of clamping —
- * Mar 31 becomes Feb 31, which Date rolls forward to Mar 2/3, landing the
- * start of the window AFTER the month it should cover. Shifting from the
- * 1st sidesteps that, then the day is set explicitly.
- *
- * @param {Date} date
- * @param {number} months
- * @returns {Date}
- */
-export function monthsAgo(date, months) {
-    const day = date.getDate();
-    const target = new Date(date);
-    target.setDate(1);
-    target.setMonth(target.getMonth() - months);
-    // Day 0 of the following month is the last day of the target month.
-    const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
-    target.setDate(Math.min(day, lastDay));
-    return target;
-}
-
-/**
- * Midnight at the start of `date`'s day, in local time.
- *
- * Every preset range start is anchored through this, so a window is a whole
- * number of days: clicking 1M at 14:00 on Aug 31 starts at Jul 31 00:00 and
- * counts a session logged that morning. Without it, monthsAgo (and getBegin)
- * carry the current clock time onto the boundary day and silently drop the
- * earlier part of it — and since the Custom inputs already anchor at midnight
- * (fromDateInputValue), the same two visible dates meant two different
- * windows depending on which control produced them.
- *
- * @param {Date} date
- * @returns {Date}
- */
-export function startOfDay(date) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d;
-}
+//
+// The range arithmetic lives in ./dateRange.js; this class is the chrome
+// around it plus the CUSTOM pair, which is the one range the clock doesn't
+// determine.
 
 export class DateFilterWidget {
     constructor(mountSelector, onRangeChange, { defaultRange = '1Y' } = {}) {
@@ -156,32 +116,13 @@ export class DateFilterWidget {
         this.onRangeChange();
     }
 
+    // Seeds the stored pair so a later CUSTOM click has sensible defaults to
+    // prefill its inputs with. Preset ranges do NOT read the stored pair —
+    // getRange() re-derives them, so they can't go stale between clicks.
     updateDatesFromRange(rangeId) {
-        const now = new Date();
-        let start;
-
-        switch (rangeId) {
-            case 'ALL':
-                start = getBegin();
-                break;
-            case 'YTD':
-                start = new Date(now.getFullYear(), 0, 1);
-                break;
-            case '1Y':
-                start = monthsAgo(now, 12);
-                break;
-            case '6M':
-                start = monthsAgo(now, 6);
-                break;
-            case '1M':
-                start = monthsAgo(now, 1);
-                break;
-            default:
-                start = getBegin();
-        }
-
-        this.startDate = startOfDay(start);
-        this.endDate = now;
+        const [start, end] = presetBounds(rangeId, new Date(), getBegin);
+        this.startDate = start;
+        this.endDate = end;
     }
 
     toDateInputValue(date) {
@@ -199,6 +140,10 @@ export class DateFilterWidget {
     }
 
     getRange() {
-        return [this.startDate, this.endDate];
+        // CUSTOM is an explicit pair the user typed; everything else is a
+        // window relative to right now, so it is derived per read rather
+        // than served from whenever the button was last pressed.
+        if (this.currentRange === 'CUSTOM') return [this.startDate, this.endDate];
+        return presetBounds(this.currentRange, new Date(), getBegin);
     }
 }
