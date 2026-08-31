@@ -61,4 +61,11 @@ describe('monthsAgo', () => {
         assert.equal(ymd(monthsAgo(new Date(2025, 2, 31), 6)), '2024-09-30');
         assert.equal(ymd(monthsAgo(new Date(2025, 7, 15), 12)), '2024-08-15');
     });
+
+    it('clamps the leap day for the 1Y range', () => {
+        // setFullYear() would overflow Feb 29 -> Mar 1 of the prior year,
+        // silently dropping Feb 28 from the window.
+        assert.equal(ymd(monthsAgo(new Date(2028, 1, 29), 12)), '2027-02-28');
+        assert.equal(ymd(monthsAgo(new Date(2028, 1, 29), 48)), '2024-02-29');
+    });
 });
