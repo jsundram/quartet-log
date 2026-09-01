@@ -483,6 +483,54 @@ test('an initialled surname proposes into the full name', () => {
     assert.match(block, /"Zelda Q": \{ upper: "Zelda Quinton" \}/);
 });
 
+test('a shorter name that is not a prefix is a second person, not an alias', () => {
+    // abbreviates() must test tokens, not count them: 'Mary Smith' has fewer
+    // tokens than 'Mary Jane Wilson' but abbreviates nothing of it, and at
+    // 100% teammate overlap the paste-ready block merged the two people —
+    // exactly what the ≠ person branch exists to prevent.
+    const rows = [
+        raw({ ts: '1/1/2024 10:00:00', p1: 'Mary Jane Wilson', p2: 'Bob Kerr', p3: 'Carol Diaz' }),
+        raw({ ts: '2/1/2024 10:00:00', p1: 'Mary Smith', p2: 'Bob Kerr', p3: 'Carol Diaz' }),
+    ];
+    const out = runAliasAudit(buildViews(rows, NO_TABLES), NO_TABLES).join('\n');
+    assert.match(out, /≠ person\s+'Mary Smith'/);
+    assert.doesNotMatch(out, /propose 'Mary Smith'/);
+    const block = out.slice(out.indexOf('PLAYER_ALIASES proposal'));
+    assert.doesNotMatch(block, /"Mary Smith"/);
+    // The REVIEW eyeball list must not offer the pair either.
+    const review = out.slice(out.indexOf('REVIEW:'), out.indexOf('=== AMBIGUITY'));
+    assert.doesNotMatch(review, /'Mary Smith'/);
+});
+
+test('an initialled surname with two possible expansions is not proposed', () => {
+    // abbreviates() admits 'Zelda Q' → 'Zelda Quinton', so the ambiguity gate
+    // must cover initialled variants too: with 'Zelda Quiller' also in the
+    // sheet, proposing the more frequent expansion hands out exactly the
+    // guess the ≠ person line above it says cannot be made — and the
+    // AMBIGUITY section cannot catch it, since its bare-name list is
+    // single-token only.
+    const rows = [];
+    for (let i = 1; i <= 3; i++) {
+        rows.push(raw({ ts: `1/${i}/2024 10:00:00`,
+            p1: 'Zelda Quinton', p2: 'Beryl Ray', p3: 'Carol Fox' }));
+    }
+    rows.push(raw({ ts: '2/1/2024 10:00:00', p1: 'Zelda Quiller', p2: 'Beryl Ray', p3: 'Carol Fox' }));
+    rows.push(raw({ ts: '3/1/2024 10:00:00', p1: 'Zelda Q', p2: 'Beryl Ray', p3: 'Carol Fox' }));
+    const out = runAliasAudit(buildViews(rows, NO_TABLES), NO_TABLES).join('\n');
+    assert.match(out, /≠ ambiguous\s+'Zelda Q' \[upper\].*'Zelda Quiller' or 'Zelda Quinton'/);
+    assert.doesNotMatch(out, /propose 'Zelda Q'/);
+    assert.doesNotMatch(out.slice(out.indexOf('PLAYER_ALIASES proposal')), /"Zelda Q"/);
+
+    // The gate matches candidates by the same prefix test as the proposal:
+    // a namesake the initial cannot expand to is no rival, so it must not
+    // block the proposal (nor appear as a could-be).
+    const withXu = [...rows.slice(0, 3),
+        raw({ ts: '2/1/2024 10:00:00', p1: 'Zelda Xu', p2: 'Dan Ray', p3: 'Ernesto Fox' }),
+        raw({ ts: '3/1/2024 10:00:00', p1: 'Zelda Q', p2: 'Beryl Ray', p3: 'Carol Fox' })];
+    const out2 = runAliasAudit(buildViews(withXu, NO_TABLES), NO_TABLES).join('\n');
+    assert.match(out2, /propose 'Zelda Q' \[upper\] → 'Zelda Quinton'/);
+});
+
 test('a bare name with two candidates is never proposed', () => {
     // The AMBIGUITY section says an alias can only guess one of them; the
     // paste-ready block must not hand out that guess. Pasting it would

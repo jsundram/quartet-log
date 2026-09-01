@@ -56,19 +56,30 @@ function alreadyAliased(aliases, variant, cls) {
 }
 
 /**
- * Could `short` be an abbreviated writing of `long`? Fewer tokens always
- * qualifies ("Zelda" for "Zelda Quinton"). At equal token count only an
- * initialled surname does — "Zelda Q" is Zelda Quinton with the surname
- * abbreviated (isFullName's rule), while two equal-length FULL names are two
- * people. Token count alone declared the initialled form a second person, and
+ * Could `short` be an abbreviated writing of `long`? Token-wise: `short` may
+ * have at most as many tokens, and every token it does have must be a prefix
+ * of `long`'s corresponding token (trailing dots ignored, so "Zelda Q." reads
+ * as "Zelda Q"). So "Zelda", "Zelda Q" and "Mary Jane" all abbreviate longer
+ * names they prefix — but "Mary Smith" does not abbreviate "Mary Jane
+ * Wilson": token COUNT alone admitted it, and at 100% teammate overlap the
+ * paste-ready block then merged two written-out people.
+ *
+ * At equal token count the prefix test alone would still admit one full name
+ * that prefixes another, so full names are barred there outright: "Zelda Q"
+ * is Zelda Quinton with the surname abbreviated (isFullName's rule), while
+ * two equal-length FULL names are two people even when one prefixes the
+ * other. (Token count alone declared the initialled form a second person, and
  * since attribution skips 2-token subjects and isFullName bars 1-char-surname
- * candidates, no tool could then alias or even report it.
+ * candidates, no tool could then alias or even report it.)
  * @param {string} short @param {string} long
  */
 function abbreviates(short, long) {
-    const s = short.trim().split(/\s+/).length;
-    const l = long.trim().split(/\s+/).length;
-    return s < l || (s === l && !isFullName(short) && isFullName(long));
+    const s = short.trim().split(/\s+/);
+    const l = long.trim().split(/\s+/);
+    if (s.length > l.length) return false;
+    if (s.length === l.length && isFullName(short)) return false;
+    return s.every((tok, i) =>
+        l[i].toLowerCase().startsWith(tok.replace(/\.+$/, '').toLowerCase()));
 }
 
 /**
@@ -166,27 +177,31 @@ export function variantReport(groups, { aliases }, byFirst) {
                 const overlap = jaccard(canonMates,
                     new Set(teammateCounts(variant.teammates).keys()));
                 const evidence = `overlap=${pct(overlap)}, ${variant.count}×`;
-                // An alias abbreviates (see `abbreviates`). An equal-length
-                // full name is a second person sharing a first name — the
-                // AMBIGUITY hazard — and proposing it would merge two people
-                // in every people statistic, from a block advertised as
-                // paste-ready. Same guard as reviewReport's; said out loud
-                // rather than skipped silently, since it used to be a
-                // proposal.
+                // An alias abbreviates (see `abbreviates`). A name that does
+                // not — an equal-length full name, or a shorter one whose
+                // tokens do not prefix the canonical's — is a second person
+                // sharing a first name (the AMBIGUITY hazard), and proposing
+                // it would merge two people in every people statistic, from a
+                // block advertised as paste-ready. Same guard as
+                // reviewReport's; said out loud rather than skipped silently,
+                // since it used to be a proposal.
                 if (!abbreviates(variant.name, canonical.name)) {
                     lines.push(`    ≠ person  ${q(variant.name)} [${cls}] vs `
-                        + `${q(canonical.name)}  (${evidence}) — equal-length `
-                        + 'names are different people, not an alias');
+                        + `${q(canonical.name)}  (${evidence}) — not an `
+                        + 'abbreviation of it: a second person, not an alias');
                     continue;
                 }
-                // The hazard-1 gate: a bare first name that 2+ full names
-                // could match is exactly what the AMBIGUITY section tells the
-                // reader an alias can only guess at, so the paste-ready block
-                // must not hand out that guess. Said out loud like the guard
-                // above — a proposal that vanished silently would read as
-                // "nothing to do here".
-                const candidates = variant.name.trim().split(/\s+/).length === 1
-                    ? [...candidatesFor(byFirst, token, cls)].sort() : [];
+                // The hazard-1 gate, for every variant `abbreviates` admits:
+                // a name — bare OR initialled — that could be 2+ full names
+                // is exactly what the report tells the reader an alias can
+                // only guess at, so the paste-ready block must not hand out
+                // that guess. Candidates are matched by the same prefix test
+                // as the proposal itself ("Zelda Q" is ambiguous between
+                // Quinton and Quiller, but a Zelda Xu is no rival to it).
+                // Said out loud like the guard above — a proposal that
+                // vanished silently would read as "nothing to do here".
+                const candidates = [...candidatesFor(byFirst, token, cls)]
+                    .filter(c => abbreviates(variant.name, c)).sort();
                 if (candidates.length >= 2) {
                     lines.push(`    ≠ ambiguous  ${q(variant.name)} [${cls}]  `
                         + `(${evidence}) — could be ${candidates.map(q).join(' or ')}; `
