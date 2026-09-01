@@ -36,8 +36,9 @@ import { parseCsv } from '../scripts/lib/parseCsv.mjs';
 import { buildViews, viewsHeader } from '../scripts/lib/views.mjs';
 import {
     ANY_CLASS, baseToken, candidateIndex, candidatesFor, collectAppearances,
-    isFullName, namesByFirst, rowPeople,
+    isFullName, nameShape, namesByFirst, rowPeople,
 } from '../scripts/lib/people.mjs';
+import { warnIfStub } from '../scripts/lib/cli.mjs';
 import { ambiguityReport, groupVariants, runAliasAudit } from '../scripts/audit_aliases.mjs';
 import {
     datestamp, expectedSize, hasKeyboardAnnotation, loggedPeople, mentionsKeyboard,
@@ -195,6 +196,30 @@ test('rowPeople expands a slot abbreviation but never an Others? one', () => {
         ['Alice', 'A']);
 });
 
+test('rowPeople does not expand an abbreviation out of an annotated slot', () => {
+    // fillForward looks the whole trimmed cell up in the table, so "A (vc)"
+    // misses and the app leaves it literal; only normalizePlayerNames strips
+    // the annotation, afterwards. Stripping first here found a key the app
+    // never looks up, so the audit renamed a slot the sheet does not rename.
+    assert.deepEqual(
+        rowPeople(row({ p1: 'A (vc)', p2: 'A' }), { A: 'Alice' }).map(p => p.name),
+        ['A', 'Alice']);
+});
+
+test('a wholly-empty CSV line is not a row', () => {
+    // Sheets emits ",,,,,,,,," for a trailing formatted-but-empty row. Kept,
+    // it reaches processRow, prepareRows drops it for an unparseable
+    // timestamp, and every audit then heads its report with the "!! N row(s)
+    // have a timestamp that will not parse" banner — sending the reader to
+    // fix a Timestamp cell on a row that says nothing.
+    const csv = `${HEADERS.join(',')}\n`
+        + '1/1/2024 10:00:00,Haydn,76#1,V1,Alice,Bob,Carol,,Home,\n'
+        + `${','.repeat(HEADERS.length - 1)}\n`;
+    const rows = parseCsv(csv);
+    assert.equal(rows.length, 1);
+    assert.equal(buildViews(rows, NO_TABLES).dropped, 0);
+});
+
 test('rowPeople demands an abbreviation table', () => {
     assert.throws(() => rowPeople(row({ p1: 'Alice' })), TypeError);
 });
@@ -242,6 +267,28 @@ test('a one-letter surname is an abbreviation, not a rival', () => {
     assert.equal(isFullName('Alice H'), false);
     assert.equal(isFullName('Alice H.'), false);
     assert.equal(isFullName('Alice Hart'), true);
+});
+
+test('nameShape is the one answer to how completely a cell names a person', () => {
+    // The four shapes, and the four call sites that used to decide them
+    // privately: isFullName barred a 1-char surname, abbreviates compared
+    // token counts, attribution counted tokens, and the hazard-1 gate keyed
+    // on "exactly one token". Each pair disagreed somewhere, and each round
+    // of fixes moved the disagreement instead of ending it.
+    assert.equal(nameShape('Alice'), 'bare');
+    assert.equal(nameShape('  Alice  '), 'bare');
+    assert.equal(nameShape('Alice H'), 'initialled');
+    assert.equal(nameShape('Alice H.'), 'initialled');
+    assert.equal(nameShape('Alice Hart'), 'full');
+    assert.equal(nameShape('Alice Mary Hart'), 'full');
+    // Shape is decided before token counting: an unparsed cell is not a
+    // person of any length.
+    assert.equal(nameShape('Alice Hart (va2)?'), 'unparsed');
+    assert.equal(nameShape('Alice (piano) extra'), 'unparsed');
+    // isFullName is now a view of the shape, not a second opinion about it.
+    for (const n of ['Alice', 'Alice H', 'Alice Hart', 'Alice Hart (va2)?']) {
+        assert.equal(isFullName(n), nameShape(n) === 'full', n);
+    }
 });
 
 test('bare names are not candidates', () => {
@@ -657,14 +704,14 @@ test('a blank is a ditto mark however long the break', () => {
 test('the session-window report measures shorthand, not blanks', () => {
     const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alberto Stone' }),
         raw({ ts: '1/1/2024 11:00:00', p1: 'Alberto' })];
-    const out = sessionWindowReport(buildViews(rows, NO_TABLES), {}).join('\n');
+    const out = sessionWindowReport(buildViews(rows, NO_TABLES)).join('\n');
     assert.match(out, /1 shorthand entries; 1 inside the window/);
     assert.match(out, /'Alberto Stone'/);
 });
 
 test('the session-window report says so when nothing constrains the value', () => {
     const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alberto Stone' })];
-    assert.match(sessionWindowReport(buildViews(rows, NO_TABLES), {}).join('\n'),
+    assert.match(sessionWindowReport(buildViews(rows, NO_TABLES)).join('\n'),
         /unconstrained/);
 });
 
@@ -681,7 +728,7 @@ test('the session-window gap is measured from the row above, as fillForward does
     const views = buildViews(rows, NO_TABLES);
     // The app expanded it: the gap it saw was 1h, from the blank row above.
     assert.equal(views.filled[3].player1, 'Grace Brown');
-    const out = sessionWindowReport(views, {}).join('\n');
+    const out = sessionWindowReport(views).join('\n');
     assert.match(out, /1 shorthand entries; 1 inside the window/);
     assert.match(out, /1\.00h.*\[expanded\]/);
 });
@@ -697,7 +744,7 @@ test('an expanded shorthand does not become the reference entry', () => {
     const views = buildViews(rows, NO_TABLES);
     assert.deepEqual(views.filled.map(r => r.player1),
         ['Grace Brown', 'Grace Brown', 'Grace Brown']);
-    assert.match(sessionWindowReport(views, {}).join('\n'),
+    assert.match(sessionWindowReport(views).join('\n'),
         /2 shorthand entries; 2 inside the window/);
 });
 
@@ -708,11 +755,18 @@ test('the session-window report expands an abbreviation the way the app does', (
     const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Bob Jones' }),
         raw({ ts: '1/1/2024 11:00:00', p1: 'A' }),
         raw({ ts: '1/1/2024 12:00:00', p1: 'Alice' })];
-    const views = buildViews(rows, NO_TABLES);
-    assert.match(sessionWindowReport(views, { A: 'Alice Hart' }).join('\n'),
+    // The table has to be the one the views were BUILT with, because the
+    // report reads the trace of that run. Under the old two-argument
+    // signature the two could disagree, and this test was where it happened:
+    // it asked the report to expand from a table the views never saw, so it
+    // asserted an expansion the app had not performed on these rows.
+    const withTable = buildViews(rows, { aliases: {}, abbreviations: { A: 'Alice Hart' } });
+    assert.deepEqual(withTable.processed.map(r => r.player1),
+        ['Bob Jones', 'Alice Hart', 'Alice Hart']);
+    assert.match(sessionWindowReport(withTable).join('\n'),
         /1 shorthand entries; 1 inside the window/);
-    // Without the table "A" would stand as its own name and nothing follows it.
-    assert.match(sessionWindowReport(views, {}).join('\n'),
+    // Without the table "A" stands as its own name and nothing follows it.
+    assert.match(sessionWindowReport(buildViews(rows, NO_TABLES)).join('\n'),
         /No shorthand entries in this file/);
 });
 
@@ -731,7 +785,7 @@ test('a prefix that is also an abbreviation follows the app outside the window',
     // from the table, and "Jane" then abbreviates the expansion.
     assert.deepEqual(views.processed.map(r => r.player1),
         ['J Smith', 'Jane Doe', 'Jane Doe']);
-    const out = sessionWindowReport(views, tables.abbreviations).join('\n');
+    const out = sessionWindowReport(views).join('\n');
     assert.match(out, /2 shorthand entries; 1 inside the window/);
     assert.match(out, /10\.00h.*-> 'Jane Doe'\s+\[expanded via table\]/);
     assert.match(out, /1\.00h.*-> 'Jane Doe'\s+\[expanded\]/);
@@ -748,7 +802,7 @@ test('the session-window report measures the location column too', () => {
     const views = buildViews(rows, NO_TABLES);
     // The app really does expand it — 3.5h is inside the 4h window.
     assert.equal(views.filled[1].location, 'Oak Hall');
-    const out = sessionWindowReport(views, {}).join('\n');
+    const out = sessionWindowReport(views).join('\n');
     assert.match(out, /1 shorthand entries; 1 inside the window/);
     assert.match(out, /3\.50h.*-> 'Oak Hall'\s+\[expanded\]/);
 });
@@ -891,9 +945,36 @@ test('no audit module reaches the real alias file at import time', () => {
         'scripts/audit_fillforward.mjs', 'scripts/attribution.mjs',
         'scripts/lib/people.mjs', 'scripts/lib/views.mjs']) {
         const source = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
-        assert.doesNotMatch(source, /^import .*(config|aliases)\.js/m,
+        // Matched on the SPECIFIER, not on a line starting with `import`:
+        // every import in these modules is written multi-line, so an anchored
+        // one-line pattern could not see the thing it was guarding against.
+        // Mutation-tested — adding a multi-line `import { PLAYER_ALIASES }
+        // from '../../src/config.js'` to people.mjs left the old regex green.
+        assert.doesNotMatch(source, /(from|import)\s+['"][^'"]*\/(config|aliases)\.js['"]/,
             `${file} must take its name tables as an argument`);
     }
+});
+
+test('warnIfStub warns when EITHER table is empty, and names it', () => {
+    // `||` meant only a wholly-empty file warned. A half-materialized one —
+    // abbreviations populated, aliases {} — passed silently while both
+    // ambiguity hazards and every NEEDS MEMORY summary line were artefacts of
+    // the missing half.
+    /** @param {object} tables @returns {string} */
+    const warn = tables => {
+        const out = [];
+        const real = console.error;
+        console.error = m => out.push(String(m));
+        try { warnIfStub(tables); } finally { console.error = real; }
+        return out.join('\n');
+    };
+    assert.match(warn({ aliases: {}, abbreviations: { A: 'Alice' } }),
+        /PLAYER_ALIASES in src\/aliases\.js is empty/);
+    assert.match(warn({ aliases: { Al: { upper: 'Alice' } }, abbreviations: {} }),
+        /PLAYER_ABBREVIATIONS in src\/aliases\.js is empty/);
+    assert.match(warn({ aliases: {}, abbreviations: {} }),
+        /PLAYER_ALIASES and PLAYER_ABBREVIATIONS in src\/aliases\.js are empty/);
+    assert.equal(warn({ aliases: { Al: { upper: 'Alice' } }, abbreviations: { A: 'Alice' } }), '');
 });
 
 test('every table-dependent entry point warns when the tables are the stub', () => {

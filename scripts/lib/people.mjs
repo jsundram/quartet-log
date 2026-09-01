@@ -80,7 +80,13 @@ export function rowPeople(row, abbreviations) {
         // only counts when it names an instrument, so "(sub)" stays positional.
         const annotation = row.playerInstruments?.[i] ?? instrumentFromSlot(raw);
         people.push({
-            name: expand(/** @type {string} */ (stripParens(raw))),
+            // Expanded BEFORE the annotation is stripped, because that is the
+            // order the app works in: fillForward looks the whole trimmed
+            // cell up in the table, so "A (vc)" misses and stays literal,
+            // and only normalizePlayerNames strips the annotation afterwards.
+            // Stripping first found a key the app never looks up, so the
+            // audit renamed a slot the sheet does not rename.
+            name: /** @type {string} */ (stripParens(expand(raw))),
             cls: classOf(annotation) ?? SLOT_CLASS[i],
             seat: `p${i + 1}`,
         });
@@ -195,25 +201,46 @@ export function baseToken(name) {
 }
 
 /**
- * A written-out name: not a bare first name, not an initialled one, and not a
- * cell the app failed to parse.
+ * How completely a name cell names a person. THE answer to that question:
+ * every tool that needs it asks here rather than re-deriving it.
  *
- * "Peter O" is Peter Ouyang with the surname abbreviated, not a second Peter.
- * Admitting it as a candidate invents a rival for the real person.
+ * It was re-derived, and the derivations disagreed — which is the whole
+ * reason this exists. `isFullName` barred a 1-character surname while
+ * `abbreviates` compared token counts, so "Zelda Q" was a second person to
+ * one and an abbreviation to the other; attribution meanwhile called anything
+ * multi-token "not a bare name" and skipped it. Each fix moved the
+ * disagreement rather than ending it. One classifier, four call sites, and
+ * the shapes cannot drift apart.
  *
- * So is "Peter Ouyang (va2)?": stripParens and parseOthers strip only a
- * TRAILING "(...)", so a stray character after the annotation keeps it inside
- * the name. Admitted, it rivals its own clean form — the reader is told to
- * confirm against a person who does not exist, and, always thinly "written",
- * it lands in every unruled list, where one phantom can demote a genuine
- * edit-this-cell finding into the silent unverified count.
+ *   unparsed    still holds "(" — stripParens and parseOthers strip only a
+ *               TRAILING "(...)", so "Peter Ouyang (va2)?" keeps its
+ *               annotation. It is not a person: admitted as one it rivals its
+ *               own clean form, and the reader is sent to confirm against
+ *               someone who does not exist.
+ *   bare        one token. "Alice" — who an alias or the row has to decide.
+ *   initialled  a surname abbreviated to a letter. "Peter O" is Peter Ouyang,
+ *               not a second Peter.
+ *   full        written out. The only shape that can be a candidate, because
+ *               it is the only one that says which person it means.
+ * @param {string} name
+ * @returns {'unparsed'|'bare'|'initialled'|'full'}
+ */
+export function nameShape(name) {
+    if (name.includes('(')) return 'unparsed';
+    const tokens = name.trim().split(/\s+/);
+    if (tokens.length < 2) return 'bare';
+    // Trailing dots ignored, so "Peter O." reads as "Peter O".
+    if (tokens[tokens.length - 1].replace(/\.+$/, '').length < 2) return 'initialled';
+    return 'full';
+}
+
+/**
+ * A written-out name — the shape that can be a candidate.
  * @param {string} name
  * @returns {boolean}
  */
 export function isFullName(name) {
-    if (name.includes('(')) return false;
-    const tokens = name.trim().split(/\s+/);
-    return tokens.length > 1 && tokens[tokens.length - 1].replace(/\.+$/, '').length > 1;
+    return nameShape(name) === 'full';
 }
 
 /**

@@ -33,6 +33,7 @@ import {
 import { parseCsv } from './parseCsv.mjs';
 
 /** @typedef {import('../../src/dataProcessor.js').Row} Row */
+/** @typedef {import('../../src/dataProcessor.js').FillDecision} FillDecision */
 /** @typedef {import('../../src/aliases.stub.js').AliasEntry} AliasEntry */
 
 /**
@@ -55,6 +56,11 @@ import { parseCsv } from './parseCsv.mjs';
  *   section below AND from the app, so a silent drop leaves the printed row
  *   total quietly disagreeing with the file. In a data-quality audit an
  *   unparseable timestamp is itself a finding.
+ * @property {FillDecision[]} fillDecisions - every cell fill-forward touched
+ *   building `processed`, and which rule decided it. A view of the RUN rather
+ *   than of the rows, and an input for the same reason the three row views
+ *   are: the audit that reports on fill-forward reads what it did instead of
+ *   reimplementing it.
  */
 
 /**
@@ -71,7 +77,13 @@ export function buildViews(rawRows, { aliases, abbreviations }) {
 
     fillForward(filled.rows, {});
 
-    fillForward(processed.rows, abbreviations);
+    // The trace comes from THIS run, the one with the real abbreviations,
+    // because that is the run the app performs — a trace of the empty-table
+    // run above would never take the `table` branch and would report the
+    // window as governing entries the app expands without consulting it.
+    /** @type {FillDecision[]} */
+    const fillDecisions = [];
+    fillForward(processed.rows, abbreviations, d => fillDecisions.push(d));
     normalizePlayerNames(processed.rows, aliases);
 
     return {
@@ -79,6 +91,7 @@ export function buildViews(rawRows, { aliases, abbreviations }) {
         filled: filled.rows,
         processed: processed.rows.filter(d => !d.work.incomplete),
         dropped: written.dropped,
+        fillDecisions,
     };
 }
 

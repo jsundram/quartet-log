@@ -23,7 +23,8 @@
 
 import { formatTimestamp } from '../src/csvFormat.js';
 import {
-    ANY_CLASS, baseToken, candidateIndex, candidatesFor, collectAppearances, rowPeople,
+    ANY_CLASS, baseToken, candidateIndex, candidatesFor, collectAppearances,
+    nameShape, rowPeople,
 } from './lib/people.mjs';
 import { loadViews, viewsHeader } from './lib/views.mjs';
 import { readNameTables, runAudit, warnIfStub } from './lib/cli.mjs';
@@ -123,9 +124,16 @@ export function attribute({ written, filled }, { aliases, abbreviations }) {
         const bySeat = new Map(cast.map(p => [p.seat, p.name]));
         for (const subject of rowPeople(row, abbreviations)) {
             const { name, cls, seat } = subject;
-            // Only a bare first name is in question. A written-out name is
-            // already an answer.
-            if (name.trim().split(/\s+/).length > 1) continue;
+            // Only a bare first name is in question: a written-out name is
+            // already an answer, and an unparsed cell names nobody.
+            //
+            // An INITIALLED name ("Peter O") is a real gap this tool does not
+            // cover — the row could decide it the same way it decides a bare
+            // one — but covering it is a change in what the tool reports, not
+            // a refactor, so it stays out until that is the intent. Naming
+            // the shape rather than counting tokens is what makes it a
+            // one-word change instead of a fifth private definition.
+            if (nameShape(name) !== 'bare') continue;
             let candidates = candidatesFor(byFirst, baseToken(name), cls);
             if (candidates.size < 2) continue;
 

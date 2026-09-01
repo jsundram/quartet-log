@@ -796,11 +796,38 @@ export function refersToPrevEntry(entry, prevEntry) {
 // as "not the same session" rather than being allowed to slip under the
 // window the way any negative number satisfies `hours < 4`.
 /**
+ * One cell's fill-forward decision, as it was made.
+ *
+ * Reported rather than re-derived. The audit that measures where the session
+ * window actually bites used to mirror the loop below — same columns, same
+ * seeding, same branch order — and every review round found the mirror
+ * disagreeing with the original somewhere (the gap measured from the wrong
+ * row, a branch taken ungated, the location column missing). A trace makes
+ * the divergence impossible instead of testable: there is one loop, and the
+ * reader of the report sees what the app did.
+ *
+ * `reference` is the entry this cell was compared against, captured before
+ * the branch could advance it — the `new` branch leaves the cell as typed and
+ * still needs to name the fuller entry it declined to expand into.
+ * @typedef {Object} FillDecision
+ * @property {Row} row
+ * @property {string} column - one of player1/player2/player3/location
+ * @property {'ditto'|'shorthand'|'table'|'new'} branch - which rule fired
+ * @property {string} entry - the trimmed cell as typed
+ * @property {string} reference - the entry compared against, pre-branch
+ * @property {number} gap - hours since the row holding `reference`
+ * @property {string} result - what the cell now holds
+ */
+
+/**
  * @param {Row[]} data - MUST be in chronological order (see prepareRows)
  * @param {Record<string, string>} abbreviations
+ * @param {(d: FillDecision) => void} [onDecision] - called once per filled
+ *   cell, in column-then-row order. The app passes nothing; the audit passes
+ *   a collector so it can report on the run instead of reproducing it.
  * @returns {Row[]}
  */
-export function fillForward(data, abbreviations) {
+export function fillForward(data, abbreviations, onDecision) {
     if (!abbreviations) throw new TypeError('fillForward: pass an abbreviation table (use {} for none)');
     if (!data.length) return data;
     ["player1", "player2", "player3", "location"].forEach(column => {
@@ -810,11 +837,16 @@ export function fillForward(data, abbreviations) {
         data.slice(1).forEach(row => {
             const entry = row[column].trim();
             if (entry != '-') {
+                // What the reference entry was BEFORE this row's branch could
+                // move it: the branch that leaves an entry as typed still
+                // needs to report the fuller name it declined to expand into.
+                const reference = prevEntry;
                 // Number(Date) = ms epoch; rows here come from the sheet, so
                 // timestamps are real Dates (nulls exist only on
                 // createEmptyRow placeholders, which never enter fillForward).
                 const hours = (Number(row.timestamp) - Number(prev.timestamp)) / 1000 / 60 / 60;
                 const sameSession = hours >= 0 && hours < SESSION_WINDOW_HOURS;
+                let branch;
                 if (entry === '') {
                     // A blank is a ditto mark, and it is one however long the
                     // break was: nobody starts a session by leaving the names
@@ -825,18 +857,28 @@ export function fillForward(data, abbreviations) {
                     // dinner-break gap made the row take its own empty value,
                     // and that empty value then anchored every row after it.
                     row[column] = prevEntry;
+                    branch = 'ditto';
                 } else if (sameSession && refersToPrevEntry(entry, prevEntry)) {
                     // A written-out shorthand IS gated, because it is an
                     // inference rather than a ditto: "Peter" abbreviates the
                     // "Peter Ouyang" from an hour ago, but next month it is
                     // just as likely to be a different Peter.
                     row[column] = prevEntry;
+                    branch = 'shorthand';
                 } else if (Object.prototype.hasOwnProperty.call(abbreviations, entry)) {
                     prevEntry = abbreviations[entry];
                     row[column] = prevEntry;
+                    branch = 'table';
                 } else {
                     prevEntry = entry;
                     row[column] = entry;
+                    branch = 'new';
+                }
+                if (onDecision) {
+                    onDecision({
+                        row, column, branch, entry, reference,
+                        gap: hours, result: row[column],
+                    });
                 }
                 prev = row;
             }

@@ -44,6 +44,13 @@ export function parseCsv(text) {
     if (!rows.length) return [];
     const headers = rows[0];
     return rows.slice(1)
-        .filter(r => r.length > 1 || (r.length === 1 && r[0] !== ''))
+        // A line with no content in ANY field is not a row. Checking the
+        // field COUNT instead kept ",,,,,,,,," — the shape Sheets emits for a
+        // trailing formatted-but-empty row — which processRow accepts and
+        // prepareRows then drops for an unparseable timestamp, putting the
+        // "!! N row(s) have a timestamp that will not parse" banner on every
+        // audit and sending the reader to fix a Timestamp cell on a row that
+        // says nothing.
+        .filter(r => r.some(f => f !== ''))
         .map(r => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ''])));
 }

@@ -47,12 +47,23 @@ function samePath(p, self) {
  * @param {NameTables} tables
  */
 export function warnIfStub({ aliases, abbreviations }) {
-    if (Object.keys(aliases).length || Object.keys(abbreviations).length) return;
+    // EITHER table being empty is worth saying, not only both. `||` meant a
+    // half-materialized file — abbreviations populated, aliases {} — passed
+    // silently while every alias-aware count (both ambiguity hazards, the
+    // NEEDS MEMORY summary lines) was an artefact of the missing half. The
+    // two tables also fail differently, so the message names the one that is
+    // empty rather than describing a stub the file may not be.
+    const empty = [
+        !Object.keys(aliases).length && 'PLAYER_ALIASES',
+        !Object.keys(abbreviations).length && 'PLAYER_ABBREVIATIONS',
+    ].filter(Boolean);
+    if (!empty.length) return;
     console.error(
-        'Warning: src/aliases.js has empty tables (the stub copy?) — no short\n'
-        + 'form resolves, so every one looks like a person of its own and every\n'
-        + 'bare entry looks undecided. Put your real tables in src/aliases.js\n'
-        + '(gitignored) before trusting this report.');
+        `Warning: ${empty.join(' and ')} in src/aliases.js `
+        + `${empty.length > 1 ? 'are' : 'is'} empty (the stub copy?) — no short\n`
+        + 'form resolves through it, so every one looks like a person of its own\n'
+        + 'and every bare entry looks undecided. Put your real tables in\n'
+        + 'src/aliases.js (gitignored) before trusting this report.');
 }
 
 /**
