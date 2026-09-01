@@ -2,12 +2,11 @@
 // Canonical CSV export format, shared by the in-app "Download Data" button
 // (src/app.js downloadCSV) and scripts/fetch_processed.mjs so the two writers
 // cannot drift apart again. That drift already happened once: both writers
-// emitted an `Others` header while the readers (processRow,
-// scripts/audit_aliases.py) expected the sheet's `Others?`, so the whole
-// column was silently dropped on re-ingestion. The readers still accept both
-// spellings so pre-fix exports load; everything written from here on uses
-// these headers verbatim. Pure module — no DOM, no d3 — so it stays
-// unit-testable under node:test.
+// emitted an `Others` header while the readers (processRow, the audit
+// scripts) expected the sheet's `Others?`, so the whole column was silently
+// dropped on re-ingestion. The readers still accept both spellings so pre-fix
+// exports load; everything written from here on uses these headers verbatim.
+// Pure module — no DOM, no d3 — so it stays unit-testable under node:test.
 
 export const CSV_HEADERS = [
     'Timestamp', 'Composer', 'Work Title', 'Which Part',
@@ -45,7 +44,7 @@ export function formatTimestamp(d) {
 // instrumentFromSlot into playerInstruments); writing only the name would
 // make the export lossy in exactly the way that matters — an annotated
 // pianist is indistinguishable from a violinist in the re-read file, so
-// scripts/audit_ensembles.py could never see one. Re-reading this restores
+// scripts/audit_ensembles.mjs could never see one. Re-reading this restores
 // the same annotation, since instrumentFromSlot parses what we write here.
 /**
  * @param {string|null} name

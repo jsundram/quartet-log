@@ -1,7 +1,5 @@
 last_deploy/
 .DS_Store
-__pycache__/
-*.pyc
 *.zip
 wrapped/
 .playwright-mcp/

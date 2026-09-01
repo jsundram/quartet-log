@@ -4,7 +4,7 @@
 #
 # The deploy workflow (.github/workflows/deploy.yml) materializes
 # src/aliases.js from that secret — nothing syncs it automatically, so run
-# this after editing src/aliases.js (e.g. from scripts/audit_aliases.py's
+# this after editing src/aliases.js (e.g. from scripts/audit_aliases.mjs's
 # proposal block) or the deployed site keeps normalizing with stale tables.
 #
 # Refuses to push an empty/stub table so a fresh clone can't blank the

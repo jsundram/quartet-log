@@ -1,26 +1,32 @@
 #!/usr/bin/env bash
 # Run every data-quality audit against a freshly fetched copy of the sheet.
 #
-# Each audit needs a different view of the data, and the difference matters:
+# One input: archive/data-raw.csv, the sheet exactly as it was typed. Each
+# audit derives the view it needs in-process (scripts/lib/views.mjs) and says
+# in its own header which one it read, so nothing here has to choose:
 #
-#   audit_aliases     archive/data.csv      processed. fillForward has run, so
-#                     (post-fillForward)    every row lists its full group and
-#                                           the teammate-overlap heuristic has
-#                                           something to work with. It warns on
-#                                           its own if a question needs the raw
-#                                           sheet instead — alias liveness
-#                                           cannot be read from a canonicalized
-#                                           export, because a working alias
-#                                           looks dead there.
+#   audit_aliases      the WRITTEN view. Every question it asks is about what a
+#                      human typed — how often a full name was spelled out,
+#                      which cells still hold a bare one, whether an alias key
+#                      is still in the sheet.
+#   audit_ensembles    the PROCESSED view, the app's own pipeline. On the
+#                      written view every continuation row states no players
+#                      and would look under-logged.
+#   audit_fillforward  the WRITTEN view by necessity. It looks for exactly the
+#                      blank player slots that mark a continuation row, and
+#                      fill-forward is what erases them.
+#   attribution        WRITTEN for the subjects (a finding asks you to edit a
+#                      cell, and only that view has cells) and FILLED for the
+#                      evidence (who was in the room). Its own module, printer
+#                      and entry point — `npm run attribution` — because its
+#                      findings decay and the descriptive audits can batch. It
+#                      is run here too so one command still gives the whole
+#                      picture.
 #
-#   audit_ensembles   archive/data.csv      processed, for the same reason: on
-#                                           the raw sheet every continuation
-#                                           row looks under-logged.
-#
-#   audit_fillforward archive/data-raw.csv  raw by necessity. It looks for the
-#                                           blank player slots that mark a
-#                                           continuation row, and fillForward
-#                                           is exactly what erases them.
+# archive/data.csv is no longer an input: the processed view is derived here
+# from the raw file rather than read from a second path that could be a
+# different snapshot. scripts/fetch_processed.mjs still writes it, for the
+# "Download Data" round-trip it exists to mirror.
 #
 # Usage: npm run audit            fetch fresh, then audit
 #        npm run audit -- --no-fetch    audit whatever is already in archive/
@@ -32,12 +38,9 @@ for arg in "$@"; do
     [ "$arg" = "--no-fetch" ] && FETCH=0
 done
 
-if command -v uv >/dev/null 2>&1; then
-    PY=(uv run --python 3.12 python)
-else
-    PY=(python3)
-    echo "note: uv not found, falling back to python3" >&2
-fi
+# The audits import src/config.js, which re-exports the gitignored
+# src/aliases.js; on a fresh clone that file does not exist yet.
+node scripts/ensure_aliases.mjs
 
 if [ "$FETCH" = 1 ]; then
     if [ ! -f .dev-data-url ]; then
@@ -46,57 +49,105 @@ if [ "$FETCH" = 1 ]; then
         echo "whatever is already in archive/." >&2
         exit 1
     fi
-    node scripts/fetch_processed.mjs
     ./scripts/fetch_raw.sh
     echo
 fi
 
-for f in archive/data.csv archive/data-raw.csv; do
-    if [ ! -f "$f" ]; then
-        echo "error: $f missing — run without --no-fetch." >&2
-        exit 1
-    fi
-done
+RAW=archive/data-raw.csv
+if [ ! -f "$RAW" ]; then
+    echo "error: $RAW missing — run without --no-fetch." >&2
+    exit 1
+fi
 
 rule() { printf '\n%s\n%s\n%s\n' "$(printf '=%.0s' {1..72})" "  $1" "$(printf '=%.0s' {1..72})"; }
+
+# An audit that examined nothing is a failure, and `set -euo pipefail` cannot
+# see one that exited 0 — a symlinked invocation path used to do exactly that.
+# Without this the SUMMARY below prints blank counts and a run that read no
+# rows reads as a run that found nothing wrong.
+#
+# The test is the row-count header every audit prints first (viewsHeader), not
+# an empty file: `console.log(lines.join())` emits a newline even for an empty
+# report, so `[ -s ]` would pass on one. This checks that an audit got as far
+# as counting its rows.
+run() {
+    local out=$1; shift
+    node "$@" | tee "$out"
+    if ! grep -q '^Rows:' "$out"; then
+        echo "error: $1 never reported a row count — refusing to summarize it." >&2
+        exit 1
+    fi
+}
 
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 
-rule "PLAYER NAMES        scripts/audit_aliases.py"
-"${PY[@]}" scripts/audit_aliases.py archive/data.csv | tee "$OUT/aliases.txt"
+rule "PLAYER NAMES        scripts/audit_aliases.mjs"
+run "$OUT/aliases.txt" scripts/audit_aliases.mjs "$RAW"
 
-rule "ENSEMBLE HEADCOUNT  scripts/audit_ensembles.py"
-"${PY[@]}" scripts/audit_ensembles.py archive/data.csv | tee "$OUT/ensembles.txt"
+rule "ENSEMBLE HEADCOUNT  scripts/audit_ensembles.mjs"
+run "$OUT/ensembles.txt" scripts/audit_ensembles.mjs "$RAW"
 
-rule "DROPPED BY FILL-FORWARD   scripts/audit_fillforward.py"
-"${PY[@]}" scripts/audit_fillforward.py archive/data-raw.csv | tee "$OUT/fillforward.txt"
+rule "DROPPED BY FILL-FORWARD   scripts/audit_fillforward.mjs"
+run "$OUT/fillforward.txt" scripts/audit_fillforward.mjs "$RAW"
+
+rule "WHICH PERSON      scripts/attribution.mjs"
+run "$OUT/attribution.txt" scripts/attribution.mjs "$RAW"
 
 # The full output runs to hundreds of lines, most of it groups that are fine.
 # This is the part worth reading on a routine run: what needs a decision, and
 # which decisions decay if left (only you know who "Alice" was last month).
 # Each audit heads its sections "<label> (<n>)"; pull the n off the first
-# line matching the label.
-count() { grep -E "$1" "$2" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
+# line matching the label. Every count comes from the run above — one process
+# per audit, no second pass against a different view.
+#
+# An unmatched label must not read as a genuine zero. These run inside command
+# substitutions used as printf arguments, where `set -euo pipefail` cannot see
+# a failure — the same hole `run` closes for a whole audit — and a summary
+# label can only stop matching via a code change, which is exactly when a
+# silent blank would go unquestioned. So `require` prints '?' in the count's
+# place, says so on stderr (which passes through the substitution), and drops
+# a sentinel that fails the script once the summary has shown every count it
+# could.
+require() {
+    if [ -z "$1" ]; then
+        echo "error: $2" >&2
+        touch "$OUT/count-failed"
+        printf '?'
+    else
+        printf '%s' "$1"
+    fi
+}
+count() {
+    require "$(grep -E "$1" "$2" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()' || true)" \
+        "no section matching '$1' in $2"
+}
 rule "SUMMARY"
 printf '  %-46s %s\n' \
   "bare names with 2+ candidates (NEEDS MEMORY)" "$(count 'bare names in the sheet with 2\+ candidates' "$OUT/aliases.txt")" \
   "aliases keyed on an ambiguous first name" "$(count 'aliases keyed on an ambiguous first name' "$OUT/aliases.txt")"
-# Taken from the raw sheet, not the run above: on a canonicalized export
-# every live alias's canonical name is present by construction, so both
-# counts collapse to near-nothing there and would read as "nothing to see".
-RAWALIAS=$("${PY[@]}" scripts/audit_aliases.py archive/data-raw.csv 2>/dev/null || true)
-n_of() { printf '%s' "$RAWALIAS" | grep -E "$1" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
 printf '  %-46s %s\n' \
-  "aliases that are a surname's only record" "$(n_of 'ONLY record of a surname') (back up src/aliases.js)" \
-  "aliases pointing at an unrelated name" "$(n_of 'absent and unrelated')"
+  "aliases that are a surname's only record" "$(count 'ONLY record of a surname' "$OUT/aliases.txt") (back up src/aliases.js)" \
+  "aliases pointing at an unrelated name" "$(count 'absent and unrelated' "$OUT/aliases.txt")"
 printf '  %-46s %s\n' \
   "under-logged, ensemble stated (NEEDS MEMORY)" "$(count 'title states the ensemble' "$OUT/ensembles.txt")" \
   "piano works with nobody marked at the keyboard" "$(count 'UNANNOTATED PIANO WORKS' "$OUT/ensembles.txt")"
 printf '  %-46s %s\n' \
   "rows that dropped an Others? player (mechanical)" \
-  "$(grep -oE '^[0-9]+ rows in' "$OUT/fillforward.txt" | grep -oE '[0-9]+' | head -1)"
+  "$(require "$(grep -oE '^[0-9]+ rows in' "$OUT/fillforward.txt" | grep -oE '[0-9]+' | head -1 || true)" \
+      "no 'N rows in' total in $OUT/fillforward.txt")"
+printf '  %-46s %s\n' \
+  "bare entries to edit in the sheet" "$(count 'edit this cell' "$OUT/attribution.txt")" \
+  "bare entries nobody has decided (NEEDS MEMORY)" "$(count 'answer this now' "$OUT/attribution.txt")"
 echo
 echo "  Lines marked NEEDS MEMORY are the ones that get harder to answer the"
 echo "  longer they wait. The rest can safely accumulate — a dropped Others?"
 echo "  player is recoverable from the row above it whenever you get to it."
+
+if [ -e "$OUT/count-failed" ]; then
+    echo >&2
+    echo "error: a summary count matched no section — an audit's output changed" >&2
+    echo "shape. A '?' above is a broken label, not a zero; fix the label here" >&2
+    echo "or the section header in the audit." >&2
+    exit 1
+fi

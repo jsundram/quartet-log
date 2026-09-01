@@ -1061,6 +1061,48 @@ describe('fillForward', () => {
         ...cols,
     });
 
+    it('reports every decision it makes, with the rule that decided it', () => {
+        // The trace exists so the fill-forward audit can report on this loop
+        // instead of reimplementing it. It reimplemented it for three
+        // rounds, and the copy was wrong three different ways; nothing but
+        // one loop with one caller can retire that whole class.
+        const data = [
+            ffRow(0, { player1: 'Fred Brown' }),
+            ffRow(1, { player1: '' }),        // ditto
+            ffRow(2, { player1: 'Fred' }),    // prefix, inside the window
+            ffRow(9, { player1: 'X' }),       // outside it; the table knows X
+            ffRow(10, { player1: 'Nora Vance' }),  // a name of its own
+            ffRow(11, { player1: '-' }),      // no entry: no decision at all
+        ];
+        const seen = [];
+        fillForward(data, { X: 'Xenia Ward' }, d => {
+            if (d.column === 'player1') seen.push(d);
+        });
+        assert.deepEqual(seen.map(d => d.branch),
+            ['ditto', 'shorthand', 'table', 'new']);
+        // `reference` is what the cell was compared against, captured before
+        // the branch could advance it — the "new" branch overwrites it, and
+        // the report still has to name the entry it declined to expand into.
+        assert.deepEqual(seen.map(d => d.reference),
+            ['Fred Brown', 'Fred Brown', 'Fred Brown', 'Xenia Ward']);
+        assert.deepEqual(seen.map(d => d.result),
+            ['Fred Brown', 'Fred Brown', 'Xenia Ward', 'Nora Vance']);
+        assert.deepEqual(seen.map(d => d.entry), ['', 'Fred', 'X', 'Nora Vance']);
+        // The gap is measured from the row above, blank rows included, which
+        // is what `prev = row` in the loop means.
+        assert.deepEqual(seen.map(d => d.gap), [1, 1, 7, 1]);
+        // A "-" cell is not a decision: it neither fills nor advances.
+        assert.equal(seen.length, 4);
+    });
+
+    it('makes no decisions when nobody is listening', () => {
+        // The callback is optional and the app passes none; filling must not
+        // depend on it.
+        const data = [ffRow(0, { player1: 'Fred Brown' }), ffRow(1, { player1: '' })];
+        fillForward(data, {});
+        assert.equal(data[1].player1, 'Fred Brown');
+    });
+
     it('does not merge a mid-word prefix: "Fred" after "Freddy" stays "Fred"', () => {
         const data = [
             ffRow(0, { player1: 'Freddy' }),
