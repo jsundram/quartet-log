@@ -569,6 +569,11 @@ test('expectedSize reads the title, then an instrumentation phrase', () => {
         ['Sextet 1', '', 6, true],
         ['K478', 'Piano Quartet', 4, true],
         ['K478', 'Notturno for Piano Trio', 3, true],
+        // An arrangement title carries two ensemble words and puts what was
+        // PLAYED last; sizing it from the first filed the row under the
+        // section the report says to trust ("title states the ensemble").
+        ['Octet arr. as quintet', '', 5, true],
+        ['Symphony 7 arr for octet as quintet', '', 5, true],
         // Prose, not instrumentation: a bare ensemble word means nothing here.
         ['K478', 'quintets were averted briefly', 4, false],
         ['K478', 'more piano the second time', 4, false],

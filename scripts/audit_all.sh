@@ -100,7 +100,28 @@ run "$OUT/attribution.txt" scripts/attribution.mjs "$RAW"
 # Each audit heads its sections "<label> (<n>)"; pull the n off the first
 # line matching the label. Every count comes from the run above — one process
 # per audit, no second pass against a different view.
-count() { grep -E "$1" "$2" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()'; }
+#
+# An unmatched label must not read as a genuine zero. These run inside command
+# substitutions used as printf arguments, where `set -euo pipefail` cannot see
+# a failure — the same hole `run` closes for a whole audit — and a summary
+# label can only stop matching via a code change, which is exactly when a
+# silent blank would go unquestioned. So `require` prints '?' in the count's
+# place, says so on stderr (which passes through the substitution), and drops
+# a sentinel that fails the script once the summary has shown every count it
+# could.
+require() {
+    if [ -z "$1" ]; then
+        echo "error: $2" >&2
+        touch "$OUT/count-failed"
+        printf '?'
+    else
+        printf '%s' "$1"
+    fi
+}
+count() {
+    require "$(grep -E "$1" "$2" | head -1 | grep -oE '\([0-9]+\)' | tr -d '()' || true)" \
+        "no section matching '$1' in $2"
+}
 rule "SUMMARY"
 printf '  %-46s %s\n' \
   "bare names with 2+ candidates (NEEDS MEMORY)" "$(count 'bare names in the sheet with 2\+ candidates' "$OUT/aliases.txt")" \
@@ -113,7 +134,8 @@ printf '  %-46s %s\n' \
   "piano works with nobody marked at the keyboard" "$(count 'UNANNOTATED PIANO WORKS' "$OUT/ensembles.txt")"
 printf '  %-46s %s\n' \
   "rows that dropped an Others? player (mechanical)" \
-  "$(grep -oE '^[0-9]+ rows in' "$OUT/fillforward.txt" | grep -oE '[0-9]+' | head -1)"
+  "$(require "$(grep -oE '^[0-9]+ rows in' "$OUT/fillforward.txt" | grep -oE '[0-9]+' | head -1 || true)" \
+      "no 'N rows in' total in $OUT/fillforward.txt")"
 printf '  %-46s %s\n' \
   "bare entries to edit in the sheet" "$(count 'edit this cell' "$OUT/attribution.txt")" \
   "bare entries nobody has decided (NEEDS MEMORY)" "$(count 'answer this now' "$OUT/attribution.txt")"
@@ -121,3 +143,11 @@ echo
 echo "  Lines marked NEEDS MEMORY are the ones that get harder to answer the"
 echo "  longer they wait. The rest can safely accumulate — a dropped Others?"
 echo "  player is recoverable from the row above it whenever you get to it."
+
+if [ -e "$OUT/count-failed" ]; then
+    echo >&2
+    echo "error: a summary count matched no section — an audit's output changed" >&2
+    echo "shape. A '?' above is a broken label, not a zero; fix the label here" >&2
+    echo "or the section header in the audit." >&2
+    exit 1
+fi

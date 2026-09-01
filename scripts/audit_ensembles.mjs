@@ -48,7 +48,13 @@ const ENSEMBLE_SIZES = {
     sextet: 6, septet: 7, octet: 8, nonet: 9,
 };
 const ENSEMBLE_WORDS = Object.keys(ENSEMBLE_SIZES).join('|');
-const ENSEMBLE_RE = new RegExp(ENSEMBLE_WORDS, 'i');
+// Global, because a title can carry two ensemble words when it names an
+// arrangement — and these titles put what was PLAYED last ("Octet arr. as
+// quintet", "Symphony 41 as quintet arr Hogwood"), so expectedSize sizes the
+// row from the LAST match. Taking the first sized such a row at the original's
+// headcount and, `stated` being true, filed it under the section the report
+// tells the reader to trust and reconstruct from memory.
+const ENSEMBLE_RE = new RegExp(ENSEMBLE_WORDS, 'ig');
 // Comments are prose, and this is a music log: "more piano the second time" is
 // a dynamic, "quintets were averted" is a joke, "Is this a wind quintet" is
 // musing about a work's origin. A bare ensemble word there means nothing. Only
@@ -104,9 +110,11 @@ export function commentEnsemble(row, quartets) {
  * @returns {{ need: number, stated: boolean }}
  */
 export function expectedSize(row, quartets) {
+    // ENSEMBLE_RE is global, so match() returns every ensemble word in the
+    // title; the last one is what was played (see the regex's comment).
     const inTitle = (row.work.title ?? '').match(ENSEMBLE_RE);
     if (inTitle) {
-        return { need: sizeOf(inTitle[0]), stated: true };
+        return { need: sizeOf(inTitle[inTitle.length - 1]), stated: true };
     }
     const inComment = commentEnsemble(row, quartets);
     if (inComment) return { need: sizeOf(inComment[2]), stated: true };
