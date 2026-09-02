@@ -3,7 +3,7 @@ import { getPartColor, getCssColor } from './config.js';
 import { tooltip } from './tooltip.js';
 import { buildAggregateStatDefs } from './statDefs.js';
 import { MOBILE_BREAKPOINT, MAX_DESIGN_WIDTH } from './breakpoints.js';
-import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computePartBreakdownPerComposer, computeAggregateStats, stackedPartSegments } from './dataProcessor.js';
+import { normalizeDashboardPart, peopleKeysFor, computePartBreakdownPerMusician, computePartBreakdownPerComposer, computeAggregateStats, stackedPartSegments, disambiguateLabels, fitText } from './dataProcessor.js';
 import { DateFilterWidget } from './dateFilterWidget.js';
 import { MusicianNetworkComponent } from './musicianNetworkComponent.js';
 
@@ -19,6 +19,9 @@ import { MusicianNetworkComponent } from './musicianNetworkComponent.js';
 //   3. Call it from `render()` and add a container <div> in index.html.
 
 const TOP_N = 20;
+// Gap between a ranked row's name and its bar; also the slice of the left
+// margin the name can't use.
+const NAME_GAP = 8;
 const PARTS = ['V1', 'V2', 'VA'];
 
 // Dimension registry. Selection state lives in this.state.selections[key];
@@ -347,6 +350,16 @@ export class DashboardComponent {
             .attr('transform', `translate(${margin.left}, ${margin.top})`);
 
         const sel = this.state.selections[dimensionKey];
+        // Person names get a shorter fallback form; composer names don't
+        // (disambiguateLabels is first-name/last-initial logic, which would
+        // turn "Vaughan Williams" into "Vaughan"). Built from every musician
+        // in the chart's data, not just the visible top N, so a bare "Aaron"
+        // is unambiguous across the whole filtered range and not merely
+        // within the rows on screen. That is honesty, not stability: widening
+        // the date range can flip a visible row from "Aaron" to "Aaron J."
+        // with the top 20 unchanged, because a second Aaron entered the range
+        // off-screen. The label is right in both cases.
+        const shortLabels = dimensionKey === 'musician' ? disambiguateLabels(allData) : null;
 
         // Each row is a <g> holding the name (left), bar (group of one or
         // more segment rects), and count label. Key by name AND dimension so
@@ -405,7 +418,7 @@ export class DashboardComponent {
         });
 
         rows2.select('text.ranked-name')
-            .attr('x', -8)
+            .attr('x', -NAME_GAP)
             .attr('y', y.bandwidth() / 2)
             .attr('dy', '0.32em')
             .attr('text-anchor', 'end')
@@ -414,7 +427,29 @@ export class DashboardComponent {
             .attr('fill', d => d.name === sel ? textPrimarySelected : textPrimary)
             .style('cursor', 'pointer')
             .on('click', (event, d) => this.toggle(dimensionKey, d.name))
-            .text(d => d.name);
+            // Fit each name into the gutter: full name when it fits, else
+            // the disambiguated short form ("Aaron J." / "Aaron"), else an
+            // ellipsis clip. Measured on the row's own <text>, so the size
+            // and weight already set above are what gets measured. Names
+            // long enough to need it used to just run off the left edge.
+            .each(function (d) {
+                const node = this;
+                const label = fitText(
+                    [d.name, shortLabels ? shortLabels.get(d.name) : null],
+                    margin.left - NAME_GAP,
+                    str => {
+                        node.textContent = str;
+                        return node.getComputedTextLength();
+                    },
+                );
+                node.textContent = label;
+                // Native hover tooltip carrying the name we couldn't show.
+                // Appended AFTER textContent, which replaces every child of
+                // the <text> and would otherwise drop it — which is also why
+                // this needs no data-join: there is never an existing <title>
+                // here to update or remove.
+                if (label !== d.name) d3.select(node).append('title').text(d.name);
+            });
 
         rows2.select('text.ranked-label')
             .attr('x', d => x(d.count) + 6)

@@ -18,6 +18,7 @@ import {
     buildNetworkData,
     defaultMinPiecesForGraph,
     disambiguateLabels,
+    fitText,
     partFromInstrument,
     computePartBreakdownPerMusician,
     computePartBreakdownPerComposer,
@@ -761,6 +762,37 @@ describe('defaultMinPiecesForGraph', () => {
             row('Dave', null, null),
         ];
         assert.equal(defaultMinPiecesForGraph(rows, 2), 4);
+    });
+});
+
+// Character-count stand-in for getComputedTextLength: every glyph is 1 unit
+// wide, so a maxWidth is just a character budget.
+const measureChars = s => s.length;
+
+describe('fitText', () => {
+    it('keeps the first candidate that fits', () => {
+        assert.equal(fitText(['Aaron Johnson', 'Aaron'], 20, measureChars), 'Aaron Johnson');
+    });
+
+    it('falls back to the short form when the full name is too wide', () => {
+        assert.equal(fitText(['Aaron Johnson', 'Aaron'], 10, measureChars), 'Aaron');
+    });
+
+    it('clips the shortest candidate when nothing fits', () => {
+        assert.equal(fitText(['Aaron Johnson', 'Aaron J.'], 5, measureChars), 'Aaro\u2026');
+    });
+
+    it('skips null/empty candidates', () => {
+        assert.equal(fitText(['Beethoven', null], 20, measureChars), 'Beethoven');
+        assert.equal(fitText([null, ''], 20, measureChars), '');
+    });
+
+    it('treats an unmeasurable (hidden) element as fitting', () => {
+        assert.equal(fitText(['Aaron Johnson', 'Aaron'], 10, () => 0), 'Aaron Johnson');
+    });
+
+    it('degrades to a bare ellipsis when even one character is too wide', () => {
+        assert.equal(fitText(['Aaron'], 0, measureChars), '\u2026');
     });
 });
 
