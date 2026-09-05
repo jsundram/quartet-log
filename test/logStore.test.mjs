@@ -7,7 +7,7 @@
 // dataService tests: logStore reads it at call time, never at import time.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { pending, enqueue, drop, flush, setRecent, recent } from '../src/logStore.js';
+import { pending, enqueue, drop, flush, setRecent, recent, recentAll } from '../src/logStore.js';
 import { blankEntry } from '../src/logEntry.js';
 
 function makeLocalStorage() {
@@ -133,6 +133,38 @@ test('the local copy still wins while the published CSV lags behind it', () => {
         timestamp: new Date(Date.now() - 3600_000),
         composer: 'Mozart', work: { title: 'K421' }, part: 'V1', player1: 'Bob Bek',
     };
-    assert.equal(recent(older)?.player1, 'Alice Hart');
-    assert.equal(recent(null)?.player1, 'Alice Hart');
+    assert.equal(recent(older)?.entry.player1, 'Alice Hart');
+    assert.equal(recent(null)?.entry.player1, 'Alice Hart');
+    // The save time rides along: "is this still the same sitting" needs it,
+    // and a synthetic now would make this morning look like a minute ago.
+    assert.ok(Date.now() - recent(null).at < 5000);
+});
+
+test('every submission of the sitting is remembered, not just the last', () => {
+    // The session-people offer is only as deep as this: the published CSV lags
+    // by minutes and a sitting logs several pieces in that time, so one
+    // remembered row would leave the app blind to the people it most wants to
+    // offer back.
+    setRecent(blankEntry({ composer: 'Haydn', title: '76#1', others: 'Dana Ellis (p)' }));
+    setRecent(blankEntry({ composer: 'Haydn', title: '76#2', others: 'Dana Ellis (p); Erin Fry (vc2)' }));
+    setRecent(blankEntry({ composer: 'Haydn', title: '76#3', others: 'Dana Ellis (p)' }));
+    assert.deepEqual(recentAll().map(r => r.entry.title), ['76#1', '76#2', '76#3']);
+    // Carry-forward still means the newest one.
+    assert.equal(recent(null).entry.title, '76#3');
+});
+
+test('a single stored submission from an earlier version is not dropped', () => {
+    ls.setItem('quartetlog_recent', JSON.stringify({
+        at: Date.now(), entry: blankEntry({ composer: 'Haydn', title: '76#1' }),
+    }));
+    assert.deepEqual(recentAll().map(r => r.entry.title), ['76#1']);
+    assert.equal(recent(null).entry.title, '76#1');
+});
+
+test('submissions age out, so yesterday is not part of today sitting', () => {
+    ls.setItem('quartetlog_recent', JSON.stringify([
+        { at: Date.now() - 20 * 3600_000, entry: blankEntry({ title: 'old' }) },
+        { at: Date.now(), entry: blankEntry({ title: 'new' }) },
+    ]));
+    assert.deepEqual(recentAll().map(r => r.entry.title), ['new']);
 });

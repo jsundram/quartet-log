@@ -36,7 +36,9 @@ export const LABELS = {
 };
 
 // The fields fillForward repeats from the row above when left blank.
-// `Others?` is deliberately absent — see othersReminder.
+// `Others?` is deliberately absent: the SHEET cannot ditto it, which is why
+// the form carries the extras itself and writes them out on every row (see
+// LogComponent.defaultOthersCell).
 export const CARRIED = /** @type {const} */ (['player1', 'player2', 'player3', 'location']);
 
 /** @param {Partial<Entry>} [seed] @returns {Entry} */
@@ -79,20 +81,6 @@ export function resolveCarry(entry, carried) {
     const out = blankEntry(entry);
     for (const f of CARRIED) out[f] = entry[f].trim() || carried[f] || '';
     return out;
-}
-
-/**
- * The one thing that does NOT repeat. `Others?` is per-row, so a fifth player
- * has to be retyped on every piece they played; howto §6 calls this the single
- * most common way someone goes missing from the log, and it is what
- * `npm run audit` looks for first. The form is the only place that can ask
- * before the row is written rather than months after.
- * @param {Entry} entry @param {Row|Entry|null|undefined} last
- * @returns {string|null} the previous row's Others? cell, when it's worth re-offering
- */
-export function othersReminder(entry, last) {
-    const prev = (/** @type {Record<string, string>} */ (last)?.others ?? '').trim();
-    return prev && prev !== '-' && !entry.others.trim() ? prev : null;
 }
 
 /**

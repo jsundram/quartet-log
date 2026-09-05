@@ -6,10 +6,10 @@ import {
 } from './formConfig.js';
 import * as store from './logStore.js';
 import {
-    blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
+    blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
     impliedSlotParts, defaultSlotParts, slotCell, SLOT_PARTS, FIELDS, LABELS,
-    splitOthersCell, mergeOthersCell, sessionPeople, slotPartKey,
+    splitOthersCell, mergeOthersCell, sessionPeople, sessionRows, slotPartKey,
 } from './logEntry.js';
 
 // The entry field each text input owns. `part` is absent: it's a segmented
@@ -106,7 +106,6 @@ export class LogComponent {
             this.renderPlaceholders();
             this.renderSlotParts();
             this.renderSessionPeople();
-            this.renderOthersChip();
         }
     }
 
@@ -340,12 +339,6 @@ export class LogComponent {
                 this.slotPartOverrides[i] = e.target.value;
             });
         });
-        d3.select('#logOthersRepeat').on('click', () => {
-            const { rows, freeform } = splitOthersCell(d3.select('#logOthersRepeat').attr('data-value'));
-            this.othersFree = freeform;
-            d3.select('#logOthersFree').property('value', freeform);
-            this.setOtherRows(rows);
-        });
         d3.select('#logOthersFree').on('input', (e) => {
             this.othersFree = e.target.value;
             this.syncOthers();
@@ -390,16 +383,36 @@ export class LogComponent {
     // you logged two minutes ago would not be offered back until the published
     // CSV caught up -- which is precisely the window a session happens in.
     sessionSource() {
-        const recent = store.recent(this.rows.at(-1) ?? null);
-        if (!recent) return this.rows;
-        return [...this.rows, {
-            timestamp: new Date(),
-            player1: stripAnnotation(recent.player1),
-            player2: stripAnnotation(recent.player2),
-            player3: stripAnnotation(recent.player3),
-            othersList: splitOthersCell(recent.others).rows
+        // Every submission this device remembers, not just the newest: a
+        // sitting logs several pieces inside the window the published CSV
+        // takes to catch up, and someone who left after the second piece
+        // should still be offered back for the fourth.
+        return [...this.rows, ...store.recentAll().map(({ at, entry }) => ({
+            // The real save time, not now: a submission from this morning is
+            // not part of this afternoon's sitting.
+            timestamp: new Date(at),
+            player1: stripAnnotation(entry.player1),
+            player2: stripAnnotation(entry.player2),
+            player3: stripAnnotation(entry.player3),
+            others: entry.others,
+            othersList: splitOthersCell(entry.others).rows
                 .map(r => ({ name: r.name, instrument: r.instrument })),
-        }];
+        }))];
+    }
+
+    /**
+     * The extras to start the next piece with. `Others?` cannot ditto in the
+     * sheet — every row that had a fifth player has to name them again, and
+     * howto section 6 calls forgetting to the single most common way a person
+     * goes missing from the log. So the form carries them instead and writes
+     * them out each time; the x on a row is how you say someone left.
+     *
+     * Scoped to the sitting, unlike the seats: a blank seat repeats however
+     * long the break, but re-adding the people from three days ago would be
+     * plainly wrong.
+     */
+    defaultOthersCell() {
+        return sessionRows(this.sessionSource()).at(-1)?.others ?? '';
     }
 
     // The row the sheet will read this one against. A submission this device
@@ -407,7 +420,7 @@ export class LogComponent {
     // published CSV takes to catch up.
     carrySource() {
         const last = this.rows.at(-1) ?? null;
-        return store.recent(last) ?? last;
+        return store.recent(last)?.entry ?? last;
     }
 
     refresh() {
@@ -419,7 +432,6 @@ export class LogComponent {
         this.renderSlotParts();
         this.renderOtherRows();
         this.renderSessionPeople();
-        this.renderOthersChip();
         this.renderMode();
     }
 
@@ -430,10 +442,17 @@ export class LogComponent {
         // Rebuilt from the cell, which is where a reset (nextInSession) or a
         // restored draft leaves the truth. Entries carrying a comment go to
         // the freeform box, which is the only control that can edit prose.
-        const { rows, freeform } = splitOthersCell(this.entry.others);
+        // A fresh entry (mount, or the reset after a submit) starts from the
+        // sitting's extras. Mid-edit nothing calls this, so removing the last
+        // row cannot bounce back.
+        const { rows, freeform } = splitOthersCell(this.entry.others || this.defaultOthersCell());
         this.otherRows = rows.map(r => this.newOtherRow(r));
         this.othersFree = freeform;
         d3.select('#logOthersFree').property('value', freeform);
+        // Write the carried extras back into the entry. Without this they are
+        // on screen and absent from the submission, which is the failure this
+        // whole feature is meant to prevent, wearing a convincing disguise.
+        this.syncOthers();
         this.renderComposerChips();
         // The picker opens on request, and stays open whenever it holds the
         // answer — a composer with no chip would otherwise be set but invisible.
@@ -528,7 +547,6 @@ export class LogComponent {
     // the user is typing, so a background revalidate cannot move a caret.
     syncOthers() {
         this.entry.others = mergeOthersCell(this.otherRows, this.othersFree);
-        this.renderOthersChip();
         this.renderSessionPeople();
     }
 
@@ -584,14 +602,6 @@ export class LogComponent {
             .data(knownPlayers(this.rows)).join('option').attr('value', d => d);
         d3.select('#logLocations').selectAll('option')
             .data(knownLocations(this.rows)).join('option').attr('value', d => d);
-    }
-
-    renderOthersChip() {
-        const repeat = othersReminder(this.entry, this.carrySource());
-        d3.select('#logOthersRepeat')
-            .property('hidden', !repeat)
-            .attr('data-value', repeat)
-            .text(repeat ? `Still playing? ${repeat}` : '');
     }
 
     renderPending() {

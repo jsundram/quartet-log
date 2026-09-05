@@ -560,6 +560,49 @@ test.describe('log form', () => {
         expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Grace (piano)');
     });
 
+    test('extras stay for the rest of the sitting until the x says otherwise', async ({ page }) => {
+        // Others? cannot ditto in the sheet -- every row that had a fifth
+        // player has to name them again, and forgetting is the single most
+        // common way a person goes missing from the log. The form carries them
+        // and writes them out each time.
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logOthersAdd');
+        await page.locator('.log-other-row').first().locator('input').fill('Dana Ellis');
+        await page.locator('.log-other-row').first().locator('select').selectOption('P');
+        await page.click('#logOthersAdd');
+        await page.locator('.log-other-row').nth(1).locator('input').fill('Erin Fry');
+        await page.locator('.log-other-row').nth(1).locator('select').selectOption('VC2');
+        await page.fill('#logTitle', '76#8');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID))
+            .toBe('Dana Ellis (p); Erin Fry (vc2)');
+
+        // Next piece: both are still there, no tapping, no retyping.
+        await expect(page.locator('.log-other-row')).toHaveCount(2);
+        await expect(page.locator('.log-other-row').first().locator('input')).toHaveValue('Dana Ellis');
+        await expect(page.locator('.log-other-row').nth(1).locator('select')).toHaveValue('VC2');
+        await page.fill('#logTitle', '76#9');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID))
+            .toBe('Dana Ellis (p); Erin Fry (vc2)');
+
+        // The cellist leaves: one x, and she stops being written.
+        await page.locator('.log-other-row').nth(1).locator('.log-other-drop').click();
+        await page.fill('#logTitle', '76#10');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Dana Ellis (p)');
+        // And she stays gone on the next piece, rather than coming back.
+        await expect(page.locator('.log-other-row')).toHaveCount(1);
+        // She is still offered, though, since she was in the sitting.
+        await expect(page.locator('#logOthersHere .log-chip-btn').filter({ hasText: 'Erin Fry' }))
+            .toBeVisible();
+    });
+
     test('freeform Others? survives the round trip and merges on write', async ({ page }) => {
         // A row is a name and a dropdown; "shadowing on I" is prose, and prose
         // needs a text field. It rejoins the same cell on write.

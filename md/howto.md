@@ -161,6 +161,11 @@ fifth or sixth player has to be typed on every row they played. This is the
 single most common way a person goes missing from the log, and it's what
 `npm run audit` looks for first.
 
+The **Log a Piece** form handles this for you: extra players stay on the form
+for the rest of the session and are written out on every piece, so the only
+thing you do is press the **x** beside someone when they leave. Entering rows
+in the Google Form directly, you're on your own — retype them each time.
+
 **A blank always repeats, however long the break.** Take an hour for dinner
 or come back the next morning — a blank field still means "the same person as
 last time", because leaving names out is never how you'd start a group. When

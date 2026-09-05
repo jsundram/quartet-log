@@ -209,7 +209,8 @@
             </div>
 
             <p class="log-note">Leave a seat blank to repeat whoever was there. Write <code>-</code> for a seat this work doesn't have.
-               Change a part to say someone swapped &mdash; the name comes along on its own.</p>
+               Change a part to say someone swapped &mdash; the name comes along on its own.
+               Extra players stay for the rest of the session; remove one with its <b>x</b>.</p>
             <div class="log-field">
                 <label for="logPlayer1">Player 1</label>
                 <div class="log-slot">
@@ -234,7 +235,9 @@
             <!-- The column where a pianist or a second cellist is most likely
                  to turn up, so it gets the same name-plus-part control the
                  seats do. Serialises to the "Name (instrument)" text the cell
-                 has always held. -->
+                 has always held. The sheet cannot ditto this column, so the
+                 form carries the extras through the sitting and writes them
+                 out every row; the x is how you say someone left. -->
             <div class="log-field">
                 <label for="logOthersAdd">Others?</label>
                 <div class="log-others">
@@ -244,7 +247,6 @@
                     <div id="logOthersHere" class="log-chips"></div>
                     <div class="log-others-actions">
                         <button type="button" id="logOthersAdd" class="log-chip">+ Add person</button>
-                        <button type="button" id="logOthersRepeat" class="log-chip" hidden></button>
                     </div>
                     <!-- The escape for entries the rows can't express: anything
                          carrying a comment. Merged into the same cell on write. -->

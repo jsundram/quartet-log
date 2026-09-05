@@ -83,16 +83,44 @@ export async function flush(post) {
 // the opaque response can't tell us, so the copy expires on its own rather
 // than describing a row that does not exist forever.
 const RECENT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const MAX_RECENT = 60;
 
 /**
- * The last row submitted from this device, as the sheet will hold it (blanks
- * already resolved against what they dittoed). Read back as the carry-forward
- * source until the sheet catches up — the published CSV lags by minutes and
- * the next piece of a session is logged in seconds.
- * @param {Entry} resolved
+ * Submissions made from this device, oldest first.
+ *
+ * A list rather than just the last one, because the session-people offer is
+ * only as deep as this: the published CSV lags by minutes and a sitting logs
+ * several pieces in that time, so remembering one row would leave the app
+ * blind to the people it most wants to offer back — the second sextet of an
+ * afternoon has the first one's players.
+ *
+ * Entries are as the sheet will hold them (blanks already resolved against
+ * what they dittoed), pruned by age on write.
+ * @returns {{ at: number, entry: Entry }[]}
  */
+function recentList() {
+    const saved = read(RECENT_KEY, []);
+    // A single object is what earlier versions stored; take it as a list of one
+    // rather than dropping a submission on upgrade.
+    const list = Array.isArray(saved) ? saved : (saved?.entry ? [saved] : []);
+    const floor = Date.now() - RECENT_MAX_AGE_MS;
+    return list.filter(r => r?.entry && r.at > floor);
+}
+
+/** @param {Entry} resolved */
 export function setRecent(resolved) {
-    write(RECENT_KEY, { at: Date.now(), entry: resolved });
+    // Capped as well as aged: a long day of logging should not grow the record
+    // without bound, and nothing reads further back than the session anyway.
+    write(RECENT_KEY, [...recentList(), { at: Date.now(), entry: resolved }].slice(-MAX_RECENT));
+}
+
+/**
+ * Every remembered submission, as entries with their save times. Callers that
+ * ask "who has been here this sitting" need all of them.
+ * @returns {{ at: number, entry: Entry }[]}
+ */
+export function recentAll() {
+    return recentList().map(r => ({ at: r.at, entry: blankEntry(r.entry) }));
 }
 
 // Is this fetched row the submission we saved? Composer and work title only:
@@ -107,7 +135,7 @@ function isSameRow(row, entry) {
 }
 
 /**
- * The local submission the fetched data hasn't caught up to yet, or null once
+ * The newest submission the fetched data hasn't caught up to yet, or null once
  * it has.
  *
  * "Caught up" is identity, never the clock. Forms timestamps a row when it
@@ -118,13 +146,16 @@ function isSameRow(row, entry) {
  * established fix for a typo or a surname learned later, and the placeholder
  * has to show the correction rather than what was originally typed.
  *
+ * Returns the save time alongside the entry: callers that ask "is this still
+ * the same sitting" need it, and a synthetic `now` would make a submission
+ * from this morning look like one from a minute ago.
+ *
  * @param {any} lastRow newest row in the fetched data (a processed Row)
- * @returns {Entry|null}
+ * @returns {{ entry: Entry, at: number }|null}
  */
 export function recent(lastRow) {
-    const saved = read(RECENT_KEY, null);
-    if (!saved?.entry) return null;
+    const saved = recentList().at(-1);
+    if (!saved) return null;
     if (lastRow && isSameRow(lastRow, saved.entry)) return null;
-    if (Date.now() - saved.at > RECENT_MAX_AGE_MS) return null;
-    return blankEntry(saved.entry);
+    return { entry: blankEntry(saved.entry), at: saved.at };
 }

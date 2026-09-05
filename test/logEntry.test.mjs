@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
+    blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
@@ -65,17 +65,6 @@ test('resolveCarry leaves an explicitly empty seat empty', () => {
     assert.equal(resolved.player2, '-');
 });
 
-test('othersReminder offers the previous row Others?, which never carries itself', () => {
-    const last = row({ others: 'Dana Ellis (p)' });
-    assert.equal(othersReminder(blankEntry(), last), 'Dana Ellis (p)');
-    // Already typed something: no offer.
-    assert.equal(othersReminder(blankEntry({ others: 'Someone else' }), last), null);
-    // Nothing to repeat.
-    assert.equal(othersReminder(blankEntry(), row()), null);
-    // "-" is "nobody", not a person to re-offer.
-    assert.equal(othersReminder(blankEntry(), row({ others: '-' })), null);
-});
-
 test('missingFields mirrors the form required questions, since a rejection is invisible', () => {
     // Field keys, not labels: the caller needs the field to mark and focus as
     // well as a name to print, and deriving the keys twice is how they drift.
@@ -128,7 +117,8 @@ test('nextInSession keeps what describes the session and clears what describes t
     // to the next row is also the honest one.
     assert.equal(next.player1, '');
     assert.equal(next.location, '');
-    // Others? clears too, and othersReminder is what offers it back.
+    // Others? clears here too; the extras come back from the sitting itself
+    // (LogComponent.defaultOthersCell), not from the entry being reset.
     assert.equal(next.others, '');
 });
 
