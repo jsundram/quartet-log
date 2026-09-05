@@ -9,6 +9,7 @@
 import { withInstrument } from './csvFormat.js';
 import {
     SLOT_TO_PART, stripParens, instrumentFromSlot, splitOutsideParens,
+    SESSION_WINDOW_HOURS,
 } from './dataProcessor.js';
 
 /** @typedef {import('./dataProcessor.js').Row} Row */
@@ -365,4 +366,89 @@ export function serializeOthersRows(rows) {
         .filter(r => r.name)
         .map(r => (r.inside ? `${r.name} (${r.inside})` : r.name))
         .join('; ');
+}
+
+/**
+ * The rows the editor can express, and the text it cannot.
+ *
+ * A row is a name and an instrument. An entry carrying a COMMENT — "Laura
+ * (v2, shadowing on I)" — has prose in it, and prose wants a text field, not a
+ * dropdown. Rather than drop the comment or grow a third control per row,
+ * those entries go to the freeform box verbatim and are merged back at write
+ * time, so every shape the column has ever held survives a round trip.
+ * @param {string|null|undefined} others
+ * @returns {{ rows: OtherRow[], freeform: string }}
+ */
+export function splitOthersCell(others) {
+    const all = parseOthersRows(others);
+    return {
+        rows: all.filter(r => !r.comment),
+        freeform: serializeOthersRows(all.filter(r => r.comment)),
+    };
+}
+
+/**
+ * @param {OtherRow[]} rows
+ * @param {string} freeform
+ * @returns {string} the Others? cell
+ */
+export function mergeOthersCell(rows, freeform) {
+    return [serializeOthersRows(rows), (freeform ?? '').trim()]
+        .filter(Boolean).join('; ');
+}
+
+/**
+ * The rows belonging to the sitting that is still going: walk back from the
+ * newest while each gap stays inside the window, the same chain fillForward
+ * follows. Empty once the last row is older than the window, because then
+ * there is no session to be in.
+ * @param {Row[]} rows chronological, as prepareRows leaves them
+ * @param {Date} [now]
+ * @param {number} [windowHours]
+ * @returns {Row[]}
+ */
+export function sessionRows(rows, now = new Date(), windowHours = SESSION_WINDOW_HOURS) {
+    const span = windowHours * 3600_000;
+    /** @type {Row[]} */
+    const out = [];
+    let edge = now.getTime();
+    for (let i = rows.length - 1; i >= 0; i--) {
+        const at = rows[i].timestamp?.getTime();
+        if (at == null || edge - at > span) break;
+        out.unshift(rows[i]);
+        edge = at;
+    }
+    return out;
+}
+
+/**
+ * Who is already here, most recently seen first, with whatever instrument they
+ * were last logged on. The second sextet of an afternoon has the same people
+ * as the first, and asking someone to retype them is the same failure as
+ * asking them to retype a seat.
+ * @param {Row[]} rows @param {Date} [now]
+ * @returns {{ name: string, instrument: string }[]}
+ */
+export function sessionPeople(rows, now = new Date()) {
+    /** @type {Map<string, string>} */
+    const seen = new Map();
+    // Delete before set: a Map keeps FIRST-insertion order, so re-seeing
+    // someone would otherwise leave them where they first appeared and the
+    // list would be ordered by first sighting, not last.
+    const note = (/** @type {string} */ name, /** @type {string} */ instrument) => {
+        seen.delete(name);
+        seen.set(name, instrument);
+    };
+    for (const d of sessionRows(rows, now)) {
+        for (const name of [d.player1, d.player2, d.player3]) {
+            const s = (name ?? '').trim();
+            if (s && s !== '-') note(s, '');
+        }
+        // Others? last within a row, so someone logged both ways keeps the
+        // instrument that entry named rather than the seat's blank.
+        for (const o of d.othersList ?? []) {
+            if (o.name) note(o.name, o.instrument ?? '');
+        }
+    }
+    return [...seen].reverse().map(([name, instrument]) => ({ name, instrument }));
 }

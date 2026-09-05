@@ -9,7 +9,7 @@ import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
     impliedSlotParts, defaultSlotParts, slotCell, SLOT_PARTS, FIELDS, LABELS,
-    parseOthersRows, serializeOthersRows, slotPartKey,
+    splitOthersCell, mergeOthersCell, sessionPeople, slotPartKey,
 } from './logEntry.js';
 
 // The entry field each text input owns. `part` is absent: it's a segmented
@@ -28,6 +28,10 @@ const TEXT_INPUTS = {
 
 const CARRIED_INPUTS = ['player1', 'player2', 'player3', 'location'];
 const SEATS = ['player1', 'player2', 'player3'];
+
+// The name half of a cell that may carry an "(instrument)" annotation.
+const stripAnnotation = (/** @type {string} */ cell) =>
+    (cell ?? '').replace(/\s*\([^)]*\)\s*$/, '').trim();
 
 // What to mark and focus when a required field is missing. Composer resolves
 // to whichever of its two controls is live.
@@ -81,6 +85,7 @@ export class LogComponent {
         // One editable row per Others? entry. The cell text is derived from
         // these (syncOthers), never the other way round while editing.
         this.otherRows = [];
+        this.othersFree = '';
         this._otherId = 0;
         // A ?form= link that would replace this.config, awaiting a decision.
         this.proposed = null;
@@ -100,6 +105,7 @@ export class LogComponent {
             this.renderSuggestions();
             this.renderPlaceholders();
             this.renderSlotParts();
+            this.renderSessionPeople();
             this.renderOthersChip();
         }
     }
@@ -303,6 +309,7 @@ export class LogComponent {
         // One editable row per Others? entry. The cell text is derived from
         // these (syncOthers), never the other way round while editing.
         this.otherRows = [];
+        this.othersFree = '';
         this._otherId = 0;
                 // Reflect state into the DOM; never read the selection back out
                 // of it (same contract as the Home part filter). aria-checked
@@ -334,7 +341,14 @@ export class LogComponent {
             });
         });
         d3.select('#logOthersRepeat').on('click', () => {
-            this.setOtherRows(parseOthersRows(d3.select('#logOthersRepeat').attr('data-value')));
+            const { rows, freeform } = splitOthersCell(d3.select('#logOthersRepeat').attr('data-value'));
+            this.othersFree = freeform;
+            d3.select('#logOthersFree').property('value', freeform);
+            this.setOtherRows(rows);
+        });
+        d3.select('#logOthersFree').on('input', (e) => {
+            this.othersFree = e.target.value;
+            this.syncOthers();
         });
         d3.select('#logOthersAdd').on('click', () => {
             this.setOtherRows([...this.otherRows, this.newOtherRow()]);
@@ -371,6 +385,23 @@ export class LogComponent {
         });
     }
 
+    // The session, as this device knows it: the fetched rows plus whatever was
+    // submitted here since. Without the local half, the people from the piece
+    // you logged two minutes ago would not be offered back until the published
+    // CSV caught up -- which is precisely the window a session happens in.
+    sessionSource() {
+        const recent = store.recent(this.rows.at(-1) ?? null);
+        if (!recent) return this.rows;
+        return [...this.rows, {
+            timestamp: new Date(),
+            player1: stripAnnotation(recent.player1),
+            player2: stripAnnotation(recent.player2),
+            player3: stripAnnotation(recent.player3),
+            othersList: splitOthersCell(recent.others).rows
+                .map(r => ({ name: r.name, instrument: r.instrument })),
+        }];
+    }
+
     // The row the sheet will read this one against. A submission this device
     // made minutes ago beats the fetched data, which lags by however long the
     // published CSV takes to catch up.
@@ -387,6 +418,7 @@ export class LogComponent {
         this.renderSuggestions();
         this.renderSlotParts();
         this.renderOtherRows();
+        this.renderSessionPeople();
         this.renderOthersChip();
         this.renderMode();
     }
@@ -396,8 +428,12 @@ export class LogComponent {
             d3.select(sel).property('value', this.entry[field]);
         }
         // Rebuilt from the cell, which is where a reset (nextInSession) or a
-        // restored draft leaves the truth.
-        this.otherRows = parseOthersRows(this.entry.others).map(r => this.newOtherRow(r));
+        // restored draft leaves the truth. Entries carrying a comment go to
+        // the freeform box, which is the only control that can edit prose.
+        const { rows, freeform } = splitOthersCell(this.entry.others);
+        this.otherRows = rows.map(r => this.newOtherRow(r));
+        this.othersFree = freeform;
+        d3.select('#logOthersFree').property('value', freeform);
         this.renderComposerChips();
         // The picker opens on request, and stays open whenever it holds the
         // answer — a composer with no chip would otherwise be set but invisible.
@@ -457,6 +493,27 @@ export class LogComponent {
         d3.selectAll('#log .is-missing').classed('is-missing', false);
     }
 
+    // Everyone already in this sitting who is not already on the row --
+    // seats included, since a person moves between a seat and Others? as the
+    // ensemble changes. Tapping one brings the instrument they were last
+    // logged on, so the second sextet costs one tap per extra player.
+    renderSessionPeople() {
+        const carried = carriedForward(this.carrySource());
+        const taken = new Set([
+            ...SEATS.map(f => stripAnnotation(this.entry[f].trim() || carried[f])),
+            ...this.otherRows.map(r => r.name.trim()),
+            ...splitOthersCell(this.othersFree).rows.map(r => r.name),
+        ].filter(Boolean));
+
+        d3.select('#logOthersHere').selectAll('.log-chip-btn')
+            .data(sessionPeople(this.sessionSource()).filter(p => !taken.has(p.name)), d => d.name)
+            .join('button')
+            .attr('type', 'button')
+            .attr('class', 'log-chip-btn log-chip-btn--here')
+            .text(d => `+ ${d.name}`)
+            .on('click', (_, d) => this.setOtherRows([...this.otherRows, this.newOtherRow(d)]));
+    }
+
     newOtherRow(row = {}) {
         return { id: ++this._otherId, name: '', instrument: '', comment: '', ...row };
     }
@@ -470,8 +527,9 @@ export class LogComponent {
     // The cell is derived from the rows. Nothing writes back into them while
     // the user is typing, so a background revalidate cannot move a caret.
     syncOthers() {
-        this.entry.others = serializeOthersRows(this.otherRows);
+        this.entry.others = mergeOthersCell(this.otherRows, this.othersFree);
         this.renderOthersChip();
+        this.renderSessionPeople();
     }
 
     renderOtherRows() {
@@ -612,6 +670,7 @@ export class LogComponent {
         // One editable row per Others? entry. The cell text is derived from
         // these (syncOthers), never the other way round while editing.
         this.otherRows = [];
+        this.othersFree = '';
         this._otherId = 0;
         this.refresh();
         // Straight to the next piece: composer, part and the seats all carry,

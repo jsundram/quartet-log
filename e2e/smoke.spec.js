@@ -524,6 +524,60 @@ test.describe('log form', () => {
         expect(body.get(OTHERS_ID)).toBe('Dana Ellis (p); Erin Fry (vc2)');
     });
 
+    test('people already in the sitting are a tap, not a retype', async ({ page }) => {
+        // The second sextet of an afternoon has the first one's people. The
+        // fixture's newest row is days old, so give it one from an hour ago --
+        // otherwise there is no sitting to be in, which is itself correct.
+        const recent = new Date(Date.now() - 3600_000);
+        const stamp = `${recent.getMonth() + 1}/${recent.getDate()}/${recent.getFullYear()}`
+            + ` ${recent.getHours()}:${String(recent.getMinutes()).padStart(2, '0')}:00`;
+        await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
+            contentType: 'text/csv',
+            body: `${FIXTURE_CSV}\n${stamp},Haydn,20#3,V1,Alice,Bob,Carol,Grace (piano),Home,`,
+        }));
+        await page.reload();
+        await expect(page.locator('#logForm')).toBeVisible();
+
+        const bodies = await captureSubmits(page);
+        const here = page.locator('#logOthersHere .log-chip-btn');
+        await expect(here.filter({ hasText: 'Grace' })).toBeVisible();
+        // Nobody currently on the form is offered: they are already here.
+        await expect(here.filter({ hasText: 'Alice' })).toHaveCount(0);
+
+        await here.filter({ hasText: 'Grace' }).click();
+        const row = page.locator('.log-other-row').first();
+        await expect(row.locator('input')).toHaveValue('Grace');
+        // The instrument they were last logged on comes along.
+        await expect(row.locator('select')).toHaveValue('P');
+        // And they stop being offered, since they are now on the row.
+        await expect(here.filter({ hasText: 'Grace' })).toHaveCount(0);
+
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#6');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Grace (piano)');
+    });
+
+    test('freeform Others? survives the round trip and merges on write', async ({ page }) => {
+        // A row is a name and a dropdown; "shadowing on I" is prose, and prose
+        // needs a text field. It rejoins the same cell on write.
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#7');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logOthersAdd');
+        await page.locator('.log-other-row').first().locator('input').fill('Dana Ellis');
+        await page.locator('.log-other-row').first().locator('select').selectOption('VC2');
+        await page.fill('#logOthersFree', 'Laura (v2, shadowing on I)');
+
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID))
+            .toBe('Dana Ellis (vc2); Laura (v2, shadowing on I)');
+    });
+
     test('an Others? row can be removed, and a blank one says nothing', async ({ page }) => {
         const bodies = await captureSubmits(page);
         await pickComposer(page, 'Haydn');

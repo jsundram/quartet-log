@@ -239,10 +239,17 @@
                 <label for="logOthersAdd">Others?</label>
                 <div class="log-others">
                     <div id="logOthersRows"></div>
+                    <!-- People already in this sitting, so the second sextet of
+                         an afternoon is a tap rather than a retype. -->
+                    <div id="logOthersHere" class="log-chips"></div>
                     <div class="log-others-actions">
                         <button type="button" id="logOthersAdd" class="log-chip">+ Add person</button>
                         <button type="button" id="logOthersRepeat" class="log-chip" hidden></button>
                     </div>
+                    <!-- The escape for entries the rows can't express: anything
+                         carrying a comment. Merged into the same cell on write. -->
+                    <input id="logOthersFree" type="text" placeholder="Anything else, e.g. Laura (v2, shadowing on I)"
+                           aria-label="Others, freeform" autocapitalize="words" autocorrect="off" spellcheck="false">
                 </div>
             </div>
             <div class="log-field">

@@ -7,7 +7,8 @@ import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts,
-    parseOthersRows, serializeOthersRows,
+    parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
+    sessionRows, sessionPeople,
 } from '../src/logEntry.js';
 
 // A processed row, as normalizePlayerNames leaves it: annotations split off
@@ -275,4 +276,61 @@ test('a half-typed Others? row says nothing', () => {
         { name: '  ', instrument: 'vc', comment: '' },
     ]), 'Dana Ellis (p)');
     assert.equal(serializeOthersRows([]), '');
+});
+
+test('an entry with a comment goes to freeform, and merges back unchanged', () => {
+    // A row is a name and a dropdown; prose needs a text field. Rather than
+    // drop the comment or grow a third control per row, those entries live in
+    // the freeform box and rejoin the cell on write.
+    const cell = 'Dana Ellis (p); Carol (v1, shadowing on II, III); Erin Fry (vc2)';
+    const { rows, freeform } = splitOthersCell(cell);
+    assert.deepEqual(rows.map(r => r.name), ['Dana Ellis', 'Erin Fry']);
+    assert.equal(freeform, 'Carol (v1, shadowing on II, III)');
+    // Order changes (rows first), the content does not.
+    assert.equal(mergeOthersCell(rows, freeform),
+        'Dana Ellis (p); Erin Fry (vc2); Carol (v1, shadowing on II, III)');
+});
+
+test('merging tolerates either half being empty', () => {
+    assert.equal(mergeOthersCell([], ''), '');
+    assert.equal(mergeOthersCell([], '  Laura (v2, on I)  '), 'Laura (v2, on I)');
+    assert.equal(mergeOthersCell([{ name: 'Dana Ellis', instrument: 'p', comment: '' }], ''),
+        'Dana Ellis (p)');
+});
+
+test('sessionRows follows the same chain fillForward does', () => {
+    const at = (h) => new Date(Date.UTC(2026, 0, 2, 12) - h * 3600_000);
+    const rows = [
+        row({ timestamp: at(30), composer: 'Old' }),      // yesterday
+        row({ timestamp: at(3), composer: 'A' }),
+        row({ timestamp: at(2), composer: 'B' }),
+        row({ timestamp: at(1), composer: 'C' }),
+    ];
+    const now = new Date(Date.UTC(2026, 0, 2, 12));
+    assert.deepEqual(sessionRows(rows, now).map(r => r.composer), ['A', 'B', 'C']);
+    // A gap wider than the window ends the session, however recent the rest.
+    assert.deepEqual(sessionRows([row({ timestamp: at(30) })], now), []);
+    assert.deepEqual(sessionRows([], now), []);
+});
+
+test('sessionPeople offers this sitting people, most recent first', () => {
+    // The second sextet of an afternoon has the first one's people, and
+    // retyping them is the same failure as retyping a seat.
+    const at = (h) => new Date(Date.UTC(2026, 0, 2, 12) - h * 3600_000);
+    const rows = [
+        row({ timestamp: at(3), player1: 'Alice Hart', player2: 'Bob Bek', player3: 'Carol Diaz',
+            othersList: [{ name: 'Dana Ellis', instrument: 'p' }] }),
+        row({ timestamp: at(1), player1: 'Alice Hart', player2: 'Erin Fry', player3: 'Carol Diaz',
+            othersList: [] }),
+    ];
+    const people = sessionPeople(rows, new Date(Date.UTC(2026, 0, 2, 12)));
+    // Last seen first: the latest row's three, then the pianist from earlier,
+    // then the violinist who was replaced.
+    assert.deepEqual(people.map(p => p.name),
+        ['Carol Diaz', 'Erin Fry', 'Alice Hart', 'Dana Ellis', 'Bob Bek']);
+    // The instrument they were last logged on comes along, so a pianist added
+    // back arrives as a pianist.
+    assert.equal(people.find(p => p.name === 'Dana Ellis').instrument, 'p');
+    // Nobody here yesterday.
+    assert.deepEqual(sessionPeople(rows, new Date(Date.UTC(2026, 0, 5, 12))), []);
 });
