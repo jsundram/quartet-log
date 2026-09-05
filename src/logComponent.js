@@ -9,6 +9,7 @@ import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
     impliedSlotParts, defaultSlotParts, slotCell, SLOT_PARTS, FIELDS, LABELS,
+    parseOthersRows, serializeOthersRows, slotPartKey,
 } from './logEntry.js';
 
 // The entry field each text input owns. `part` is absent: it's a segmented
@@ -21,7 +22,6 @@ const TEXT_INPUTS = {
     player1: '#logPlayer1',
     player2: '#logPlayer2',
     player3: '#logPlayer3',
-    others: '#logOthers',
     location: '#logLocation',
     comments: '#logComments',
 };
@@ -78,6 +78,10 @@ export class LogComponent {
         // Per-seat part, only where the user has overridden the default. Kept
         // sparse so the defaults stay live as the carried row changes.
         this.slotPartOverrides = [null, null, null];
+        // One editable row per Others? entry. The cell text is derived from
+        // these (syncOthers), never the other way round while editing.
+        this.otherRows = [];
+        this._otherId = 0;
         // A ?form= link that would replace this.config, awaiting a decision.
         this.proposed = null;
         this.mounted = false;
@@ -296,6 +300,10 @@ export class LogComponent {
                 // Every seat now means something else, so an override kept
                 // from the old layout would be describing a seat that moved.
                 this.slotPartOverrides = [null, null, null];
+        // One editable row per Others? entry. The cell text is derived from
+        // these (syncOthers), never the other way round while editing.
+        this.otherRows = [];
+        this._otherId = 0;
                 // Reflect state into the DOM; never read the selection back out
                 // of it (same contract as the Home part filter). aria-checked
                 // rides along because the part is a required field, and an
@@ -326,9 +334,12 @@ export class LogComponent {
             });
         });
         d3.select('#logOthersRepeat').on('click', () => {
-            this.entry.others = d3.select('#logOthersRepeat').attr('data-value');
-            d3.select('#logOthers').property('value', this.entry.others);
-            this.renderOthersChip();
+            this.setOtherRows(parseOthersRows(d3.select('#logOthersRepeat').attr('data-value')));
+        });
+        d3.select('#logOthersAdd').on('click', () => {
+            this.setOtherRows([...this.otherRows, this.newOtherRow()]);
+            const last = document.querySelector('.log-other-row:last-of-type input');
+            last?.focus();
         });
     }
 
@@ -375,6 +386,7 @@ export class LogComponent {
         this.renderWorkOptions();
         this.renderSuggestions();
         this.renderSlotParts();
+        this.renderOtherRows();
         this.renderOthersChip();
         this.renderMode();
     }
@@ -383,6 +395,9 @@ export class LogComponent {
         for (const [field, sel] of Object.entries(TEXT_INPUTS)) {
             d3.select(sel).property('value', this.entry[field]);
         }
+        // Rebuilt from the cell, which is where a reset (nextInSession) or a
+        // restored draft leaves the truth.
+        this.otherRows = parseOthersRows(this.entry.others).map(r => this.newOtherRow(r));
         this.renderComposerChips();
         // The picker opens on request, and stays open whenever it holds the
         // answer — a composer with no chip would otherwise be set but invisible.
@@ -440,6 +455,70 @@ export class LogComponent {
 
     clearMissing() {
         d3.selectAll('#log .is-missing').classed('is-missing', false);
+    }
+
+    newOtherRow(row = {}) {
+        return { id: ++this._otherId, name: '', instrument: '', comment: '', ...row };
+    }
+
+    setOtherRows(rows) {
+        this.otherRows = rows.map(r => (r.id ? r : this.newOtherRow(r)));
+        this.syncOthers();
+        this.renderOtherRows();
+    }
+
+    // The cell is derived from the rows. Nothing writes back into them while
+    // the user is typing, so a background revalidate cannot move a caret.
+    syncOthers() {
+        this.entry.others = serializeOthersRows(this.otherRows);
+        this.renderOthersChip();
+    }
+
+    renderOtherRows() {
+        d3.select('#logOthersRows').selectAll('.log-other-row')
+            .data(this.otherRows, d => d.id)
+            .join(enter => {
+                const row = enter.append('div').attr('class', 'log-other-row');
+                row.append('input')
+                    .attr('type', 'text').attr('list', 'logPlayers')
+                    .attr('placeholder', 'Name')
+                    .attr('aria-label', 'Other player')
+                    // Same reason as every other name field: iOS "fixing" a
+                    // surname is the failure this view exists to avoid.
+                    .attr('autocapitalize', 'words').attr('autocorrect', 'off')
+                    .attr('spellcheck', 'false')
+                    .property('value', d => d.name)
+                    .on('input', (e, d) => { d.name = e.target.value; this.syncOthers(); });
+                const select = row.append('select').attr('aria-label', 'Instrument');
+                // A row stores the CODE the cell will hold; the option list is
+                // keyed for display. Storing keys instead would mean two
+                // representations of one thing, and a re-parse turns cell text
+                // back into rows on every reset.
+                select.on('change', (e, d) => {
+                    const key = e.target.value;
+                    d.instrument = SLOT_PARTS.find(p => p.key === key)?.code ?? key;
+                    this.syncOthers();
+                });
+                row.append('button')
+                    .attr('type', 'button').attr('class', 'log-other-drop')
+                    .attr('aria-label', 'Remove this person').text('x')
+                    .on('click', (_, d) => this.setOtherRows(this.otherRows.filter(r => r.id !== d.id)));
+                return row;
+            })
+            .select('select')
+            .each((d, i, nodes) => {
+                // An instrument the option list can't express is offered as
+                // itself, so an existing "(klavier)" round-trips rather than
+                // being rewritten into the nearest thing we do know.
+                const key = slotPartKey(d.instrument);
+                const raw = d.instrument && !key ? [{ key: d.instrument, label: d.instrument }] : [];
+                d3.select(nodes[i]).selectAll('option')
+                    .data([{ key: '', label: 'part?' }, ...SLOT_PARTS, ...raw], o => o.key)
+                    .join('option')
+                    .attr('value', o => o.key)
+                    .text(o => o.label);
+                nodes[i].value = key ?? d.instrument ?? '';
+            });
     }
 
     renderSuggestions() {
@@ -530,6 +609,10 @@ export class LogComponent {
         // The parts the row just set become the next row's defaults, via the
         // carried cell — an override kept here would shadow them.
         this.slotPartOverrides = [null, null, null];
+        // One editable row per Others? entry. The cell text is derived from
+        // these (syncOthers), never the other way round while editing.
+        this.otherRows = [];
+        this._otherId = 0;
         this.refresh();
         // Straight to the next piece: composer, part and the seats all carry,
         // so the work title is the only thing left to type.

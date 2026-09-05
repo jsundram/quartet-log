@@ -7,6 +7,7 @@ import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts,
+    parseOthersRows, serializeOthersRows,
 } from '../src/logEntry.js';
 
 // A processed row, as normalizePlayerNames leaves it: annotations split off
@@ -241,4 +242,37 @@ test('defaultSlotParts keeps a role across a session, like a name', () => {
     // An unrepresentable annotation comes back as itself, not as a guess.
     const odd = carriedForward(row({ playerInstruments: [null, 'cl', null] }));
     assert.deepEqual(defaultSlotParts(odd, 'VA'), ['V1', 'cl', 'VC']);
+});
+
+// --- Others? rows -----------------------------------------------------------
+
+test('Others? rows round-trip losslessly, comment and all', () => {
+    // dataProcessor.parseOthers throws the comment away -- it only wants the
+    // instrument -- so an editor built on it would delete "(vc, doubling on
+    // IV)" the first time a row was touched.
+    const raw = 'Dana Ellis (p); Erin Fry (vc2); Carol (v1, shadowing on II, III); Bob Bek';
+    const rows = parseOthersRows(raw);
+    assert.deepEqual(rows[2], { name: 'Carol', instrument: 'v1', comment: 'shadowing on II, III' });
+    assert.deepEqual(rows[3], { name: 'Bob Bek', instrument: '', comment: '' });
+    assert.equal(serializeOthersRows(rows), raw);
+});
+
+test('Others? rows split on the same boundaries the app reads', () => {
+    // Comma-separated entries are legal too, and a comma inside an annotation
+    // must not tear an entry in half.
+    assert.deepEqual(parseOthersRows('Dana Ellis (vc, doubling on IV), Bob Bek').map(r => r.name),
+        ['Dana Ellis', 'Bob Bek']);
+    assert.deepEqual(parseOthersRows(''), []);
+    // "-" is "nobody", not a person.
+    assert.deepEqual(parseOthersRows('-'), []);
+});
+
+test('a half-typed Others? row says nothing', () => {
+    // The editor adds an empty row when you tap Add; leaving it blank must not
+    // put a stray separator or a bare annotation in the cell.
+    assert.equal(serializeOthersRows([
+        { name: 'Dana Ellis', instrument: 'p', comment: '' },
+        { name: '  ', instrument: 'vc', comment: '' },
+    ]), 'Dana Ellis (p)');
+    assert.equal(serializeOthersRows([]), '');
 });

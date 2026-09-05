@@ -231,10 +231,19 @@
                     <select id="logSlotPart3" class="log-slot-part" aria-label="Player 3's part"></select>
                 </div>
             </div>
+            <!-- The column where a pianist or a second cellist is most likely
+                 to turn up, so it gets the same name-plus-part control the
+                 seats do. Serialises to the "Name (instrument)" text the cell
+                 has always held. -->
             <div class="log-field">
-                <label for="logOthers">Others?</label>
-                <input id="logOthers" type="text" list="logPlayers" placeholder="Name (instrument); Name" autocapitalize="words" autocorrect="off" spellcheck="false">
-                <button type="button" id="logOthersRepeat" class="log-chip" hidden></button>
+                <label for="logOthersAdd">Others?</label>
+                <div class="log-others">
+                    <div id="logOthersRows"></div>
+                    <div class="log-others-actions">
+                        <button type="button" id="logOthersAdd" class="log-chip">+ Add person</button>
+                        <button type="button" id="logOthersRepeat" class="log-chip" hidden></button>
+                    </div>
+                </div>
             </div>
             <div class="log-field">
                 <label for="logLocation">Location</label>

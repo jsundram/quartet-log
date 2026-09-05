@@ -7,7 +7,9 @@
 // time and Google Forms does not. That is the only real difference between
 // this form and the one it replaces.
 import { withInstrument } from './csvFormat.js';
-import { SLOT_TO_PART, stripParens, instrumentFromSlot } from './dataProcessor.js';
+import {
+    SLOT_TO_PART, stripParens, instrumentFromSlot, splitOutsideParens,
+} from './dataProcessor.js';
 
 /** @typedef {import('./dataProcessor.js').Row} Row */
 /** @typedef {Record<string, string>} Entry */
@@ -305,4 +307,62 @@ export function defaultSlotParts(carried, part) {
         // so submitting cannot rewrite it into something else.
         return annotation ? (slotPartKey(annotation) ?? annotation) : implied[i];
     });
+}
+
+// --- Others? rows -----------------------------------------------------------
+//
+// `Others?` has always been free text of the shape "Name (instrument, comment)",
+// and the app reads the instrument for both aliasing and the part breakdown. It
+// was still hand-typed after the seats gained a part control, which made the
+// one column where a pianist or a second cellist is MOST likely to appear the
+// only one where saying so meant remembering the syntax.
+//
+// These parse and re-serialise that text losslessly. `parseOthers` in
+// dataProcessor deliberately discards the comment half — it only wants the
+// instrument — so an editor built on it would silently delete "(vc, doubling
+// on IV)" the first time a row was touched. This keeps all three parts.
+
+/** @typedef {{ name: string, instrument: string, comment: string }} OtherRow */
+
+/**
+ * @param {string|null|undefined} others
+ * @returns {OtherRow[]}
+ */
+export function parseOthersRows(others) {
+    if (!others) return [];
+    // The same entry boundaries the app uses, paren-aware, so a comma inside
+    // an annotation cannot tear an entry in half.
+    return splitOutsideParens(others)
+        .map(s => s.trim())
+        .filter(s => s && s !== '-')
+        .map(s => {
+            const m = s.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+            if (!m) return { name: s, instrument: '', comment: '' };
+            const inside = m[2];
+            const comma = inside.indexOf(',');
+            return {
+                name: m[1].trim(),
+                instrument: (comma >= 0 ? inside.slice(0, comma) : inside).trim(),
+                comment: comma >= 0 ? inside.slice(comma + 1).trim() : '',
+            };
+        });
+}
+
+/**
+ * Back to the cell. Semicolons between entries (the convention the column has
+ * always used), and the instrument/comment pair rebuilt in the order the
+ * reader expects.
+ * @param {OtherRow[]} rows
+ * @returns {string}
+ */
+export function serializeOthersRows(rows) {
+    return rows
+        .map(r => ({
+            name: (r.name ?? '').trim(),
+            inside: [(r.instrument ?? '').trim(), (r.comment ?? '').trim()].filter(Boolean).join(', '),
+        }))
+        // A row with no name is one the user started and left; it says nothing.
+        .filter(r => r.name)
+        .map(r => (r.inside ? `${r.name} (${r.inside})` : r.name))
+        .join('; ');
 }

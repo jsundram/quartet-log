@@ -128,6 +128,7 @@ const PREFILL = `https://docs.google.com/forms/d/e/${FORM_ID}/viewform?usp=pp_ur
 const [COMPOSER_ID, TITLE_ID, PART_ID, , PLAYER2_ID] = FORM_IDS.map(id => `entry.${id}`);
 const PLAYER1_ID = 'entry.104';
 const PLAYER3_ID = 'entry.106';
+const OTHERS_ID = 'entry.107';
 
 test('an unconfigured visitor gets the setup panel, not someone else\'s form', async ({ page }) => {
     // The whole point of per-user config: this site is public, so a visitor
@@ -497,6 +498,52 @@ test.describe('log form', () => {
         // partFromInstrument folds va2 into VA for the charts, but the sheet
         // keeps the distinction -- which is the reason to write it.
         expect(body.get(PLAYER2_ID)).toBe('Erin Fry (va2)');
+    });
+
+    test('an Others? player gets a part without typing the syntax', async ({ page }) => {
+        // Others? is where a pianist or a second cellist actually turns up, so
+        // it gets the same name-plus-part pair the seats have. It still
+        // serialises to the "Name (instrument)" text the cell has always held.
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Mozart');
+        await page.fill('#logTitle', 'K478');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+
+        await page.click('#logOthersAdd');
+        const row = page.locator('.log-other-row').first();
+        await row.locator('input').fill('Dana Ellis');
+        await row.locator('select').selectOption('P');
+        await page.click('#logOthersAdd');
+        const second = page.locator('.log-other-row').nth(1);
+        await second.locator('input').fill('Erin Fry');
+        await second.locator('select').selectOption('VC2');
+
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        const body = new URLSearchParams(bodies.at(-1));
+        expect(body.get(OTHERS_ID)).toBe('Dana Ellis (p); Erin Fry (vc2)');
+    });
+
+    test('an Others? row can be removed, and a blank one says nothing', async ({ page }) => {
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#2');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+
+        await page.click('#logOthersAdd');
+        await page.locator('.log-other-row').first().locator('input').fill('Dana Ellis');
+        await page.click('#logOthersAdd');          // left blank on purpose
+        await page.click('#logOthersAdd');
+        await page.locator('.log-other-row').nth(2).locator('input').fill('Erin Fry');
+        await expect(page.locator('.log-other-row')).toHaveCount(3);
+        await page.locator('.log-other-row').nth(2).locator('.log-other-drop').click();
+        await expect(page.locator('.log-other-row')).toHaveCount(2);
+
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        // The blank row contributes nothing -- no stray separator, no bare
+        // annotation.
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Dana Ellis');
     });
 
     test('a name fixed in the sheet afterwards wins over what was typed', async ({ page }) => {
