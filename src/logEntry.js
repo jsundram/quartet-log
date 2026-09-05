@@ -92,14 +92,17 @@ export function othersReminder(entry, last) {
 }
 
 /**
- * Blocking problems, as field labels. The form validates its three required
+ * Blocking problems, as FIELD KEYS. The form validates its three required
  * questions server-side and `mode: 'no-cors'` means we never see the
  * rejection, so an unchecked submission fails silently and invisibly.
+ *
+ * Keys rather than labels because the caller needs both: `LABELS[f]` for the
+ * message, and the field itself to mark and focus. Deriving the keys a second
+ * time at the call site is how the two drift apart.
  * @param {Entry} entry @returns {string[]}
  */
 export function missingFields(entry) {
-    return REQUIRED_FIELDS.filter(f => !entry[f].trim())
-        .map(f => /** @type {Record<string, string>} */ (LABELS)[f]);
+    return REQUIRED_FIELDS.filter(f => !entry[f].trim());
 }
 
 /**

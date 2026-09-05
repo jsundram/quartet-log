@@ -336,6 +336,34 @@ test.describe('log form', () => {
         await expect(page.locator('#logStatus')).toContainText('Work Title');
         await expect(page.locator('#logStatus')).toContainText('Which Part');
         expect(bodies).toHaveLength(0);
+
+        // A sentence naming them is not enough on a phone, where the empty
+        // field can be off-screen: they are marked, and the first one has the
+        // cursor, so the fix is to start typing.
+        await expect(page.locator('#logTitle')).toHaveClass(/is-missing/);
+        await expect(page.locator('#logPart')).toHaveClass(/is-missing/);
+        await expect(page.locator('#logTitle')).toBeFocused();
+        // Acting on any field clears the marks rather than leaving them to rot.
+        await page.fill('#logTitle', '76#1');
+        await expect(page.locator('#logTitle')).not.toHaveClass(/is-missing/);
+        await expect(page.locator('#logPart')).not.toHaveClass(/is-missing/);
+    });
+
+    test('says what it logged, and leaves the cursor on the next piece', async ({ page }) => {
+        await captureSubmits(page);
+        await page.selectOption('#logComposer', 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        // The response is opaque, so this line is the only acknowledgement a
+        // submit gets -- and a bare "Logged." cannot be told apart from the
+        // previous piece's.
+        await expect(page.locator('#logStatus')).toContainText('Logged Haydn 76#1');
+        await expect(page.locator('#logStatus')).toHaveAttribute('role', 'status');
+        // Composer, part and seats all carry, so the title is all that is left
+        // to type for the next piece of the session.
+        await expect(page.locator('#logTitle')).toBeFocused();
+        await expect(page.locator('#logTitle')).toHaveValue('');
     });
 
     test('a link cannot redirect a configured device without being asked', async ({ page }) => {

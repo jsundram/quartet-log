@@ -178,7 +178,7 @@
             </ol>
             <input id="logSetupLink" type="url" placeholder="https://docs.google.com/forms/d/e/.../viewform?usp=pp_url&amp;entry...">
             <div id="logSetupMap" class="log-setup-map"></div>
-            <p id="logSetupError" class="log-status error"></p>
+            <p id="logSetupError" class="log-status error" role="status" aria-live="polite"></p>
             <button type="button" id="logSetupSave" class="log-submit" disabled>Connect form</button>
             <p class="log-setup-help">No form feeding your sheet yet?
                <a href="howto.html">How to make a chamber music log</a> walks through building one.</p>
@@ -188,11 +188,15 @@
             <div class="log-field">
                 <label for="logComposer">Composer</label>
                 <select id="logComposer"></select>
-                <input id="logComposerOther" type="text" placeholder="Composer name" hidden>
+                <input id="logComposerOther" type="text" placeholder="Composer name" autocapitalize="words" autocorrect="off" spellcheck="false" hidden>
             </div>
+            <!-- autocorrect off on every name field: iOS helpfully "fixes"
+                 surnames, and a mangled name in the sheet is the failure this
+                 whole view exists to avoid. Work titles are catalogue numbers,
+                 so they get no capitalisation either. -->
             <div class="log-field">
                 <label for="logTitle">Work</label>
-                <input id="logTitle" type="text" list="logWorks" placeholder="e.g. 76#3">
+                <input id="logTitle" type="text" list="logWorks" placeholder="e.g. 76#3" autocapitalize="off" autocorrect="off" spellcheck="false">
             </div>
             <div class="log-field">
                 <label for="logPart">Your part</label>
@@ -202,24 +206,24 @@
             <p class="log-note">Leave a seat blank to repeat whoever was there. Write <code>-</code> for a seat this work doesn't have.</p>
             <div class="log-field">
                 <label for="logPlayer1">Player 1</label>
-                <input id="logPlayer1" type="text" list="logPlayers">
+                <input id="logPlayer1" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
             </div>
             <div class="log-field">
                 <label for="logPlayer2">Player 2</label>
-                <input id="logPlayer2" type="text" list="logPlayers">
+                <input id="logPlayer2" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
             </div>
             <div class="log-field">
                 <label for="logPlayer3">Player 3</label>
-                <input id="logPlayer3" type="text" list="logPlayers">
+                <input id="logPlayer3" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
             </div>
             <div class="log-field">
                 <label for="logOthers">Others?</label>
-                <input id="logOthers" type="text" list="logPlayers" placeholder="Name (instrument); Name">
+                <input id="logOthers" type="text" list="logPlayers" placeholder="Name (instrument); Name" autocapitalize="words" autocorrect="off" spellcheck="false">
                 <button type="button" id="logOthersRepeat" class="log-chip" hidden></button>
             </div>
             <div class="log-field">
                 <label for="logLocation">Location</label>
-                <input id="logLocation" type="text" list="logLocations">
+                <input id="logLocation" type="text" list="logLocations" autocapitalize="words" autocorrect="off" spellcheck="false">
             </div>
             <div class="log-field">
                 <label for="logComments">Comments</label>
@@ -231,7 +235,7 @@
             <datalist id="logLocations"></datalist>
 
             <button type="submit" id="logSubmit" class="log-submit">Log it</button>
-            <p id="logStatus" class="log-status"></p>
+            <p id="logStatus" class="log-status" role="status" aria-live="polite"></p>
             <p class="log-connected">Writing to form <code id="logFormId"></code>. <a href="#" id="logChangeForm">Change</a></p>
         </form>
         <div id="logPending" class="log-pending" hidden></div>

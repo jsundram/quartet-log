@@ -27,6 +27,14 @@ const TEXT_INPUTS = {
 
 const CARRIED_INPUTS = ['player1', 'player2', 'player3', 'location'];
 
+// What to mark and focus when a required field is missing. Composer resolves
+// to whichever of its two controls is live.
+const REQUIRED_SELECTOR = {
+    composer: () => (d3.select('#logComposerOther').property('hidden') ? '#logComposer' : '#logComposerOther'),
+    title: () => '#logTitle',
+    part: () => '#logPart',
+};
+
 // Leading space: no composer name can collide with it.
 const OTHER_COMPOSER = ' other';
 
@@ -232,17 +240,25 @@ export class LogComponent {
             .data(CHOICES.part)
             .join('button')
             .attr('type', 'button')
+            .attr('role', 'radio')
             .attr('class', d => `part-btn${d === this.entry.part ? ' active' : ''}`)
+            .attr('aria-checked', d => String(d === this.entry.part))
             .attr('data-part', d => d)
             .text(d => d)
             .on('click', (_, part) => {
                 this.entry.part = part;
                 // Reflect state into the DOM; never read the selection back out
-                // of it (same contract as the Home part filter).
+                // of it (same contract as the Home part filter). aria-checked
+                // rides along because the part is a required field, and an
+                // unset one is one of the three things that blocks a submit.
                 group.selectAll('.part-btn')
                     .classed('active', function () {
                         return d3.select(this).attr('data-part') === part;
+                    })
+                    .attr('aria-checked', function () {
+                        return String(d3.select(this).attr('data-part') === part);
                     });
+                this.clearMissing();
             });
     }
 
@@ -251,6 +267,7 @@ export class LogComponent {
             d3.select(sel).on('input', (e) => {
                 this.entry[field] = e.target.value;
                 if (field === 'others') this.renderOthersChip();
+                this.clearMissing();
             });
         }
         d3.select('#logOthersRepeat').on('click', () => {
@@ -319,6 +336,22 @@ export class LogComponent {
         d3.select('#logProposalAccept').text(replacing ? 'Use the new form' : 'Connect this form');
     }
 
+    // Naming the missing fields in a sentence is not enough on a phone, where
+    // the one that is empty may be three fields up: mark them, and put the
+    // cursor in the first.
+    markMissing(fields) {
+        this.clearMissing();
+        for (const field of fields) {
+            d3.select(REQUIRED_SELECTOR[field]()).classed('is-missing', true);
+        }
+        const first = document.querySelector(REQUIRED_SELECTOR[fields[0]]());
+        (first?.matches('input, select') ? first : first?.querySelector('button'))?.focus();
+    }
+
+    clearMissing() {
+        d3.selectAll('#log .is-missing').classed('is-missing', false);
+    }
+
     renderSuggestions() {
         d3.select('#logPlayers').selectAll('option')
             .data(knownPlayers(this.rows)).join('option').attr('value', d => d);
@@ -371,7 +404,8 @@ export class LogComponent {
         if (!this.config) return;   // the form is hidden without one
         const missing = missingFields(this.entry);
         if (missing.length) {
-            this.status(`Still needs: ${missing.join(', ')}.`, 'error');
+            this.status(`Still needs: ${missing.map(f => LABELS[f]).join(', ')}.`, 'error');
+            this.markMissing(missing);
             return;
         }
         const entry = { ...this.entry };
@@ -392,11 +426,18 @@ export class LogComponent {
         store.setRecent(resolved);
         this.entry = nextInSession(entry);
         this.refresh();
+        // Straight to the next piece: composer, part and the seats all carry,
+        // so the work title is the only thing left to type.
+        d3.select('#logTitle').node()?.focus();
 
+        // Name what went in. The response is opaque, so this line is the only
+        // acknowledgement a submit ever gets, and "Logged." alone cannot be
+        // told apart from the previous piece's "Logged."
+        const what = `${entry.composer} ${entry.title}`;
         const notes = warnings(entry).join(' ');
         this.status(remaining
-            ? `Saved. ${remaining} waiting for a network. ${notes}`.trim()
-            : `Logged. It reaches the app within a few minutes. ${notes}`.trim(),
+            ? `${what} saved. ${remaining} waiting for a network. ${notes}`.trim()
+            : `Logged ${what}. It reaches the app within a few minutes. ${notes}`.trim(),
         remaining ? '' : 'ok');
     }
 }

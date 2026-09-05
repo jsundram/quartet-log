@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
-    warnings, knownPlayers, knownLocations, nextInSession,
+    warnings, knownPlayers, knownLocations, nextInSession, LABELS,
 } from '../src/logEntry.js';
 
 // A processed row, as normalizePlayerNames leaves it: annotations split off
@@ -74,10 +74,14 @@ test('othersReminder offers the previous row Others?, which never carries itself
 });
 
 test('missingFields mirrors the form required questions, since a rejection is invisible', () => {
-    assert.deepEqual(missingFields(blankEntry()), ['Composer', 'Work Title', 'Which Part']);
+    // Field keys, not labels: the caller needs the field to mark and focus as
+    // well as a name to print, and deriving the keys twice is how they drift.
+    assert.deepEqual(missingFields(blankEntry()), ['composer', 'title', 'part']);
+    assert.deepEqual(missingFields(blankEntry()).map(f => LABELS[f]),
+        ['Composer', 'Work Title', 'Which Part']);
     assert.deepEqual(missingFields(blankEntry({ composer: 'Haydn', title: '76#3', part: 'V1' })), []);
     // Whitespace is not a value.
-    assert.deepEqual(missingFields(blankEntry({ composer: ' ', title: '76#3', part: 'V1' })), ['Composer']);
+    assert.deepEqual(missingFields(blankEntry({ composer: ' ', title: '76#3', part: 'V1' })), ['composer']);
     // Blank players are legal — they are ditto marks, not omissions.
     assert.deepEqual(missingFields(blankEntry({ composer: 'Haydn', title: '76#3', part: 'V1', player1: '' })), []);
 });

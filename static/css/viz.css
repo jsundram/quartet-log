@@ -47,6 +47,7 @@
     --color-accent-hover:      #45a049;
     --color-accent-selected:   #2e7d32;
     --color-accent-focus-ring: rgba(76, 175, 80, 0.2);
+    --color-error-focus-ring:  rgba(230, 57, 70, 0.2);  /* matches --color-text-error */
     --color-destructive:       #c0392b;
     --color-highlight:         #ffcc00; /* play-square hover */
 
@@ -1520,6 +1521,30 @@ body.network-fullscreen-open {
     outline: none;
     border-color: var(--color-accent);
     box-shadow: 0 0 0 3px var(--color-accent-focus-ring);
+}
+
+/* A required field the submit found empty. Named in the status line too, but
+   on a phone the empty one can be three fields up the screen. */
+.log-field input.is-missing,
+.log-field select.is-missing,
+#logPart.is-missing {
+    border-color: var(--color-text-error);
+}
+
+/* A literal rgba like --color-accent-focus-ring, not color-mix(): the bundle
+   targets Safari 15.4 and color-mix() lands in 16.2. */
+#logPart.is-missing {
+    box-shadow: 0 0 0 3px var(--color-error-focus-ring);
+}
+
+/* markMissing puts the cursor in the first empty field, so the focus ring and
+   the error border land on the same control. Without this it draws the accent
+   ring around a red border, which is two signals disagreeing at exactly the
+   moment the user needs one. */
+.log-field input.is-missing:focus,
+.log-field select.is-missing:focus {
+    border-color: var(--color-text-error);
+    box-shadow: 0 0 0 3px var(--color-error-focus-ring);
 }
 
 /* The carried-forward value shows here, so it has to read as a real name
