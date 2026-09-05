@@ -8,7 +8,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    pending, enqueue, drop, flush, setRecent, recent, recentAll,
+    pending, enqueue, drop, flush, setRecent, recent, recentAll, forgetRecent,
     saveDraft, readDraft, clearDraft, clearAll,
 } from '../src/logStore.js';
 import { blankEntry } from '../src/logEntry.js';
@@ -240,6 +240,48 @@ test('an entry queued during a flush goes out in that same run', async () => {
     const result = await flush(post);
     assert.deepEqual(sentTitles, ['76#1', '76#2']);
     assert.deepEqual(result, { sent: 2, remaining: 0 });
+});
+
+test('joining a flush never inherits an answer from a run that did not see the entry', async () => {
+    // The tail window: the run's loop is done and `remaining` computed, but
+    // `inFlight` is only cleared a microtask later, in the first caller's
+    // `finally`. A submit landing in there used to get the previous run's
+    // {sent, remaining} -- "Logged" for an entry still sitting in the queue.
+    //
+    // That window is one microtask wide and its position depends on how many
+    // ticks the run takes to settle, so sweep the whole settle sequence rather
+    // than guess: the invariant is that a resolved flush never claims an empty
+    // queue while one is still waiting.
+    for (let ticks = 0; ticks < 10; ticks++) {
+        globalThis.localStorage = (ls = makeLocalStorage());
+        enqueue(entry('76#1'));
+        const sentTitles = [];
+        const post = async (e) => { sentTitles.push(e.title); };
+
+        const first = flush(post);
+        for (let i = 0; i < ticks; i++) await null;
+        enqueue(entry('76#2'));
+        const joined = await flush(post);
+        await first;
+
+        const at = `tick ${ticks}`;
+        assert.equal(joined.remaining, pending().length, at);
+        assert.deepEqual(pending(), [], at);
+        assert.deepEqual(sentTitles, ['76#1', '76#2'], at);
+    }
+});
+
+test('forgetRecent drops the copy of a submission whose queued entry was discarded', () => {
+    // setRecent runs on every submit, including one the flush could not send.
+    // Discarding the queued entry with the x has to forget both, or a row the
+    // sheet will never hold goes on driving carry-forward for 12 hours -- and
+    // isSameRow can never retire it, because no fetched row will ever match.
+    const queued = blankEntry({ composer: 'Haydn', title: '76#1', player1: 'Alice Hart' });
+    setRecent(queued);
+    setRecent(blankEntry({ composer: 'Mozart', title: 'K421', player1: 'Bob Bek' }));
+    forgetRecent(queued);
+    assert.deepEqual(recentAll().map(r => r.entry.title), ['K421']);
+    assert.equal(recent(null).entry.title, 'K421');
 });
 
 test('a draft survives a reload, and a submit retires it', () => {

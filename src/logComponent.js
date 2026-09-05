@@ -1,15 +1,17 @@
 import * as d3 from "d3";
 import { composerWorkIndex } from './catalog.js';
 import {
-    CHOICES, postEntry, readPrefilledLink, getFormConfig, setFormConfig,
-    clearFormConfig,
+    postEntry, readPrefilledLink, getFormConfig, setFormConfig, clearFormConfig,
 } from './formConfig.js';
+import { stripParens } from './dataProcessor.js';
 import * as store from './logStore.js';
 import {
     blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
-    impliedSlotParts, defaultSlotParts, slotCell, SLOT_PARTS, FIELDS, LABELS,
-    splitOthersCell, mergeOthersCell, sessionPeople, sessionRows, slotPartKey,
+    impliedSlotParts, defaultSlotParts, slotCell, SLOT_PARTS, PART_CHOICES,
+    FIELDS, LABELS,
+    splitOthersCell, mergeOthersCell, parseOthersRows, canonicalOthersCell,
+    sessionPeople, sessionRows, slotPartKey,
 } from './logEntry.js';
 
 // The entry field each text input owns. `part` is absent: it's a segmented
@@ -29,9 +31,6 @@ const TEXT_INPUTS = {
 const CARRIED_INPUTS = ['player1', 'player2', 'player3', 'location'];
 const SEATS = ['player1', 'player2', 'player3'];
 
-// The name half of a cell that may carry an "(instrument)" annotation.
-const stripAnnotation = (/** @type {string} */ cell) =>
-    (cell ?? '').replace(/\s*\([^)]*\)\s*$/, '').trim();
 
 // What to mark and focus when a required field is missing. Composer resolves
 // to whichever of its two controls is live.
@@ -86,29 +85,35 @@ export class LogComponent {
         this.discarded = false;
         // One editable row per Others? entry. The cell text is derived from
         // these (syncOthers), never the other way round while editing.
+        this.sheetRows = [];
         this.otherRows = [];
         this.othersFree = '';
         this._otherId = 0;
         // A ?form= link that would replace this.config, awaiting a decision.
         this.proposed = null;
         this.mounted = false;
+        this.invalidateSources();
     }
 
     // Called on every data change (boot, revalidate). The form never depends
     // on this: with no cached data the datalists are empty and every field
     // still works, which is what a first launch offline gets.
-    setData(rows) {
+    setData(rows, sheetRows) {
         this.rows = rows ?? [];
+        // Every row the SHEET holds, partial movements included. The app hides
+        // those rows, but the sheet's own fillForward still reads the next row
+        // against them, so carry-forward has to. Log "Op. 59#1: I" and then
+        // leave a seat blank, and the cell this form leaves empty is resolved
+        // against the partial — not against the row this app would show above
+        // it. store.recent() masks this inside a session; it bites when the
+        // partial came from the Google Form itself or from another device.
+        this.sheetRows = sheetRows ?? this.rows;
+        this.invalidateSources();
         // Deliberately NOT a full refresh: a background revalidate lands every
         // five minutes and writing the entry back into the inputs would move
         // the caret out from under whoever is mid-name. Only the parts driven
         // by the data are redrawn.
-        if (this.mounted) {
-            this.renderSuggestions();
-            this.renderPlaceholders();
-            this.renderSlotParts();
-            this.renderSessionPeople();
-        }
+        if (this.mounted) this.redrawFromData();
     }
 
     // Idempotent, per initializeUI's re-init contract: a second call rebuilds
@@ -158,7 +163,15 @@ export class LogComponent {
             setFormConfig(this.pendingConfig);
             this.config = this.pendingConfig;
             this.pendingConfig = null;
+            // Reset the panel, not just hide it: renderMode leaves the button
+            // enabled and the mapping table rendered, so tapping Change would
+            // reopen the panel showing the DISCONNECTED form's columns under
+            // an empty box, with a Connect button that silently does nothing.
+            // Verifying that mapping is the one thing this panel is for.
             d3.select('#logSetupLink').property('value', '');
+            d3.select('#logSetupSave').property('disabled', true);
+            d3.select('#logSetupError').text('');
+            this.renderSetupMap();
             this.renderMode();
             this.status('Form connected.', 'ok');
             this.flushQueue();
@@ -233,7 +246,7 @@ export class LogComponent {
     // The chips are the composers this log plays; the select behind "More" is
     // the whole catalog. One state (entry.composer), two views.
     renderComposerChips() {
-        const chips = frequentComposers(this.rows);
+        const chips = this.frequentComposers();
         const group = d3.select('#logComposerChips');
         group.selectAll('.log-chip-btn')
             .data([...chips, MORE_COMPOSERS], d => d)
@@ -307,7 +320,7 @@ export class LogComponent {
     buildPartButtons() {
         const group = d3.select('#logPart');
         group.selectAll('button')
-            .data(CHOICES.part)
+            .data(PART_CHOICES)
             .join('button')
             .attr('type', 'button')
             .attr('role', 'radio')
@@ -365,7 +378,7 @@ export class LogComponent {
     // The part each seat is currently set to: what the carried row says (a
     // role sticks across a session like a name does), unless overridden here.
     slotParts() {
-        const defaults = defaultSlotParts(carriedForward(this.carrySource()), this.entry.part);
+        const defaults = defaultSlotParts(this.carried(), this.entry.part);
         return defaults.map((d, i) => this.slotPartOverrides[i] ?? d);
     }
 
@@ -390,26 +403,59 @@ export class LogComponent {
         });
     }
 
+    // The renders below are the ones that read the DATA rather than the entry.
+    // setData runs them on every revalidate and never touches the field values,
+    // since a background fetch lands every five minutes and rewriting an input
+    // would move the caret out from under whoever is mid-name.
+    redrawFromData() {
+        this.invalidateSources();
+        this.renderSuggestions();
+        this.renderPlaceholders();
+        this.renderSlotParts();
+        this.renderSessionPeople();
+    }
+
+    // Both sources below are derived from `this.rows` and from localStorage,
+    // and both are read several times per render — carriedForward alone is
+    // asked for by renderPlaceholders, renderSlotParts and renderSessionPeople.
+    // Every one of those was a synchronous getItem + JSON.parse, and
+    // sessionSource additionally copied the whole log; syncOthers runs the lot
+    // on every keystroke in an Others? field, which is the phone-in-a-
+    // rehearsal-room path this feature exists for. They change only when the
+    // data or the store does, so they are computed once and held until then.
+    invalidateSources() {
+        this._carry = undefined;
+        this._carried = undefined;
+        this._session = null;
+        this._frequent = null;
+    }
+
     // The session, as this device knows it: the fetched rows plus whatever was
     // submitted here since. Without the local half, the people from the piece
     // you logged two minutes ago would not be offered back until the published
     // CSV caught up -- which is precisely the window a session happens in.
     sessionSource() {
+        if (this._session) return this._session;
         // Every submission this device remembers, not just the newest: a
         // sitting logs several pieces inside the window the published CSV
         // takes to catch up, and someone who left after the second piece
         // should still be offered back for the fourth.
-        return [...this.rows, ...store.recentAll().map(({ at, entry }) => ({
+        return (this._session = [...this.sheetRows, ...store.recentAll().map(({ at, entry }) => ({
             // The real save time, not now: a submission from this morning is
             // not part of this afternoon's sitting.
             timestamp: new Date(at),
-            player1: stripAnnotation(entry.player1),
-            player2: stripAnnotation(entry.player2),
-            player3: stripAnnotation(entry.player3),
+            player1: stripParens(entry.player1),
+            player2: stripParens(entry.player2),
+            player3: stripParens(entry.player3),
             others: entry.others,
-            othersList: splitOthersCell(entry.others).rows
+            // parseOthersRows, not splitOthersCell's `rows`: a fetched row's
+            // othersList comes from dataProcessor.parseOthers, which keeps
+            // every person and discards only the comment. The `rows` view
+            // drops the commented entries entirely, so a local submission
+            // would forget anyone the freeform box held.
+            othersList: parseOthersRows(entry.others)
                 .map(r => ({ name: r.name, instrument: r.instrument })),
-        }))];
+        }))]);
     }
 
     /**
@@ -424,15 +470,29 @@ export class LogComponent {
      * plainly wrong.
      */
     defaultOthersCell() {
-        return sessionRows(this.sessionSource()).at(-1)?.others ?? '';
+        return canonicalOthersCell(sessionRows(this.sessionSource()).at(-1));
     }
 
     // The row the sheet will read this one against. A submission this device
     // made minutes ago beats the fetched data, which lags by however long the
     // published CSV takes to catch up.
     carrySource() {
-        const last = this.rows.at(-1) ?? null;
-        return store.recent(last)?.entry ?? last;
+        if (this._carry !== undefined) return this._carry;
+        const last = this.sheetRows.at(-1) ?? null;
+        return (this._carry = store.recent(last)?.entry ?? last);
+    }
+
+    // What a blank cell in each carried field will become. Read three times
+    // per render pass and unchanged in between, so it rides the same memo.
+    carried() {
+        return (this._carried ??= carriedForward(this.carrySource()));
+    }
+
+    // Two full scans of the log per render otherwise: renderComposerChips
+    // builds the chip row from it and renderFields asks again to decide
+    // whether the composer already has a chip.
+    frequentComposers() {
+        return (this._frequent ??= frequentComposers(this.rows));
     }
 
     refresh() {
@@ -455,7 +515,7 @@ export class LogComponent {
         this.renderComposerChips();
         // The picker opens on request, and stays open whenever it holds the
         // answer — a composer with no chip would otherwise be set but invisible.
-        const onAChip = frequentComposers(this.rows).includes(this.entry.composer);
+        const onAChip = this.frequentComposers().includes(this.entry.composer);
         const showPicker = this.expandComposer || (!!this.entry.composer && !onAChip);
         // A composer the catalog doesn't list is held in the Other input, and
         // the select has to show that rather than silently falling back to its
@@ -473,7 +533,7 @@ export class LogComponent {
     // if nothing is typed: the carry-forward made visible instead of trusted
     // (howto section 6).
     renderPlaceholders() {
-        const carried = carriedForward(this.carrySource());
+        const carried = this.carried();
         for (const field of CARRIED_INPUTS) {
             d3.select(TEXT_INPUTS[field]).attr('placeholder', carried[field] || 'nobody yet');
         }
@@ -516,11 +576,17 @@ export class LogComponent {
     // ensemble changes. Tapping one brings the instrument they were last
     // logged on, so the second sextet costs one tap per extra player.
     renderSessionPeople() {
-        const carried = carriedForward(this.carrySource());
+        const carried = this.carried();
         const taken = new Set([
-            ...SEATS.map(f => stripAnnotation(this.entry[f].trim() || carried[f])),
+            ...SEATS.map(f => stripParens(this.entry[f].trim() || carried[f])),
             ...this.otherRows.map(r => r.name.trim()),
-            ...splitOthersCell(this.othersFree).rows.map(r => r.name),
+            // Every name in the freeform box, not splitOthersCell's `rows`:
+            // that view drops exactly the entries carrying a comment, which
+            // are the ones the box holds. sessionPeople offers those people
+            // (parseOthers keeps the person and discards only the comment), so
+            // a chip would claim someone is not on a row they are already on,
+            // and tapping it writes them in a second time.
+            ...parseOthersRows(this.othersFree).map(r => r.name),
         ].filter(Boolean));
 
         d3.select('#logOthersHere').selectAll('.log-chip-btn')
@@ -581,6 +647,13 @@ export class LogComponent {
         this.othersFree = draft.othersFree ?? '';
         this.expandComposer = !!draft.expandComposer;
         this.otherRows = (draft.otherRows ?? []).map(r => this.newOtherRow(r));
+        // newOtherRow spreads `...row` last, so a restored row keeps its saved
+        // id while the counter has only advanced once per row. Remove some
+        // rows before the eviction and the saved ids are sparse and ahead of
+        // it, so the next Add person mints one already on screen —
+        // renderOtherRows joins on `d.id`, so that row never appears while
+        // syncOthers still submits it: an invisible extra player.
+        this._otherId = Math.max(this._otherId, ...this.otherRows.map(r => r.id ?? 0));
     }
 
     seedOthers() {
@@ -675,7 +748,15 @@ export class LogComponent {
                 row.append('button')
                     .attr('type', 'button').attr('class', 'log-pending-drop')
                     .attr('aria-label', 'Discard this entry').text('x')
-                    .on('click', (_, d) => { store.drop(d.id); this.renderPending(); });
+                    // Both copies, or the discarded piece goes on steering
+                    // carry-forward from the sitting for 12 hours as a row the
+                    // sheet will never hold.
+                    .on('click', (_, d) => {
+                        store.drop(d.id);
+                        store.forgetRecent(d.entry);
+                        this.renderPending();
+                        this.redrawFromData();
+                    });
                 return row;
             })
             .select('.log-pending-what')
@@ -702,7 +783,7 @@ export class LogComponent {
             this.markMissing(missing);
             return;
         }
-        const carried = carriedForward(this.carrySource());
+        const carried = this.carried();
         const implied = impliedSlotParts(this.entry.part);
         const chosen = this.slotParts();
         // Names and parts are two controls; the sheet has one cell. A part
@@ -747,6 +828,10 @@ export class LogComponent {
         }
 
         store.setRecent(resolved);
+        // The sitting just changed: the memoised carry and session sources
+        // below feed seedOthers and refresh, and a stale one would start the
+        // next piece from the row before this one.
+        this.invalidateSources();
         this.entry = nextInSession(entry);
         // The parts the row just set become the next row's defaults, via the
         // carried cell — an override kept here would shadow them.

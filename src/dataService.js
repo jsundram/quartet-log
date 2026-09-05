@@ -239,7 +239,8 @@ export class DataService {
 
     /**
      * @param {Row[]} rawData
-     * @returns {Row[]}
+     * @returns {{ rows: Row[], sheetRows: Row[] }} the rows every view shows,
+     *   and every row the sheet holds — partial movements included.
      */
     processData(rawData) {
         // Sort by timestamp and drop invalid-date rows before anything else —
@@ -253,8 +254,16 @@ export class DataService {
         let processedData = fillForward(rows, PLAYER_ABBREVIATIONS);
         processedData = normalizePlayerNames(processedData, PLAYER_ALIASES);
 
-        // Filter out incomplete works
-        return processedData.filter(d => !d.work.incomplete);
+        // Partial movements are dropped from every VIEW, but they are still
+        // rows in the spreadsheet, and the SHEET's own fillForward reads the
+        // next row against them. Anything reasoning about what a blank cell
+        // will ditto — the log form's carry-forward — has to see them, or it
+        // shows a placeholder and writes a blank resolved against the wrong
+        // previous row. So both lists are returned rather than one.
+        return {
+            rows: processedData.filter(d => !d.work.incomplete),
+            sheetRows: processedData,
+        };
     }
 
     /**

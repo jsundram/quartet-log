@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import {
     blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
-    impliedSlotParts, slotCell, slotPartKey, defaultSlotParts,
+    impliedSlotParts, slotCell, slotPartKey, defaultSlotParts, canonicalOthersCell,
+    PART_CHOICES,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
     sessionRows, sessionPeople,
 } from '../src/logEntry.js';
@@ -56,6 +57,20 @@ test('resolveCarry fills blanks from the carried row and keeps what was typed', 
     assert.equal(resolved.player3, 'Carol Diaz');
     assert.equal(resolved.location, 'Home');
     assert.equal(resolved.title, '20#4');
+});
+
+test('resolveCarry trims, so the remembered copy matches the row the sheet holds', () => {
+    // toFormBody trims what it submits and processRow trims what it reads back,
+    // so an untrimmed copy describes a row that does not exist. logStore's
+    // isSameRow compares composer and title with ===, and a false miss leaves
+    // the local copy shadowing the sheet for 12 hours -- which is exactly what
+    // defeats correcting a name in the sheet afterwards.
+    const resolved = resolveCarry(
+        blankEntry({ composer: ' Haydn ', title: '76#3 ', comments: ' fun ' }),
+        carriedForward(null));
+    assert.equal(resolved.title, '76#3');
+    assert.equal(resolved.composer, 'Haydn');
+    assert.equal(resolved.comments, 'fun');
 });
 
 test('resolveCarry leaves an explicitly empty seat empty', () => {
@@ -188,6 +203,12 @@ test('a typed name takes the chosen part, and an empty seat stays empty', () => 
         'Erin Fry (va2)');
     // "-" is "this work has no such seat" (howto section 5), not a person.
     assert.equal(slotCell({ typed: '-', carried: 'Alice Hart', chosen: 'VC2', implied: 'VC' }), '-');
+    // And a CARRIED "-": the previous row was a trio, so seat 3 holds "-".
+    // Picking VC2 on that empty seat fires the materialise-the-carried-name
+    // rule, which would otherwise write "- (vc2)" -- a phantom cellist named
+    // "-", since peopleKeysFor only skips the bare "-".
+    assert.equal(slotCell({ typed: '', carried: '-', chosen: 'VC2', implied: 'VC' }), '');
+    assert.equal(slotCell({ typed: '', carried: '-', chosen: 'VC', implied: 'VC' }), '');
     // Nothing carried and nothing typed: still nothing.
     assert.equal(slotCell({ typed: '', carried: '', chosen: 'V1', implied: 'V1' }), '');
 });
@@ -323,4 +344,42 @@ test('sessionPeople offers this sitting people, most recent first', () => {
     assert.equal(people.find(p => p.name === 'Dana Ellis').instrument, 'p');
     // Nobody here yesterday.
     assert.deepEqual(sessionPeople(rows, new Date(Date.UTC(2026, 0, 5, 12))), []);
+});
+
+test('canonicalOthersCell replaces the raw names with the canonical ones', () => {
+    // The raw cell is what normalizePlayerNames leaves alone; othersList is
+    // what it rewrote. Seeding the next piece's extras from the raw text made
+    // the two disagree exactly where PLAYER_ALIASES does its job, so the chip
+    // for the canonical name was offered for a person already on the row and
+    // tapping it wrote them in twice. This can never fail in CI, where the
+    // alias table is the empty stub -- hence a fixture that states both views.
+    assert.equal(canonicalOthersCell({
+        others: 'Pete (vc)',
+        othersList: [{ name: 'Peter Ouyang', instrument: 'vc' }],
+    }), 'Peter Ouyang (vc)');
+
+    // The comment only the raw cell carries survives.
+    assert.equal(canonicalOthersCell({
+        others: 'Pete (vc, doubling on IV); Bob Bek',
+        othersList: [{ name: 'Peter Ouyang', instrument: 'vc' }, { name: 'Bob Bek', instrument: null }],
+    }), 'Peter Ouyang (vc, doubling on IV); Bob Bek');
+});
+
+test('canonicalOthersCell falls back to the raw cell when the two views disagree', () => {
+    // Positional alignment is the whole basis for the rewrite; if it does not
+    // hold, an assumption broke and the sheet's own text is the honest answer
+    // rather than a guess at which name maps to which.
+    assert.equal(canonicalOthersCell({ others: 'Pete (vc); Bob Bek', othersList: [{ name: 'Peter Ouyang' }] }),
+        'Pete (vc); Bob Bek');
+    assert.equal(canonicalOthersCell({ others: '', othersList: [] }), '');
+    assert.equal(canonicalOthersCell(null), '');
+    assert.equal(canonicalOthersCell(undefined), '');
+});
+
+test('the part buttons are the app own vocabulary, not one form option list', () => {
+    // CHOICES.part describes ONE user's radio question; PART_CHOICES describes
+    // the button row every user sees. They hold the same four today, which is
+    // exactly why the coupling was invisible -- pin them apart so a change to
+    // the submit shape cannot silently change what anyone can log.
+    assert.deepEqual([...PART_CHOICES], ['V1', 'V2', 'VA1', 'VA2']);
 });

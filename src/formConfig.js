@@ -72,7 +72,13 @@ export function readPrefilledLink(link) {
     // an id and not arbitrary path text. Anchored at the segment end so an
     // unexpected shape is REJECTED rather than silently truncated into a
     // different form's address.
-    const formId = url.hostname.endsWith('google.com')
+    // The dot boundary matters: `endsWith('google.com')` also accepts
+    // `evilgoogle.com`. Nothing downstream takes the HOST from the link today
+    // (formAction hardcodes docs.google.com), so the containment is real but
+    // incidental — a check that reads as if it validated the host should
+    // actually do it, or the next change inherits an open redirect.
+    const host = url.hostname;
+    const formId = (host === 'google.com' || host.endsWith('.google.com'))
         ? url.pathname.match(/\/forms\/d\/e\/([\w-]+)(?:\/|$)/)?.[1] : null;
     if (!formId) return { config: null, reason: 'not-a-form-link' };
 

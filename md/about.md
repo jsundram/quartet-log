@@ -19,7 +19,7 @@ The first time you visit, the site asks for the URL of your published Google She
 
 Filters at the top of Home (date range, part, players) work in combination — they apply across every composer tab and the data table at the bottom of each tab. The Calendar and Dashboard views have their own independent date filters.
 
-The hamburger menu in the top-left has **Log a Piece**, **Download Data** (a CSV export of everything in the current view) and **Log Out** (clears the saved URL so you can re-enter one). Use Log Out before sharing your screen if you want to keep your data private.
+The hamburger menu in the top-left has **Log a Piece**, **Download Data** (a CSV export of everything in the current view) and **Log Out** (clears everything the site has stored, so you can re-enter a URL). Use Log Out before sharing your screen if you want to keep your data private.
 
 To log from the site you also point it at the Google Form that feeds your sheet, once per device — the form's *pre-filled link* carries the field ids, and the how-to walks through it. There is no form built in: this site writes through yours, so your entries go to your spreadsheet and nobody else's.
 
@@ -29,7 +29,7 @@ The site is a static page hosted on GitHub Pages — there's no backend, and the
 
 Your data lives in two places: the Google Sheet you point at (whose access you control via Google), and your browser's local storage. Local storage holds the Sheet URL, a cache of the parsed CSV, and — if you use **Log a Piece** — which Google Form to write through, anything queued while you were offline, the pieces logged in the current session, and the piece you are part-way through typing. That last group is what lets a half-filled form survive your phone closing the app.
 
-Traffic goes to Google and nowhere else: the browser fetches the CSV directly from Google, and a logged piece is POSTed straight to your own Google Form, exactly as its own page would. Nothing is sent to me or to any third-party server. **Log Out** clears the saved URL and the cached data from your browser.
+Traffic goes to Google and nowhere else: the browser fetches the CSV directly from Google, and a logged piece is POSTed straight to your own Google Form, exactly as its own page would. Nothing is sent to me or to any third-party server. **Log Out** clears all of it — the saved URL, the cached data, which form you write through, anything still queued, the session's logged pieces and the draft — since that is the sentence you read before handing someone your phone.
 
 ## How it's built
 

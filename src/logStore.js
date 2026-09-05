@@ -79,7 +79,17 @@ export async function flush(post) {
     // POST it — a duplicate row in the sheet, which nothing downstream can
     // tell from a real one. Joining the run in progress also means a submit
     // during a flush is picked up by it, since the loop re-reads the queue.
-    if (inFlight) return inFlight;
+    // Joining is not the same as returning the run in progress. That promise
+    // can have finished its loop and computed `remaining` while `inFlight` is
+    // still set — it is only cleared a microtask later, in the first caller's
+    // `finally` — so an entry enqueued in that tail window would be reported
+    // as sent by a run that never saw it, and submit() would say "Logged" for
+    // a row still sitting in the queue. Wait for the run, then look at the
+    // queue again: empty means it really did take everything.
+    while (inFlight) {
+        const joined = await inFlight;
+        if (!pending().length) return joined;
+    }
     inFlight = (async () => {
         let sent = 0;
         for (;;) {
@@ -138,6 +148,25 @@ export function setRecent(resolved) {
     // Capped as well as aged: a long day of logging should not grow the record
     // without bound, and nothing reads further back than the session anyway.
     write(RECENT_KEY, [...recentList(), { at: Date.now(), entry: resolved }].slice(-MAX_RECENT));
+}
+
+/**
+ * Forget a remembered submission — the one whose queued entry was just
+ * discarded with the x.
+ *
+ * setRecent runs on every submit, including one the flush could not send, so
+ * the entry lives in two places: the outbox and this list. `drop` empties the
+ * first; without this, the second goes on driving carry-forward for 12 hours
+ * against a row the sheet will never hold — every seat placeholder, slotCell's
+ * blank-vs-write decision and defaultOthersCell computed from a phantom. That
+ * is not cosmetic: a blank written against the phantom is resolved by
+ * fillForward against a different row entirely. isSameRow can never retire it
+ * either, since the sheet will never contain a matching composer and title.
+ * @param {Entry} entry
+ */
+export function forgetRecent(entry) {
+    write(RECENT_KEY, recentList().filter(r => !isSameRow(
+        { composer: r.entry.composer, work: { title: r.entry.title } }, entry)));
 }
 
 /**

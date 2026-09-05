@@ -60,6 +60,9 @@ test('parsePrefilledLink rejects anything that is not one entry per column', () 
     // Not a form link at all.
     assert.equal(parsePrefilledLink('https://docs.google.com/spreadsheets/d/e/x/pub?output=csv'), null);
     assert.equal(parsePrefilledLink('https://evil.example/forms/d/e/x/viewform?entry.1=a'), null);
+    // A suffix test without the dot boundary accepts this one.
+    assert.equal(parsePrefilledLink(`https://evilgoogle.com/forms/d/e/${FORM_ID}/viewform?`
+        + IDS.map((id, i) => `entry.${id}=v${i}`).join('&')), null);
     assert.equal(parsePrefilledLink('not a url'), null);
     assert.equal(parsePrefilledLink(''), null);
 });

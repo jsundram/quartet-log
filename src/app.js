@@ -125,7 +125,7 @@ export class App {
     // result. Everything downstream (calendar, dashboard, tabs) is populated
     // synchronously here so the first paint shows real data, not an empty shell.
     renderInitial(result) {
-        this.data = this.dataService.processData(result.parsed);
+        ({ rows: this.data, sheetRows: this.sheetRows } = this.dataService.processData(result.parsed));
         this._lastFetchAt = result.timestamp;
         // Every row can get filtered out (all partial movements and/or invalid
         // timestamps): don't build the UI off data[0] / data.at(-1) — say so.
@@ -183,7 +183,7 @@ export class App {
 
         // The log form's suggestions and carry-forward come from the same
         // rows; it renders from cache and needs no network until submit.
-        this.logComponent.setData(this.data);
+        this.logComponent.setData(this.data, this.sheetRows);
         this.logComponent.mount();
 
         // Initial data filter
@@ -259,7 +259,7 @@ export class App {
                 // in-place rerender.
                 this.renderInitial(result);
             } else {
-                this.data = this.dataService.processData(result.parsed);
+                ({ rows: this.data, sheetRows: this.sheetRows } = this.dataService.processData(result.parsed));
                 this._rerenderData();
             }
         }
@@ -284,7 +284,7 @@ export class App {
         d3.select('#calendar').selectAll(':scope > .calendar-gen').remove();
         this.calendarComponent.createCalendar(this.data);
         this.dashboardComponent.setData(this.data);
-        this.logComponent.setData(this.data);
+        this.logComponent.setData(this.data, this.sheetRows);
         this.filterData('date');
     }
 

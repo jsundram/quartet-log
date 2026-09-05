@@ -24,6 +24,14 @@ export const FIELDS = /** @type {const} */ ([
     'others', 'location', 'comments',
 ]);
 
+// The seats a logger can say they were on — the app's own vocabulary (howto
+// section 5), not a form's option list. formConfig.CHOICES.part happens to
+// hold the same four today, but that one describes ONE user's radio question
+// and this describes the button row every user sees; driving the UI from the
+// former couples what anyone can log to what the reference form was built
+// with.
+export const PART_CHOICES = /** @type {const} */ (['V1', 'V2', 'VA1', 'VA2']);
+
 // The form's own required questions. Forms enforces them server-side and the
 // opaque response means a rejection is invisible, so the client mirrors them.
 export const REQUIRED_FIELDS = /** @type {const} */ (['composer', 'title', 'part']);
@@ -79,6 +87,13 @@ export function carriedForward(last) {
  */
 export function resolveCarry(entry, carried) {
     const out = blankEntry(entry);
+    // Trimmed on every field, not just the carried ones: toFormBody trims what
+    // it submits and processRow trims what it reads back, so an untrimmed copy
+    // here would describe a row the sheet does not hold. logStore.isSameRow
+    // compares composer and title with ===, and a false MISS is the expensive
+    // direction — it leaves the local copy shadowing the sheet for 12 hours,
+    // which is exactly what defeats fixing a name in the sheet afterwards.
+    for (const f of FIELDS) out[f] = (out[f] ?? '').trim();
     for (const f of CARRIED) out[f] = entry[f].trim() || carried[f] || '';
     return out;
 }
@@ -268,8 +283,13 @@ export function slotCell({ typed, carried = '', chosen, implied }) {
     // "-" is "nobody in this seat" (howto section 5), not a person to annotate.
     if (written === '-') return '-';
 
+    // The guard has to sit BELOW the carry fallback as well as above it: a
+    // trio leaves "-" in seat 3, stripParens leaves it alone, and a part
+    // picked on that empty seat would otherwise materialise it as "- (vc2)"
+    // — a phantom cellist named "-" in the unique-people stats, since
+    // peopleKeysFor only skips the bare "-".
     const name = written || stripParens(carried) || '';
-    if (!name) return written;
+    if (!name || name === '-') return written;
 
     const annotate = chosen && chosen !== implied;
     const code = BY_KEY.get(/** @type {string} */ (chosen))?.code ?? chosen;
@@ -354,6 +374,31 @@ export function serializeOthersRows(rows) {
         .filter(r => r.name)
         .map(r => (r.inside ? `${r.name} (${r.inside})` : r.name))
         .join('; ');
+}
+
+/**
+ * A row's `Others?` cell with each name in its canonical form.
+ *
+ * The raw cell is what normalizePlayerNames deliberately leaves alone (the
+ * CSV-download path wants it untouched), while sessionPeople offers the
+ * canonical names from `othersList`. Seeding the rows from the raw text makes
+ * the two disagree exactly where PLAYER_ALIASES does its job: the chip for
+ * "Peter Ouyang" is offered although "Pete" is already on the row, and tapping
+ * it writes the same person in twice — over-counting the ensemble, which is
+ * what audit_ensembles and attribution exist to chase. It cannot fail in CI or
+ * in the e2e, where src/aliases.js is the empty stub and the two views are
+ * identical; it fires only on a device with a populated table.
+ *
+ * Positional, because both parsers split the same string with the same
+ * paren-aware boundaries and the same filter, so entry i is entry i. The
+ * comments only the raw cell carries are kept; a length mismatch means an
+ * assumption broke, and the raw cell is then the honest answer.
+ */
+export function canonicalOthersCell(/** @type {any} */ row) {
+    const raw = parseOthersRows(row?.others ?? '');
+    const canon = row?.othersList ?? [];
+    if (!raw.length || raw.length !== canon.length) return row?.others ?? '';
+    return serializeOthersRows(raw.map((r, i) => ({ ...r, name: canon[i].name || r.name })));
 }
 
 /**

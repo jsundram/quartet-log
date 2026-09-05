@@ -166,6 +166,24 @@ test('an unconfigured visitor gets the setup panel, not someone else\'s form', a
     await expect(page.locator('#logFormId')).toContainText('M-E2E');
 });
 
+test('Change reopens an empty setup panel, not the old form mapping', async ({ page }) => {
+    // Connecting hides the panel without resetting it, so Change brought it
+    // back showing the DISCONNECTED form's columns under an empty box, beside
+    // a Connect button that silently did nothing. Verifying that mapping is
+    // the one thing this panel exists for, so a stale one is worse than none.
+    await page.evaluate(() => { window.location.hash = '#log'; });
+    await page.fill('#logSetupLink', PREFILL);
+    await page.click('#logSetupSave');
+    await expect(page.locator('#logForm')).toBeVisible();
+
+    await page.click('#logChangeForm');
+    await expect(page.locator('#logSetup')).toBeVisible();
+    await expect(page.locator('#logSetupLink')).toHaveValue('');
+    await expect(page.locator('.log-setup-row')).toHaveCount(0);
+    await expect(page.locator('#logSetupSave')).toBeDisabled();
+    await expect(page.locator('#logSetupError')).toHaveText('');
+});
+
 test('a link cannot connect a form to a fresh device without being asked', async ({ page }) => {
     // The case that matters most: a device with no form yet is every existing
     // user the day this ships. A silent-adopt branch here would leave the
@@ -838,6 +856,114 @@ test.describe('log form', () => {
         Object.defineProperty(Storage.prototype, 'setItem', {
             configurable: true, value() { throw new Error('QuotaExceededError (simulated)'); },
         });
+    });
+
+    test('discarding a queued piece stops it steering the next one', async ({ page }) => {
+        // submit() remembers every submission, including one the flush could
+        // not send, so a queued piece lives in two places. The x emptied only
+        // the outbox: the other copy went on driving carry-forward against a
+        // row the sheet will never hold, and nothing could ever retire it,
+        // since no fetched row will match its composer and title.
+        const bodies = [];
+        let online = false;
+        await page.route('https://docs.google.com/forms/**', route => {
+            if (!online) return route.abort('internetdisconnected');
+            bodies.push(route.request().postData());
+            route.fulfill({ status: 200, body: '' });
+        });
+
+        await pickComposer(page, 'Haydn');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.fill('#logTitle', '76#1');
+        await page.fill('#logPlayer1', 'Zelda Quill');
+        await page.click('#logSubmit');
+        await expect(page.locator('.log-pending-row')).toHaveCount(1);
+        // The queued piece is what the next one would carry from.
+        await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Zelda Quill');
+
+        await page.click('.log-pending-drop');
+        await expect(page.locator('#logPending')).toBeHidden();
+        // Discarded means gone: the placeholder falls back to the sheet.
+        await expect(page.locator('#logPlayer1')).not.toHaveAttribute('placeholder', 'Zelda Quill');
+
+        // And a later piece must not leave the seat blank against the phantom
+        // -- a blank here is dittoed by fillForward against a different row.
+        online = true;
+        await page.fill('#logTitle', '76#2');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged Haydn 76#2');
+        expect(new URLSearchParams(bodies.at(-1)).get(PLAYER1_ID)).not.toBe('');
+    });
+
+    test('an extra added after a reload gets a fresh row, not a used id', async ({ page }) => {
+        // newOtherRow spreads the saved row last, so a restored row keeps its
+        // id while the counter has only counted the rows. Remove some before
+        // the eviction and the surviving ids are sparse and ahead of it: the
+        // next Add person mints an id already on screen. Rows are keyed and
+        // REMOVED by that id, so one x then takes two people off the row --
+        // and the one that vanishes is not the one that was tapped.
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        for (const name of ['Ana', 'Blas', 'Celia', 'Danilo', 'Elena']) {
+            await page.click('#logOthersAdd');
+            await page.fill('.log-other-row:last-of-type input[type=text]', name);
+        }
+        // Drop the first three, so the two survivors carry the high ids and
+        // the counter is left behind them.
+        for (let i = 0; i < 3; i++) await page.click('.log-other-row:first-of-type .log-other-drop');
+        await expect(page.locator('.log-other-row')).toHaveCount(2);
+
+        await page.reload();
+        await expect(page.locator('#update')).toContainText(/Data updated|from cache/, { timeout: 15000 });
+        await page.evaluate(() => { window.location.hash = '#log'; });
+        await expect(page.locator('.log-other-row')).toHaveCount(2);
+
+        for (const name of ['Fabio', 'Gisela']) {
+            await page.click('#logOthersAdd');
+            await page.fill('.log-other-row:last-of-type input[type=text]', name);
+        }
+        await expect(page.locator('.log-other-row')).toHaveCount(4);
+
+        // The x is how you say one person left. Tapping Danilo's must not
+        // take Gisela with it.
+        await page.click('.log-other-row:first-of-type .log-other-drop');
+        await expect(page.locator('.log-other-row')).toHaveCount(3);
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logSubmit');
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID))
+            .toBe('Elena; Fabio; Gisela');
+    });
+
+    test('someone in the freeform box is not offered as a chip', async ({ page }) => {
+        // The box holds exactly the entries that carry a comment, and `taken`
+        // was built from a view that drops those -- so the chip claimed a
+        // person was not on the row they were already on, and tapping it wrote
+        // them in a second time.
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logOthersAdd');
+        await page.fill('.log-other-row:last-of-type input[type=text]', 'Zelda Quill');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+
+        // She is in the sitting now, and carried on to the next piece as a
+        // row, so no chip -- that much always worked.
+        const chip = page.locator('#logOthersHere .log-chip-btn').filter({ hasText: 'Zelda Quill' });
+        await expect(chip).toHaveCount(0);
+
+        // Move her to the freeform box, which is where an entry carrying prose
+        // has to live. She is still on the row.
+        await page.click('.log-other-row:first-of-type .log-other-drop');
+        await page.fill('#logOthersFree', 'Zelda Quill (v2, shadowing on I)');
+        await expect(chip).toHaveCount(0);
+
+        await page.fill('#logTitle', '76#2');
+        await page.click('#logSubmit');
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID))
+            .toBe('Zelda Quill (v2, shadowing on I)');
     });
 
     test('a piece still reaches the sheet when the queue cannot be stored', async ({ page }) => {
