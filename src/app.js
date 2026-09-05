@@ -8,8 +8,10 @@ import { NavigationComponent } from './navigationComponent.js';
 import { TabComponent } from './tabComponent.js';
 import { CalendarComponent } from './calendarComponent.js';
 import { DashboardComponent } from './dashboardComponent.js';
+import { LogComponent } from './logComponent.js';
 import { TableComponent } from './tableComponent.js';
 import { hasDataUrl, getDataUrl, consumeDataParam, buildMobileSetupLink } from './urlConfig.js';
+import { consumeFormParam, getFormConfig, buildPrefilledLink } from './formConfig.js';
 import { initTheme, subscribe as subscribeTheme } from './themeManager.js';
 import { PullToRefresh } from './pullToRefresh.js';
 import { SetupView, flashLabel } from './setupView.js';
@@ -34,10 +36,12 @@ export class App {
             (view) => this.handleViewChange(view),
         );
         this.navigationComponent.onCopyConfig = () => this.handleCopyConfigLink();
+        this.navigationComponent.onLogout = () => this.logComponent.discard();
         this.tableComponent = new TableComponent();
         this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();
         this.dashboardComponent = new DashboardComponent();
+        this.logComponent = new LogComponent();
         this.pullToRefresh = new PullToRefresh({ onRefresh: () => this.revalidate() });
         this.setupView = new SetupView({ onSubmit: () => this.initialize() });
         // Lazy tab rendering (see filterData): tabs whose content is stale
@@ -65,6 +69,15 @@ export class App {
         // device (e.g. desktop generates the link → AirDrop/iMessage to
         // phone → opening it on the phone lands here).
         consumeDataParam();
+        // The companion for the log form: a setup link can carry which Google
+        // Form this device writes through, so a second device needs no
+        // re-pasting. Consumed before the UI mounts so the log view opens
+        // already connected.
+        // Never adopted on arrival: a ?form= link is a proposal the log view
+        // puts to the user, because a link must not be able to decide where
+        // entries are sent — including on a device with no form yet.
+        const proposed = consumeFormParam();
+        if (proposed) this.logComponent.proposeConfig(proposed);
 
         if (hasDataUrl()) {
             this.initialize();
@@ -97,7 +110,11 @@ export class App {
             flashLabel(label, 'No URL set');
             return;
         }
-        const link = buildMobileSetupLink(url);
+        // Carry the log form's config along when there is one, so the other
+        // device is set up for reading AND writing in a single link.
+        const config = getFormConfig();
+        const link = buildMobileSetupLink(url)
+            + (config ? '&form=' + encodeURIComponent(buildPrefilledLink(config)) : '');
         navigator.clipboard.writeText(link).then(
             () => flashLabel(label, 'Copied!'),
             () => flashLabel(label, 'Copy failed'),
@@ -108,7 +125,7 @@ export class App {
     // result. Everything downstream (calendar, dashboard, tabs) is populated
     // synchronously here so the first paint shows real data, not an empty shell.
     renderInitial(result) {
-        this.data = this.dataService.processData(result.parsed);
+        ({ rows: this.data, sheetRows: this.sheetRows } = this.dataService.processData(result.parsed));
         this._lastFetchAt = result.timestamp;
         // Every row can get filtered out (all partial movements and/or invalid
         // timestamps): don't build the UI off data[0] / data.at(-1) — say so.
@@ -136,6 +153,8 @@ export class App {
         // The dashboard SVGs size themselves from the live container width,
         // so they need a re-render once the view is actually visible.
         if (view === 'dashboard') this.dashboardComponent.notifyShown();
+        // The log form retries whatever it queued while offline.
+        if (view === 'log') this.logComponent.notifyShown();
     }
 
     // Mount (or re-mount) the whole UI. Every step is idempotent, so the
@@ -161,6 +180,11 @@ export class App {
         } else {
             this.dashboardComponent.init(this.data);
         }
+
+        // The log form's suggestions and carry-forward come from the same
+        // rows; it renders from cache and needs no network until submit.
+        this.logComponent.setData(this.data, this.sheetRows);
+        this.logComponent.mount();
 
         // Initial data filter
         this.filterData("date");  // need players to update
@@ -235,7 +259,7 @@ export class App {
                 // in-place rerender.
                 this.renderInitial(result);
             } else {
-                this.data = this.dataService.processData(result.parsed);
+                ({ rows: this.data, sheetRows: this.sheetRows } = this.dataService.processData(result.parsed));
                 this._rerenderData();
             }
         }
@@ -260,6 +284,7 @@ export class App {
         d3.select('#calendar').selectAll(':scope > .calendar-gen').remove();
         this.calendarComponent.createCalendar(this.data);
         this.dashboardComponent.setData(this.data);
+        this.logComponent.setData(this.data, this.sheetRows);
         this.filterData('date');
     }
 

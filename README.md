@@ -6,12 +6,14 @@ A visualization tool for tracking string quartet sessions. Log what you play, se
 
 ## Features
 
+- Log new sessions from the site itself, writing through your own Google Form
 - Track quartet sessions with composer, work, players, and date
 - Visualize plays per work across Haydn, Mozart, Beethoven, and other composers
 - Calendar view showing session frequency over time
 - Filter by part (V1/V2/VA), date range, and player
 - "Quartet Roulette" random work picker weighted by recency
 - Works with any Google Sheets data source
+- Installs as a standalone app; the entry form works offline and queues submissions
 
 ## Setup
 

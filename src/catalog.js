@@ -253,3 +253,30 @@ export function getOriginalWorkTitle(tabName, workTitle) {
     if (dashIndex === -1) return workTitle; // fallback
     return workTitle.substring(dashIndex + 1);
 }
+
+/**
+ * Every composer the catalog knows, mapped to that composer's work titles —
+ * the multi-composer tabs flattened back into their members, and titles
+ * UNPREFIXED (the "Debussy-" of getWorksForTab is a tab-scoped display key,
+ * while a sheet cell holds the bare title). The log form's two pickers read
+ * this: the composer list, and the works to suggest once one is chosen.
+ * @returns {Record<string, string[]>}
+ */
+export function composerWorkIndex() {
+    /** @type {Record<string, string[]>} */
+    const index = {};
+    const add = (/** @type {string} */ composer, /** @type {string[]} */ titles) => {
+        index[composer] = [...(index[composer] ?? []), ...titles];
+    };
+    for (const [tab, entry] of Object.entries(loadedCatalog())) {
+        if (isMultiComposerTab(tab)) {
+            for (const obj of /** @type {Record<string, string[]>[]} */ (entry)) {
+                const composer = Object.keys(obj)[0];
+                add(composer, obj[composer]);
+            }
+        } else {
+            add(tab, /** @type {string[]} */ (entry));
+        }
+    }
+    return index;
+}

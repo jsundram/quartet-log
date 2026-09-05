@@ -12,11 +12,12 @@ function updateThemeLabel() {
 
 // In-page views participate in hash routing. Each one corresponds to a
 // `#<view>` URL fragment so the browser back button works as expected.
-const IN_PAGE_VIEWS = new Set(['main', 'calendar', 'dashboard']);
+const IN_PAGE_VIEWS = new Set(['main', 'calendar', 'dashboard', 'log']);
 const VIEW_TO_SELECTOR = {
     main: '#mainContent',
     calendar: '#calendar',
     dashboard: '#dashboard',
+    log: '#log',
 };
 
 function viewFromHash() {
@@ -122,7 +123,12 @@ export class NavigationComponent {
             }
 
             if (view === "logout") {
-                if (confirm("This will log you out and clear your saved data URL. You'll need to re-enter it to use the app again. Continue?")) {
+                if (confirm("This will log you out and clear everything saved on this device: your data URL, the form you log through, and anything you had queued or part-typed. You'll need to set it up again to use the app. Continue?")) {
+                    // All of it, not just the URL: the log form holds player
+                    // names in its queue, its sitting and its draft, and a
+                    // form config left behind would point the next person's
+                    // entries at the previous person's spreadsheet.
+                    if (this.onLogout) this.onLogout();
                     clearDataUrl();
                     window.location.reload();
                 }
@@ -192,8 +198,11 @@ export class NavigationComponent {
 
     handlePartClick(part) {
         this.selectedPart = part;
-        // Reflect state into the DOM (never read back from it).
-        d3.selectAll(".part-btn").classed("active", function () {
+        // Reflect state into the DOM (never read back from it). Scoped to this
+        // group: the log form has a part selector of its own, and a
+        // document-wide restyle would clear its selection while its own state
+        // still said otherwise.
+        d3.selectAll("#radioButtons .part-btn").classed("active", function () {
             return d3.select(this).attr("data-part") === part;
         });
         this.onFilterChange("part");

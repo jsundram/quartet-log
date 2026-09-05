@@ -12,6 +12,38 @@
 
    ![Sample form with fields for date, composer, work, players, and so on](./img/howto/Screenshot%202017-05-31%2012.17.39.png){width=600px}
 
+**Two things the log site needs from that form**, if you plan to use **Log a
+Piece** (section 3) rather than the Google Form itself:
+
+- **Composer must be a multiple-choice question with "Other" switched on.**
+  Every composer the app submits arrives through Google's *Other* box, even one
+  that matches an option you listed. It has to: your option list lives on
+  Google's servers and the app cannot read it, so it can never know whether the
+  composer you just picked is on it — and the list could not cover them anyway,
+  since **Other…** in the app accepts any name you type. An Other response lands
+  in the response sheet as ordinary text, so the column reads the same either
+  way.
+
+  Get this wrong and it shows on your very first piece: a short-answer Composer
+  box fills with the literal text `__other_option__`, and a multiple-choice one
+  *without* Other makes Google reject the whole row so nothing arrives. The app
+  says "Logged" in both cases, because Google's reply to a submission tells it
+  nothing (section 3) — so log one piece and look at the sheet.
+
+- **Which Part should offer V1, V2, VA1 and VA2.** Those are the four the app
+  submits, and it sends them as plain values, so this question can be
+  multiple-choice or short answer and does not need Other. (Cello is not among
+  them — see below.)
+
+- **Everything else can be whatever you like** — the other seven questions are
+  read as plain text.
+
+**Cellists: not yet.** The app assumes the person logging is a violinist or
+violist, because it has to know which seat is which — playing V1 means Player 3
+is the cellist. There is no VC option in **Log a Piece**, so if you play cello
+you will have to use the Google Form itself for now. Nothing about the sheet
+changes; it is the app that cannot read those rows back correctly yet.
+
 ## 2. Set up the response sheet
 
 1. Click **Responses**, then the green **Sheets** button.
@@ -24,23 +56,79 @@
 
    ![Dialog to name the response spreadsheet](./img/howto/Screenshot%202017-05-31%2012.06.30.png){width=600px}
 
-## 3. Put the form on your phone
+## 3. Put it on your phone
 
-1. Back in the form editor, click the eyeball to preview, then click **Send**.
+Get the form's link first: in the form editor click **Send**, then the **Link**
+icon, and check **Shorten URL**.
 
    ![The Send button in the form editor](./img/howto/Screenshot%202017-05-31%2012.20.59.png){width=600px}
 
-2. In the Send dialog, click the **Link** icon and check **Shorten URL**.
-
    ![Send dialog showing the Link tab with the Shorten URL checkbox](./img/howto/Screenshot%202017-05-31%2012.23.34.png){width=600px}
 
-3. Open the shortened link on your phone's browser, then choose **Add to Home Screen** from the share menu.
+The obvious move is to pin that link: open it on your phone and choose **Add to
+Home Screen**.
 
    ![Add to Home Screen on an iPhone](./img/howto/IMG_9796.PNG){width=280px}
 
+That works, with one irritation. A Google Form ships no web app manifest and no
+`apple-mobile-web-app-capable` tag, so iOS treats the pin as an ordinary Safari
+bookmark rather than an app: every launch opens another browser tab, and they
+pile up.
+
+The log site does ship both, so pinning **it** gives you a real standalone app
+with no tabs. Open <https://log.quartetroulette.com/#log> on your phone (set it
+up first, section 8) and Add to Home Screen from there. It opens straight to
+the **Log a Piece** form.
+
+That form writes to the same spreadsheet through the same Google Form, and it
+knows things the form cannot, because the app has your whole log loaded:
+
+- **The composers you actually play are one tap**, ranked by how often you play
+  them, with the whole catalogue behind **More…** and free text behind that.
+- **Names you have used before autocomplete.** Picking one instead of retyping
+  it is what keeps a second Alice from becoming indistinguishable from the
+  first (section 7).
+- **The seats show who they will repeat.** The greyed name in an empty Player
+  field is exactly what a blank will carry forward, so you can see it rather
+  than trust it (section 6).
+- **Each seat has a part beside it.** When two people swap you change a
+  dropdown instead of retyping both names into different columns, and a
+  quintet's second viola or cello can be said outright (section 5). The name
+  comes along on its own.
+- **Extra players stay for the rest of the session** and are written onto every
+  piece, so the **x** beside someone is all you do when they leave. That is the
+  one column the sheet cannot repeat for you, and the usual way a fifth player
+  goes missing (section 6).
+- **The work list follows the composer** you picked.
+- **It works with no signal.** Everything but the send is local; a piece logged
+  in a basement queues up and goes out, in order, when you have a network
+  again. You can see what is waiting at the bottom of the form. Nothing you
+  have typed is lost either — if the phone kills the app mid-entry, the
+  half-filled form is there when you come back.
+
+Either way in works, and both write the same rows.
+
+**Connecting your form.** The site has no form of its own — it writes through
+yours, and it has to be told which. The first time you open **Log a Piece** it
+asks for a *pre-filled link*, which is where Google Forms puts the field ids:
+
+1. Open your form for editing and choose **⋮ → Get pre-filled link**.
+2. Put anything at all in every field, then **Get link → Copy link**.
+3. Paste it into the log form's setup panel.
+
+Nothing is submitted by that step: only the ids are read, and they are matched
+to your sheet's columns in order, which is the order Forms created them in.
+The panel shows you the mapping before you commit to it, so a form whose
+questions were reordered after the sheet already existed is something you can
+see rather than discover months later.
+
+The connection lives on that device, next to your sheet URL. **Copy setup
+link** in the menu carries both, so setting up a second device is one link.
+
 ## 4. Use it
 
-1. After every piece you play, open the form from your home screen and fill it out — entries are saved straight to the response spreadsheet.
+1. After every piece you play, open the app or the form from your home screen
+   and fill it out — entries are saved straight to the response spreadsheet.
 
 2. Play some Haydn.
 
@@ -84,14 +172,20 @@ played with, but they're left out of the V1/V2/VA/VC part breakdowns, which
 only make sense for string parts.
 
 You can also put the extra player in **Others?** instead — `Alice Hart (p)`
-there is read the same way. One difference decides which to reach for: the
-player fields carry forward to the next entry in a session, so a slot you
-leave blank repeats whoever was there before, annotation included. **Others?
-does not carry forward.** Logging six movements with the pianist in Others?
-means typing them six times, while `Alice Hart (p)` in a player field is typed
-once. Put them in a player field for a long session, and in Others? when the
-seats are already full — a piano quintet, say, where four string players fill
-every slot.
+there is read the same way. In the **sheet** these behave differently: the
+player fields carry forward within a session, so a slot left blank repeats
+whoever was there, annotation included, while **`Others?` does not carry
+forward** — six movements with the pianist in Others? is six rows that each
+have to name them. Filling rows in the Google Form, that difference decides
+which to reach for: a player field for a long session, Others? when the seats
+are already full, as in a piano quintet where four string players fill every
+slot.
+
+The **Log a Piece** form removes the difference. Extras stay on the form for
+the rest of the session and it writes them onto every piece, and both a seat
+and an Others? entry get the same instrument dropdown — so you can put people
+wherever the ensemble actually puts them, and say what they played without
+remembering the `(p)` syntax.
 
 ## 6. What repeats itself, and what doesn't
 
@@ -113,6 +207,11 @@ personnel easy to log — you only ever type what changed.
 fifth or sixth player has to be typed on every row they played. This is the
 single most common way a person goes missing from the log, and it's what
 `npm run audit` looks for first.
+
+The **Log a Piece** form handles this for you: extra players stay on the form
+for the rest of the session and are written out on every piece, so the only
+thing you do is press the **x** beside someone when they leave. Entering rows
+in the Google Form directly, you're on your own — retype them each time.
 
 **A blank always repeats, however long the break.** Take an hour for dinner
 or come back the next morning — a blank field still means "the same person as

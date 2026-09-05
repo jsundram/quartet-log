@@ -74,6 +74,7 @@
             <div class="bar"></div>
         </div>
         <div class="menu-items">
+            <a href="#" class="menu-item" data-view="log">Log a Piece</a>
             <a href="#" class="menu-item" data-view="main">Home</a>
             <a href="#" class="menu-item" data-view="calendar">Calendar</a>
             <a href="#" class="menu-item" data-view="dashboard">Dashboard</a>
@@ -139,6 +140,151 @@
     <!-- Body-level so it stays visible across all SPA views, including the
          calendar (whose day tooltips render into this same shared div). -->
     <div class="tooltip" id="tooltip"></div>
+
+    <!-- The log form. Static markup so the precached shell renders it with or
+         without a network; LogComponent fills the pickers from the catalog and
+         the datalists from whatever data is cached, and submits to the Google
+         Form's own endpoint (src/formConfig.js). Everything but the submit
+         works offline, and the submit queues when it can't. -->
+    <div id="log" style="display: none">
+        <h1 style="text-align: center">Log a Piece</h1>
+        <!-- A ?form= link, awaiting a decision. Never applied on arrival: a
+             link is not a choice, and letting one decide where entries are
+             sent is the failure the per-user config exists to prevent. That
+             holds for a device with no form yet just as much as for one being
+             re-pointed. Replaces both the form and the setup panel, so the
+             decision can't be scrolled past. -->
+        <div id="logProposal" class="log-proposal" hidden>
+            <p id="logProposalText"></p>
+            <div class="log-proposal-actions">
+                <button type="button" id="logProposalReject" class="log-submit"></button>
+                <button type="button" id="logProposalAccept" class="log-chip"></button>
+            </div>
+        </div>
+
+        <!-- Shown until this device knows which Google Form feeds its sheet.
+             There is no default: the site is public and anyone can point it at
+             their own sheet, so a baked-in form id would send every visitor's
+             entries to one person's spreadsheet. -->
+        <div id="logSetup" class="log-setup" hidden>
+            <p>Log new pieces from here, with the names you already play with
+               filled in from your own log. First, connect the Google Form that
+               feeds your sheet &mdash; this site writes through your form, so it
+               needs to know which one.</p>
+            <ol>
+                <li>Open your form for editing, then <b>&#8942;</b> &rarr; <b>Get pre-filled link</b>.</li>
+                <li>Put anything at all in every field, then <b>Get link</b> &rarr; <b>Copy link</b>.</li>
+                <li>Paste it below. Nothing is submitted &mdash; only the field ids are read.</li>
+            </ol>
+            <input id="logSetupLink" type="url" placeholder="https://docs.google.com/forms/d/e/.../viewform?usp=pp_url&amp;entry...">
+            <div id="logSetupMap" class="log-setup-map"></div>
+            <p id="logSetupError" class="log-status error" role="status" aria-live="polite"></p>
+            <button type="button" id="logSetupSave" class="log-submit" disabled>Connect form</button>
+            <!-- Stated here as well as in howto section 1, because this is the
+                 moment someone connects a form and the app cannot check either
+                 condition itself: the option list is on Google's servers and
+                 the submission response is opaque. -->
+            <p class="log-setup-help">Your form's <b>Composer</b> question needs to be
+               multiple-choice with <b>Other</b> switched on &mdash; this site submits every
+               composer through Other, since it cannot read your option list. <b>Which Part</b>
+               just needs V1, V2, VA1 and VA2 among its options. Log one piece afterwards and
+               check the sheet.
+               <a href="howto.html">How to make a chamber music log</a> has the details,
+               and covers building a form from scratch.</p>
+            <p class="log-setup-help">Playing cello? Logging from here is not supported yet
+               &mdash; the seats are worked out from a violin or viola part. Use your Google
+               Form for those.</p>
+        </div>
+
+        <form id="logForm" class="log-form" autocomplete="off">
+            <!-- The composers you actually play, as one-tap chips, because the
+                 Google Form this replaces shows its handful as radios and a
+                 22-item picker would be slower than what it replaces. The full
+                 catalog stays one tap away behind "More". -->
+            <div class="log-field">
+                <label for="logComposer">Composer</label>
+                <div id="logComposerChips" class="log-chips" role="radiogroup" aria-label="Composer"></div>
+                <select id="logComposer" hidden></select>
+                <input id="logComposerOther" type="text" placeholder="Composer name" autocapitalize="words" autocorrect="off" spellcheck="false" hidden>
+            </div>
+            <!-- autocorrect off on every name field: iOS helpfully "fixes"
+                 surnames, and a mangled name in the sheet is the failure this
+                 whole view exists to avoid. Work titles are catalogue numbers,
+                 so they get no capitalisation either. -->
+            <div class="log-field">
+                <label for="logTitle">Work</label>
+                <input id="logTitle" type="text" list="logWorks" placeholder="e.g. 76#3" autocapitalize="off" autocorrect="off" spellcheck="false">
+            </div>
+            <div class="log-field">
+                <label for="logPart">Your part</label>
+                <div id="logPart" class="part-buttons" role="radiogroup" aria-label="Which part"></div>
+            </div>
+
+            <p class="log-note">Leave a seat blank to repeat whoever was there. Write <code>-</code> for a seat this work doesn't have.
+               Change a part to say someone swapped &mdash; the name comes along on its own.
+               Extra players stay for the rest of the session; remove one with its <b>x</b>.</p>
+            <div class="log-field">
+                <label for="logPlayer1">Player 1</label>
+                <div class="log-slot">
+                    <input id="logPlayer1" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
+                    <select id="logSlotPart1" class="log-slot-part" aria-label="Player 1's part"></select>
+                </div>
+            </div>
+            <div class="log-field">
+                <label for="logPlayer2">Player 2</label>
+                <div class="log-slot">
+                    <input id="logPlayer2" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
+                    <select id="logSlotPart2" class="log-slot-part" aria-label="Player 2's part"></select>
+                </div>
+            </div>
+            <div class="log-field">
+                <label for="logPlayer3">Player 3</label>
+                <div class="log-slot">
+                    <input id="logPlayer3" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
+                    <select id="logSlotPart3" class="log-slot-part" aria-label="Player 3's part"></select>
+                </div>
+            </div>
+            <!-- The column where a pianist or a second cellist is most likely
+                 to turn up, so it gets the same name-plus-part control the
+                 seats do. Serialises to the "Name (instrument)" text the cell
+                 has always held. The sheet cannot ditto this column, so the
+                 form carries the extras through the sitting and writes them
+                 out every row; the x is how you say someone left. -->
+            <div class="log-field">
+                <label for="logOthersAdd">Others?</label>
+                <div class="log-others">
+                    <div id="logOthersRows"></div>
+                    <!-- People already in this sitting, so the second sextet of
+                         an afternoon is a tap rather than a retype. -->
+                    <div id="logOthersHere" class="log-chips"></div>
+                    <div class="log-others-actions">
+                        <button type="button" id="logOthersAdd" class="log-chip">+ Add person</button>
+                    </div>
+                    <!-- The escape for entries the rows can't express: anything
+                         carrying a comment. Merged into the same cell on write. -->
+                    <input id="logOthersFree" type="text" placeholder="Anything else, e.g. Laura (v2, shadowing on I)"
+                           aria-label="Others, freeform" autocapitalize="words" autocorrect="off" spellcheck="false">
+                </div>
+            </div>
+            <div class="log-field">
+                <label for="logLocation">Location</label>
+                <input id="logLocation" type="text" list="logLocations" autocapitalize="words" autocorrect="off" spellcheck="false">
+            </div>
+            <div class="log-field">
+                <label for="logComments">Comments</label>
+                <input id="logComments" type="text">
+            </div>
+
+            <datalist id="logWorks"></datalist>
+            <datalist id="logPlayers"></datalist>
+            <datalist id="logLocations"></datalist>
+
+            <button type="submit" id="logSubmit" class="log-submit">Log it</button>
+            <p id="logStatus" class="log-status" role="status" aria-live="polite"></p>
+            <p class="log-connected">Writing to form <code id="logFormId"></code>. <a href="#" id="logChangeForm">Change</a></p>
+        </form>
+        <div id="logPending" class="log-pending" hidden></div>
+    </div>
 
     <div id="calendar" style="display: none">
         <h1 style="text-align: center">Quartet Days</h1>
