@@ -829,4 +829,47 @@ test.describe('log form', () => {
         expect(bodies.map(b => new URLSearchParams(b).get(TITLE_ID)))
             .toEqual(['76#1', '76#2']);
     });
+
+    // A browser that won't write localStorage is not exotic: private-mode
+    // Safari throws on every write, and this app caches the whole parsed CSV,
+    // so a full quota is a state it already has a status line for. The submit
+    // path runs entirely through the queue, which lives in that storage.
+    const blockStorageWrites = (page) => page.evaluate(() => {
+        Object.defineProperty(Storage.prototype, 'setItem', {
+            configurable: true, value() { throw new Error('QuotaExceededError (simulated)'); },
+        });
+    });
+
+    test('a piece still reaches the sheet when the queue cannot be stored', async ({ page }) => {
+        const bodies = await captureSubmits(page);
+        await blockStorageWrites(page);
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+
+        await expect(page.locator('#logStatus')).toContainText('Logged Haydn 76#1');
+        // The claim has to be true: nothing persisted, so flush had nothing to
+        // send and the submit is the only thing that could have sent it.
+        expect(bodies.map(b => new URLSearchParams(b).get(TITLE_ID))).toEqual(['76#1']);
+    });
+
+    test('an unstorable piece that cannot be sent is never reported as logged', async ({ page }) => {
+        // The failure this closes: nothing queued, nothing posted, and a green
+        // "Logged" indistinguishable from a real one. The opaque response
+        // means this line is the only acknowledgement a submit ever gets.
+        await page.route('https://docs.google.com/forms/**', route => route.abort('internetdisconnected'));
+        await blockStorageWrites(page);
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+
+        await expect(page.locator('#logStatus')).toHaveClass(/error/);
+        await expect(page.locator('#logStatus')).not.toContainText('Logged Haydn');
+        // There is no outbox to hold it, so the form must: nothing on screen
+        // is lost, and the piece can be submitted again.
+        await expect(page.locator('#logTitle')).toHaveValue('76#1');
+        await expect(page.locator('#logSubmit')).toBeEnabled();
+    });
 });

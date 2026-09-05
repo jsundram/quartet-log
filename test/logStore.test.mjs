@@ -103,6 +103,44 @@ test('a blocked localStorage does not break the form', () => {
     assert.deepEqual(pending(), []);
 });
 
+test('enqueue says whether the entry actually persisted', () => {
+    // Not decoration: flush re-reads storage, so an entry that never landed
+    // there is never sent. A caller reading success off the returned list
+    // would tell someone a piece was logged that nothing holds and nothing
+    // will retry -- and the opaque Forms response can never contradict it.
+    assert.deepEqual(enqueue(entry('76#1')).map(q => q.entry.title), ['76#1']);
+    ls.throwOnSet = true;
+    assert.equal(enqueue(entry('76#2')), null);
+});
+
+test('a dropped entry leaves flush with nothing to send, and it says so', async () => {
+    ls.throwOnSet = true;
+    assert.equal(enqueue(entry('76#1')), null);
+    let posts = 0;
+    // The shape of the bug this pins: sent 0, remaining 0 -- a clean run that
+    // a caller cannot tell from a real one unless enqueue told it.
+    assert.deepEqual(await flush(async () => { posts++; }), { sent: 0, remaining: 0 });
+    assert.equal(posts, 0);
+});
+
+test('flush stops rather than resending an entry it cannot remove', async () => {
+    // The loop re-reads the queue each iteration, so a failed removal would
+    // hand back the entry just sent and POST it forever. Over-reporting
+    // `remaining` once is the cheaper wrong answer.
+    ['76#1', '76#2'].forEach(t => enqueue(entry(t)));
+    const sentTitles = [];
+    const result = await flush(async (e) => {
+        // Without the guard this loops forever, so the regression has to fail
+        // rather than hang: a run that keeps going is stopped here and shows
+        // up as the repeat it is.
+        if (sentTitles.length > 2) throw new Error('resending an entry already sent');
+        sentTitles.push(e.title);
+        ls.throwOnSet = true;      // storage fills up mid-flush
+    });
+    assert.deepEqual(sentTitles, ['76#1']);
+    assert.deepEqual(result, { sent: 1, remaining: 2 });
+});
+
 test('recent with nothing stored is null', () => {
     assert.equal(recent(null), null);
 });

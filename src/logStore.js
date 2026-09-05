@@ -35,11 +35,15 @@ export function pending() {
     return Array.isArray(list) ? list : [];
 }
 
-/** @param {Entry} entry @returns {Queued[]} */
+// Returns null when the queue did not persist, rather than the list it would
+// have been. The caller cannot tell the difference from in-memory state, and
+// the difference is everything: flush re-reads storage, so an entry that never
+// landed there is never sent, and reporting "Logged" off this list would
+// confirm a piece that nothing holds and nothing will retry.
+/** @param {Entry} entry @returns {Queued[]|null} */
 export function enqueue(entry) {
     const list = [...pending(), { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, at: Date.now(), entry }];
-    write(PENDING_KEY, list);
-    return list;
+    return write(PENDING_KEY, list) ? list : null;
 }
 
 /** @param {string} id @returns {Queued[]} */
@@ -86,8 +90,13 @@ export async function flush(post) {
             if (!list.length) break;
             const head = list[0];
             try { await post(head.entry); } catch { break; }
-            write(PENDING_KEY, pending().filter(q => q.id !== head.id));
             sent++;
+            // If the removal doesn't persist, stop. The loop re-reads the
+            // queue, so carrying on would hand back the entry just sent and
+            // POST it again, and again — duplicate rows nothing downstream can
+            // tell from real ones. One over-counted `remaining` is the cheaper
+            // wrong answer.
+            if (!write(PENDING_KEY, pending().filter(q => q.id !== head.id))) break;
         }
         return { sent, remaining: pending().length };
     })();

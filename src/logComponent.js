@@ -724,10 +724,27 @@ export class LogComponent {
         // to reach the sheet first, since fillForward reads each row against
         // the one above it and a jumped queue points a blank seat at the wrong
         // previous row.
-        store.enqueue(entry);
+        const queued = store.enqueue(entry);
         const button = d3.select('#logSubmit').property('disabled', true);
         const { remaining } = await store.flush(e => postEntry(e, this.config));
+        // A browser that won't write localStorage (private-mode Safari, a full
+        // quota) drops the entry on the floor: flush re-reads storage, finds
+        // nothing, and reports a clean run for a piece that never left the
+        // device. Send it from here instead — after the flush, so anything
+        // that DID persist still reaches the sheet first — and let a transport
+        // failure be a failure the user is told about, since there is no queue
+        // to hold it and no later attempt coming.
+        let lost = false;
+        if (!queued) {
+            try { await postEntry(entry, this.config); }
+            catch { lost = true; }
+        }
         button.property('disabled', false);
+        if (lost) {
+            this.status(`Couldn't send ${entry.composer} ${entry.title}, and this browser won't let the app hold it for later. `
+                + 'The piece is still here — try again once you have a connection.', 'error');
+            return;
+        }
 
         store.setRecent(resolved);
         this.entry = nextInSession(entry);
