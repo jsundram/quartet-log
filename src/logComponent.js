@@ -121,6 +121,15 @@ export class LogComponent {
             d3.select('#logForm').on('submit', (e) => { e.preventDefault(); this.submit(); });
             // Coming back from a dead zone is the moment the queue can drain.
             window.addEventListener('online', () => this.flushQueue());
+            // Belt and braces on the draft. Every handler calls touch(), but
+            // remembering to is exactly how the Other-composer field went
+            // unsaved, and on iOS a backgrounded PWA is killed without warning.
+            // pagehide fires where beforeunload does not; visibilitychange
+            // covers a swipe to the home screen that never unloads at all.
+            window.addEventListener('pagehide', () => this.touch());
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') this.touch();
+            });
         }
         this.restoreDraft();
         this.refresh();
@@ -278,6 +287,7 @@ export class LogComponent {
         });
         d3.select('#logComposerOther').on('input', (e) => {
             this.entry.composer = e.target.value;
+            this.touch();
             this.renderWorkOptions();
         });
     }

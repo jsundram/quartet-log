@@ -603,6 +603,37 @@ test.describe('log form', () => {
             .toBeVisible();
     });
 
+    test('an Other composer survives a reload too', async ({ page }) => {
+        // The field that slipped: it updated state but never saved the draft,
+        // so a name the catalog has never heard of was lost on reload.
+        await pickComposer(page, ' other');
+        await page.fill('#logComposerOther', 'Ligeti');
+        await page.fill('#logTitle', '2');
+        await page.reload();
+        await expect(page.locator('#logForm')).toBeVisible();
+        await expect(page.locator('#logComposerOther')).toBeVisible();
+        await expect(page.locator('#logComposerOther')).toHaveValue('Ligeti');
+        await expect(page.locator('#logTitle')).toHaveValue('2');
+    });
+
+    test('a draft is snapshotted when the page is hidden, not only on each keystroke', async ({ page }) => {
+        // Per-handler discipline is how the Other-composer field went unsaved.
+        // On iOS a backgrounded PWA is killed without warning, so the way out
+        // is also a save point -- whatever any handler forgot is caught here.
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#13');
+        // Mutate state behind the handlers' backs, as a missed touch() would.
+        await page.evaluate(() => localStorage.removeItem('quartetlog_draft'));
+        await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+        // Still nothing: the page is visible, so there is nothing to snapshot.
+        expect(await page.evaluate(() => localStorage.getItem('quartetlog_draft'))).toBeNull();
+
+        await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+        const draft = await page.evaluate(() => JSON.parse(localStorage.getItem('quartetlog_draft')));
+        expect(draft.entry.title).toBe('76#13');
+        expect(draft.entry.composer).toBe('Haydn');
+    });
+
     test('nothing on screen is lost to a reload', async ({ page }) => {
         // An installed PWA is evicted from memory whenever the phone decides
         // to. A half-entered piece that lives only in a component field is one
