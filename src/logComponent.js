@@ -236,7 +236,7 @@ export class LogComponent {
     // published CSV takes to catch up.
     carrySource() {
         const last = this.rows.at(-1) ?? null;
-        return store.recent(last?.timestamp) ?? last;
+        return store.recent(last) ?? last;
     }
 
     refresh() {

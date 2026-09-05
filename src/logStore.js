@@ -77,25 +77,54 @@ export async function flush(post) {
     return { sent, remaining: list.length };
 }
 
+// How long a submission the sheet never took delivery of goes on describing
+// the last row. Only reachable when a send was accepted by the transport and
+// dropped by Forms anyway (a required field the client thought was filled) —
+// the opaque response can't tell us, so the copy expires on its own rather
+// than describing a row that does not exist forever.
+const RECENT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
 /**
  * The last row submitted from this device, as the sheet will hold it (blanks
  * already resolved against what they dittoed). Read back as the carry-forward
- * source while it is newer than anything in the fetched data — between a
- * submit and the published CSV catching up, this device knows more than the
- * sheet does.
+ * source until the sheet catches up — the published CSV lags by minutes and
+ * the next piece of a session is logged in seconds.
  * @param {Entry} resolved
  */
 export function setRecent(resolved) {
     write(RECENT_KEY, { at: Date.now(), entry: resolved });
 }
 
+// Is this fetched row the submission we saved? Composer and work title only:
+// both are required, so both are always written, while `part` is folded on the
+// way in (processRow turns VA1 into VA) and comparing it would report a
+// mismatch for every viola row. A false match only means preferring the sheet,
+// which is the safe direction; a false MISS is the one that hurts, because it
+// leaves the local copy shadowing the sheet.
+/** @param {any} row @param {Entry} entry */
+function isSameRow(row, entry) {
+    return row?.composer === entry.composer && row?.work?.title === entry.title;
+}
+
 /**
- * @param {Date|null|undefined} dataThrough timestamp of the newest fetched row
- * @returns {Entry|null} the local submission the data hasn't caught up to yet
+ * The local submission the fetched data hasn't caught up to yet, or null once
+ * it has.
+ *
+ * "Caught up" is identity, never the clock. Forms timestamps a row when it
+ * RECEIVES it and this device saves a moment later, so the row is always a
+ * hair older than the save and "is the sheet newer than my copy" is never true
+ * — which left the local copy permanently shadowing the sheet. That matters
+ * beyond staleness: correcting a name in the sheet afterwards is the
+ * established fix for a typo or a surname learned later, and the placeholder
+ * has to show the correction rather than what was originally typed.
+ *
+ * @param {any} lastRow newest row in the fetched data (a processed Row)
+ * @returns {Entry|null}
  */
-export function recent(dataThrough) {
+export function recent(lastRow) {
     const saved = read(RECENT_KEY, null);
     if (!saved?.entry) return null;
-    if (dataThrough && dataThrough.getTime() >= saved.at) return null;
+    if (lastRow && isSameRow(lastRow, saved.entry)) return null;
+    if (Date.now() - saved.at > RECENT_MAX_AGE_MS) return null;
     return blankEntry(saved.entry);
 }

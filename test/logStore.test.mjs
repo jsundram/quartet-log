@@ -100,19 +100,39 @@ test('a blocked localStorage does not break the form', () => {
     assert.deepEqual(pending(), []);
 });
 
-test('recent is the local submission while the fetched data lags behind it', () => {
-    setRecent(blankEntry({ player1: 'Alice Hart', location: 'Home' }));
-    // The published CSV is minutes behind, so the newest fetched row predates
-    // what this device just sent: the local copy wins.
-    assert.equal(recent(new Date(Date.now() - 60_000))?.player1, 'Alice Hart');
-    assert.equal(recent(null)?.player1, 'Alice Hart');
-});
-
-test('recent yields once the fetched data has caught up', () => {
-    setRecent(blankEntry({ player1: 'Alice Hart' }));
-    assert.equal(recent(new Date(Date.now() + 60_000)), null);
-});
-
 test('recent with nothing stored is null', () => {
     assert.equal(recent(null), null);
+});
+
+test('the sheet wins once it holds the submission, so a later edit is honored', async () => {
+    // The scenario this exists for: a name typed wrong, fixed in the sheet
+    // afterwards. The form only ever writes, so the correction reaches
+    // everything that reads the sheet -- unless this local copy of the
+    // submitted row outlives it and goes on describing the typo.
+    setRecent(blankEntry({
+        composer: 'Haydn', title: '76#3', part: 'V1',
+        player1: 'Alise Hart', location: 'Home',
+    }));
+    // The sheet now holds that row, with the name corrected by hand. Its
+    // timestamp is a moment BEFORE setRecent ran, because Forms stamps the row
+    // when it receives it and the client saves afterwards -- so "is the row
+    // newer than my save" can never be the test.
+    const asSheetHasIt = {
+        timestamp: new Date(Date.now() - 5000),
+        composer: 'Haydn', work: { title: '76#3' }, part: 'V1',
+        player1: 'Alice Hart', location: 'Home',
+    };
+    assert.equal(recent(asSheetHasIt), null);
+});
+
+test('the local copy still wins while the published CSV lags behind it', () => {
+    setRecent(blankEntry({ composer: 'Haydn', title: '76#3', part: 'V1', player1: 'Alice Hart' }));
+    // A different, older piece is still the newest the sheet knows: the CSV is
+    // minutes behind and the next piece of a session is logged in seconds.
+    const older = {
+        timestamp: new Date(Date.now() - 3600_000),
+        composer: 'Mozart', work: { title: 'K421' }, part: 'V1', player1: 'Bob Bek',
+    };
+    assert.equal(recent(older)?.player1, 'Alice Hart');
+    assert.equal(recent(null)?.player1, 'Alice Hart');
 });

@@ -312,6 +312,42 @@ test.describe('log form', () => {
         expect(bodies).toHaveLength(0);
     });
 
+    test('a name fixed in the sheet afterwards wins over what was typed', async ({ page }) => {
+        // The established fix for a misspelling, or for a surname learned after
+        // the fact, is editing the sheet. The form only ever writes, so a
+        // correction has to reach everything that reads -- including the local
+        // copy of the just-submitted row that keeps the placeholders honest
+        // while the published CSV catches up.
+        await captureSubmits(page);
+        await page.selectOption('#logComposer', 'Haydn');
+        await page.fill('#logTitle', '76#9');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.fill('#logPlayer1', 'Alise Hart');   // typo, as typed
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        // The sheet hasn't caught up, so the local copy is carrying the seats.
+        await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alise Hart');
+
+        // Now the sheet holds that row, corrected by hand. More specific than
+        // the beforeEach route so it can't swallow the form POSTs.
+        await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
+            contentType: 'text/csv',
+            body: `${FIXTURE_CSV}\n${day(0, '21:00:00')},Haydn,76#9,V1,Alice Hart,Bob,Carol,,Home,`,
+        }));
+        await page.reload();
+        await expect(page.locator('#logForm')).toBeVisible();
+
+        // The correction wins: the placeholder shows it, and it is what a blank
+        // seat will now carry forward.
+        await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alice Hart');
+        // And the typo is gone from the suggestions, since those are read from
+        // the sheet rather than remembered.
+        const players = await page.locator('#logPlayers option').evaluateAll(
+            nodes => nodes.map(n => n.value));
+        expect(players).toContain('Alice Hart');
+        expect(players).not.toContain('Alise Hart');
+    });
+
     test('queues when the network fails, and drains in order once it returns', async ({ page }) => {
         let online = false;
         const bodies = [];
