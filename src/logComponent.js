@@ -35,6 +35,9 @@ const SETUP_ERROR = {
     'field-count': `That link has the wrong number of fields: this log needs one per sheet column (${FIELDS.length}). Fill in every field before copying the link, and check the form matches your sheet.`,
 };
 
+// Enough of a form id to tell two apart without printing the whole thing.
+const shortId = (/** @type {string} */ id) => `...${id.slice(-6)}`;
+
 /** @param {number} ms */
 function ago(ms) {
     const min = Math.round(ms / 60000);
@@ -53,6 +56,8 @@ export class LogComponent {
         // unconfigured visitor gets the setup panel rather than a form that
         // would post someone else's rows into a stranger's spreadsheet.
         this.config = null;
+        // A ?form= link that would replace this.config, awaiting a decision.
+        this.proposed = null;
         this.mounted = false;
     }
 
@@ -114,6 +119,18 @@ export class LogComponent {
             this.status('Form connected.', 'ok');
             this.flushQueue();
         });
+        d3.select('#logProposalAccept').on('click', () => {
+            if (!this.proposed) return;
+            setFormConfig(this.proposed);
+            this.config = this.proposed;
+            this.proposed = null;
+            this.renderMode();
+            this.status(`Now writing to form ${shortId(this.config.formId)}.`, 'ok');
+        });
+        d3.select('#logProposalReject').on('click', () => {
+            this.proposed = null;
+            this.renderMode();
+        });
         d3.select('#logChangeForm').on('click', (e) => {
             e.preventDefault();
             clearFormConfig();
@@ -140,11 +157,16 @@ export class LogComponent {
             });
     }
 
-    // Form or setup panel, never both.
+    // Exactly one of: the pending-proposal prompt, the form, the setup panel.
+    // A proposal outranks both, so where entries go can't be changed — or
+    // logged against — until it has been answered.
     renderMode() {
-        d3.select('#logForm').property('hidden', !this.config);
-        d3.select('#logSetup').property('hidden', !!this.config);
-        d3.select('#logFormId').text(this.config ? `...${this.config.formId.slice(-6)}` : '');
+        const deciding = !!this.proposed;
+        d3.select('#logProposal').property('hidden', !deciding);
+        if (deciding) this.renderProposal();
+        d3.select('#logForm').property('hidden', deciding || !this.config);
+        d3.select('#logSetup').property('hidden', deciding || !!this.config);
+        d3.select('#logFormId').text(this.config ? shortId(this.config.formId) : '');
         this.renderPending();
     }
 
@@ -155,6 +177,13 @@ export class LogComponent {
 
     hasForm() {
         return !!this.config;
+    }
+
+    // A ?form= link asking to replace an existing connection. Held, not
+    // applied: App calls this before the UI mounts, and renderMode surfaces it.
+    proposeConfig(config) {
+        this.proposed = config;
+        if (this.mounted) this.renderMode();
     }
 
     buildComposerPicker() {
@@ -272,6 +301,22 @@ export class LogComponent {
         for (const field of CARRIED_INPUTS) {
             d3.select(TEXT_INPUTS[field]).attr('placeholder', carried[field] || 'nobody yet');
         }
+    }
+
+    // Two situations, two sentences. Connecting a first form and replacing a
+    // working one carry different risk, and "Keep mine" is nonsense when there
+    // is nothing to keep. Set as text, never markup.
+    renderProposal() {
+        const id = shortId(this.proposed.formId);
+        const replacing = !!this.config;
+        d3.select('#logProposalText').text(replacing
+            ? `This link points your log at a different Google Form, ${id}, replacing `
+                + `${shortId(this.config.formId)}. Everything you log would go to that `
+                + `form's spreadsheet instead of yours.`
+            : `This link would connect your log to Google Form ${id}. Everything you log `
+                + `goes to that form's spreadsheet, so only accept it if the form is yours.`);
+        d3.select('#logProposalReject').text(replacing ? 'Keep mine' : 'Not now');
+        d3.select('#logProposalAccept').text(replacing ? 'Use the new form' : 'Connect this form');
     }
 
     renderSuggestions() {

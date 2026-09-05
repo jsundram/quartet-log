@@ -72,7 +72,11 @@ export class App {
         // Form this device writes through, so a second device needs no
         // re-pasting. Consumed before the UI mounts so the log view opens
         // already connected.
-        consumeFormParam();
+        // Never adopted on arrival: a ?form= link is a proposal the log view
+        // puts to the user, because a link must not be able to decide where
+        // entries are sent — including on a device with no form yet.
+        const proposed = consumeFormParam();
+        if (proposed) this.logComponent.proposeConfig(proposed);
 
         if (hasDataUrl()) {
             this.initialize();

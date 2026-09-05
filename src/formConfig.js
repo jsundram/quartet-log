@@ -68,8 +68,12 @@ export function readPrefilledLink(link) {
 
     let url;
     try { url = new URL(text); } catch { return { config: null, reason: 'not-a-form-link' }; }
+    // The id is interpolated into the URL formAction builds, so it has to be
+    // an id and not arbitrary path text. Anchored at the segment end so an
+    // unexpected shape is REJECTED rather than silently truncated into a
+    // different form's address.
     const formId = url.hostname.endsWith('google.com')
-        ? url.pathname.match(/\/forms\/d\/e\/([^/]+)/)?.[1] : null;
+        ? url.pathname.match(/\/forms\/d\/e\/([\w-]+)(?:\/|$)/)?.[1] : null;
     if (!formId) return { config: null, reason: 'not-a-form-link' };
 
     // Order matters, so read the query in order. Forms repeats an id for
@@ -160,21 +164,37 @@ export async function postEntry(entry, config) {
 
 /**
  * Cross-device setup, mirroring urlConfig's ?data= link: if the page URL has
- * ?form=<pre-filled link>, persist the config it describes and strip the
- * param. Returns true when one was consumed.
+ * ?form=<pre-filled link>, read it and strip the param.
+ *
+ * It is returned as a PROPOSAL for the user to accept, never applied. A URL is
+ * not a choice, and this config alone decides where every logged row is sent:
+ * a link someone sends you would otherwise point your log at their spreadsheet
+ * in one click, and the form would go on saying "Logged" while your own sheet
+ * quietly stopped growing. That holds just as much for a device with no form
+ * yet — which is every existing user the day this ships, and every new visitor
+ * — as for one being re-pointed, so there is no silent-adopt branch at all.
+ * The cross-device flow this exists for costs one tap.
+ *
+ * The single exception is a link naming the form already configured, which
+ * asks for nothing and is left silent (re-opening your own setup link).
+ *
+ * @returns {FormConfig|null} a config awaiting the user's decision
  */
 export function consumeFormParam() {
     const params = new URLSearchParams(window.location.search);
     const link = params.get('form');
-    if (!link) return false;
-    const config = parsePrefilledLink(link);
-    if (config) setFormConfig(config);
+    if (!link) return null;
 
+    const config = parsePrefilledLink(link);
+    // Strip ?form= however it turns out, so a declined proposal can't return
+    // on reload and a bad one doesn't linger in history.
     params.delete('form');
     const search = params.toString();
     window.history.replaceState(null, '',
         window.location.pathname + (search ? '?' + search : '') + window.location.hash);
-    return !!config;
+
+    if (!config) return null;
+    return config.formId === getFormConfig()?.formId ? null : config;
 }
 
 /**

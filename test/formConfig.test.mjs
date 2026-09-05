@@ -9,7 +9,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     parsePrefilledLink, readPrefilledLink, buildPrefilledLink, getFormConfig, setFormConfig,
-    clearFormConfig, toFormBody, formAction, CHOICES,
+    clearFormConfig, toFormBody, formAction, CHOICES, consumeFormParam,
 } from '../src/formConfig.js';
 import { FIELDS, LABELS, blankEntry } from '../src/logEntry.js';
 import { CSV_HEADERS } from '../src/csvFormat.js';
@@ -29,6 +29,9 @@ const FORM_ID = '1FAIpQLSfEXAMPLEfixtureformidforthetestsuite0000000000';
 const IDS = ['201', '202', '203', '204', '205', '206', '207', '208', '209'];
 const LINK = `https://docs.google.com/forms/d/e/${FORM_ID}/viewform?usp=pp_url&`
     + IDS.map((id, i) => `entry.${id}=v${i}`).join('&');
+const OTHER_ID = 'SOMEONE-ELSES-FORM';
+const OTHER_LINK = `https://docs.google.com/forms/d/e/${OTHER_ID}/viewform?usp=pp_url&`
+    + IDS.map((id, i) => `entry.${900 + i}=v${i}`).join('&');
 
 test('the field order is the sheet column order, which is what makes the mapping positional', () => {
     // parsePrefilledLink zips entry ids to FIELDS by position, and that is
@@ -162,4 +165,57 @@ test('toFormBody without a config throws instead of posting into the void', () =
     // The config is an argument, never module state — the same reasoning as
     // the alias tables in dataProcessor: forgetting it must fail loudly.
     assert.throws(() => toFormBody(blankEntry({ composer: 'Haydn' }), null), TypeError);
+});
+
+const withFormParam = (link) => {
+    globalThis.window = {
+        location: { search: `?form=${encodeURIComponent(link)}`, pathname: '/', hash: '' },
+        history: { replaceState: () => {} },
+    };
+};
+
+test('a ?form= link is never adopted on arrival, however the device is configured', () => {
+    // The attack this closes: someone sends you a link, and one click points
+    // your log at their spreadsheet. The form goes on saying "Logged" while
+    // your own sheet quietly stops growing -- the same misdirected-writes
+    // failure the per-user config exists to prevent, reachable by URL.
+    //
+    // A device with NO form yet is the case that matters most: it is every
+    // existing user the day this ships and every new visitor, so a
+    // silent-adopt branch for it would leave the hole open for exactly the
+    // people most likely to click such a link.
+    withFormParam(OTHER_LINK);
+    assert.equal(consumeFormParam()?.formId, OTHER_ID);
+    assert.equal(getFormConfig(), null, 'nothing is stored until a human accepts');
+
+    withFormParam(OTHER_LINK);
+    setFormConfig(parsePrefilledLink(LINK));
+    assert.equal(consumeFormParam()?.formId, OTHER_ID);
+    assert.equal(getFormConfig().formId, FORM_ID, 'the existing form is untouched');
+});
+
+test('re-opening your own setup link asks nothing, because it changes nothing', () => {
+    withFormParam(LINK);
+    setFormConfig(parsePrefilledLink(LINK));
+    assert.equal(consumeFormParam(), null);
+    assert.equal(getFormConfig().formId, FORM_ID);
+});
+
+test('a ?form= link that will not parse proposes nothing', () => {
+    withFormParam('https://docs.google.com/spreadsheets/d/e/x/pub?output=csv');
+    assert.equal(consumeFormParam(), null);
+    assert.equal(getFormConfig(), null);
+});
+
+test('the form id is read as an id, not as arbitrary path text', () => {
+    // formAction interpolates it into the URL it posts to, so a segment that
+    // is not id-shaped is REJECTED rather than truncated: truncating would
+    // silently address a different form and the opaque response would never
+    // say so. Real ids are base64url, which is exactly what is accepted.
+    const link = (/** @type {string} */ id) =>
+        `https://docs.google.com/forms/d/e/${id}/viewform?`
+        + IDS.map((eid, i) => `entry.${eid}=v${i}`).join('&');
+    assert.equal(parsePrefilledLink(link('ABC-123_xyz'))?.formId, 'ABC-123_xyz');
+    assert.equal(parsePrefilledLink(link('abc.def')), null);
+    assert.equal(parsePrefilledLink(link('abc%2F..%2Fevil')), null);
 });

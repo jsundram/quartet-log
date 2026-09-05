@@ -148,6 +148,20 @@
          works offline, and the submit queues when it can't. -->
     <div id="log" style="display: none">
         <h1 style="text-align: center">Log a Piece</h1>
+        <!-- A ?form= link, awaiting a decision. Never applied on arrival: a
+             link is not a choice, and letting one decide where entries are
+             sent is the failure the per-user config exists to prevent. That
+             holds for a device with no form yet just as much as for one being
+             re-pointed. Replaces both the form and the setup panel, so the
+             decision can't be scrolled past. -->
+        <div id="logProposal" class="log-proposal" hidden>
+            <p id="logProposalText"></p>
+            <div class="log-proposal-actions">
+                <button type="button" id="logProposalReject" class="log-submit"></button>
+                <button type="button" id="logProposalAccept" class="log-chip"></button>
+            </div>
+        </div>
+
         <!-- Shown until this device knows which Google Form feeds its sheet.
              There is no default: the site is public and anyone can point it at
              their own sheet, so a baked-in form id would send every visitor's

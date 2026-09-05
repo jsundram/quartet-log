@@ -165,6 +165,29 @@ test('an unconfigured visitor gets the setup panel, not someone else\'s form', a
     await expect(page.locator('#logFormId')).toContainText('M-E2E');
 });
 
+test('a link cannot connect a form to a fresh device without being asked', async ({ page }) => {
+    // The case that matters most: a device with no form yet is every existing
+    // user the day this ships. A silent-adopt branch here would leave the
+    // one-click redirect open for exactly the people most likely to click it.
+    const evil = `https://docs.google.com/forms/d/e/SOMEONE-ELSES-FORM/viewform?usp=pp_url&`
+        + FORM_IDS.map((id, i) => `entry.${900 + i}=v${i}`).join('&');
+    await page.goto(`/?data=${encodeURIComponent(SHEET_URL)}&form=${encodeURIComponent(evil)}`);
+    await expect(page.locator('#update')).toContainText(/Data updated|from cache/, { timeout: 15000 });
+    await page.evaluate(() => { window.location.hash = '#log'; });
+
+    await expect(page.locator('#logProposal')).toBeVisible();
+    // The copy names the risk rather than assuming a form is being replaced.
+    await expect(page.locator('#logProposalText')).toContainText('only accept it if the form is yours');
+    await expect(page.locator('#logProposalReject')).toHaveText('Not now');
+    await expect(page.locator('#logForm')).toBeHidden();
+    await expect(page.locator('#logSetup')).toBeHidden();
+
+    await page.click('#logProposalReject');
+    // Declining leaves the device exactly as it was: unconfigured.
+    await expect(page.locator('#logSetup')).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('quartetlog_form'))).toBeNull();
+});
+
 test.describe('log form', () => {
     // Capture Forms submissions instead of sending them. The route is
     // anchored to the /forms/ path so it can't swallow the sheet stub above.
@@ -183,6 +206,9 @@ test.describe('log form', () => {
         await page.goto(`/?data=${encodeURIComponent(SHEET_URL)}&form=${encodeURIComponent(PREFILL)}`);
         await expect(page.locator('#update')).toContainText(/Data updated|from cache/, { timeout: 15000 });
         await page.evaluate(() => { window.location.hash = '#log'; });
+        // A link never connects itself, so setup is one tap even on a device
+        // with no form yet.
+        await page.click('#logProposalAccept');
         await expect(page.locator('#logForm')).toBeVisible();
         // The param is stripped so it can't linger in history or re-apply.
         expect(new URL(page.url()).searchParams.get('form')).toBeNull();
@@ -310,6 +336,47 @@ test.describe('log form', () => {
         await expect(page.locator('#logStatus')).toContainText('Work Title');
         await expect(page.locator('#logStatus')).toContainText('Which Part');
         expect(bodies).toHaveLength(0);
+    });
+
+    test('a link cannot redirect a configured device without being asked', async ({ page }) => {
+        // Someone sends you a link; one click and everything you log goes to
+        // their spreadsheet while the form still says "Logged" and your own
+        // sheet quietly stops growing. Nothing may change until a human says
+        // so, and until then neither the form nor the setup panel is reachable.
+        const bodies = await captureSubmits(page);
+        const evil = `https://docs.google.com/forms/d/e/SOMEONE-ELSES-FORM/viewform?usp=pp_url&`
+            + FORM_IDS.map((id, i) => `entry.${900 + i}=v${i}`).join('&');
+        await page.goto(`/?form=${encodeURIComponent(evil)}`);
+        await page.evaluate(() => { window.location.hash = '#log'; });
+
+        await expect(page.locator('#logProposal')).toBeVisible();
+        // Both ends named, so the choice is informed rather than a leap.
+        await expect(page.locator('#logProposal')).toContainText('...S-FORM');
+        await expect(page.locator('#logProposal')).toContainText('...RM-E2E');
+        await expect(page.locator('#logForm')).toBeHidden();
+        await expect(page.locator('#logSetup')).toBeHidden();
+
+        await page.click('#logProposalReject');
+        await expect(page.locator('#logForm')).toBeVisible();
+        // Still the form that was there before.
+        await expect(page.locator('#logFormId')).toContainText('M-E2E');
+
+        // And a reload does not resurrect the declined proposal: the param is
+        // stripped whichever way it was answered.
+        await page.reload();
+        await expect(page.locator('#logForm')).toBeVisible();
+        await expect(page.locator('#logProposal')).toBeHidden();
+
+        await page.selectOption('#logComposer', 'Haydn');
+        await page.fill('#logTitle', '76#4');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        // The row went to the configured form, not the one the link named.
+        expect(bodies.at(-1)).toContain(COMPOSER_ID);
+        const posted = await page.evaluate(() => performance.getEntriesByType('resource')
+            .map(r => r.name).filter(n => n.includes('/forms/d/e/')));
+        expect(posted.join(' ')).not.toContain('SOMEONE-ELSES-FORM');
     });
 
     test('a name fixed in the sheet afterwards wins over what was typed', async ({ page }) => {
