@@ -123,7 +123,12 @@ export class NavigationComponent {
             }
 
             if (view === "logout") {
-                if (confirm("This will log you out and clear your saved data URL. You'll need to re-enter it to use the app again. Continue?")) {
+                if (confirm("This will log you out and clear everything saved on this device: your data URL, the form you log through, and anything you had queued or part-typed. You'll need to set it up again to use the app. Continue?")) {
+                    // All of it, not just the URL: the log form holds player
+                    // names in its queue, its sitting and its draft, and a
+                    // form config left behind would point the next person's
+                    // entries at the previous person's spreadsheet.
+                    if (this.onLogout) this.onLogout();
                     clearDataUrl();
                     window.location.reload();
                 }

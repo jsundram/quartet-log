@@ -634,6 +634,26 @@ test.describe('log form', () => {
         expect(draft.entry.composer).toBe('Haydn');
     });
 
+    test('Log Out leaves nothing of the log behind', async ({ page }) => {
+        // "Log Out before sharing your screen" has to be true: the queue, the
+        // sitting and the draft all carry player names, and a form config left
+        // behind would send the next person's entries to this person's sheet.
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#14');
+        await page.click('#logOthersAdd');
+        await page.locator('.log-other-row').first().locator('input').fill('Dana Ellis');
+        const keys = () => page.evaluate(() => Object.keys(localStorage)
+            .filter(k => k.startsWith('quartetlog_')));
+        expect(await keys()).toContain('quartetlog_draft');
+        expect(await keys()).toContain('quartetlog_form');
+
+        page.once('dialog', d => d.accept());
+        await page.click('.hamburger-menu');
+        await page.click('.menu-item[data-view="logout"]');
+        await expect(page.locator('#setupView')).toBeVisible({ timeout: 15000 });
+        expect(await keys()).toEqual([]);
+    });
+
     test('nothing on screen is lost to a reload', async ({ page }) => {
         // An installed PWA is evicted from memory whenever the phone decides
         // to. A half-entered piece that lives only in a component field is one

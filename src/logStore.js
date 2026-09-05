@@ -202,3 +202,19 @@ export function readDraft() {
 export function clearDraft() {
     try { localStorage.removeItem(DRAFT_KEY); } catch { /* nothing to clear */ }
 }
+
+/**
+ * Forget everything this device is holding for the log form.
+ *
+ * Called on Log Out, whose whole point is handing the browser back: the queue,
+ * the sitting and the draft all carry player names, and leaving them behind
+ * would make "log out before sharing your screen" untrue. The form config goes
+ * too (see `clearFormConfig`) — leaving it would point the next person's
+ * entries at the previous person's spreadsheet, which is the misdirected-write
+ * failure the per-user config exists to prevent.
+ */
+export function clearAll() {
+    for (const key of [PENDING_KEY, RECENT_KEY, DRAFT_KEY]) {
+        try { localStorage.removeItem(key); } catch { /* nothing to clear */ }
+    }
+}

@@ -9,7 +9,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     pending, enqueue, drop, flush, setRecent, recent, recentAll,
-    saveDraft, readDraft, clearDraft,
+    saveDraft, readDraft, clearDraft, clearAll,
 } from '../src/logStore.js';
 import { blankEntry } from '../src/logEntry.js';
 
@@ -218,5 +218,18 @@ test('a corrupt draft reads as none rather than breaking the form', () => {
     ls.setItem('quartetlog_draft', 'not json');
     assert.equal(readDraft(), null);
     ls.setItem('quartetlog_draft', JSON.stringify({ nothing: true }));
+    assert.equal(readDraft(), null);
+});
+
+test('clearAll forgets the queue, the sitting and the draft', () => {
+    // Log Out hands the browser back. All three carry player names, so
+    // leaving any of them would make "log out before sharing your screen"
+    // untrue.
+    enqueue(entry('76#1'));
+    setRecent(blankEntry({ composer: 'Haydn', title: '76#1', player1: 'Alice Hart' }));
+    saveDraft({ entry: blankEntry({ composer: 'Haydn', player2: 'Bob Bek' }) });
+    clearAll();
+    assert.deepEqual(pending(), []);
+    assert.deepEqual(recentAll(), []);
     assert.equal(readDraft(), null);
 });

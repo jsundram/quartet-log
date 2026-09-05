@@ -36,6 +36,7 @@ export class App {
             (view) => this.handleViewChange(view),
         );
         this.navigationComponent.onCopyConfig = () => this.handleCopyConfigLink();
+        this.navigationComponent.onLogout = () => this.logComponent.discard();
         this.tableComponent = new TableComponent();
         this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();

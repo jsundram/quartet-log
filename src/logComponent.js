@@ -82,6 +82,8 @@ export class LogComponent {
         // Per-seat part, only where the user has overridden the default. Kept
         // sparse so the defaults stay live as the carried row changes.
         this.slotPartOverrides = [null, null, null];
+        // Set by discard(): this device has been handed back.
+        this.discarded = false;
         // One editable row per Others? entry. The cell text is derived from
         // these (syncOthers), never the other way round while editing.
         this.otherRows = [];
@@ -539,6 +541,10 @@ export class LogComponent {
     // Every mutation routes through here, so the thing on screen is never more
     // than one keystroke ahead of what a reload would restore.
     touch() {
+        // Log Out reloads the page, and a reload fires `pagehide` — which is
+        // wired here and would write the draft straight back out after
+        // discard() removed it. The e2e caught exactly that.
+        if (this.discarded) return;
         store.saveDraft({
             entry: this.entry,
             slotPartOverrides: this.slotPartOverrides,
@@ -546,6 +552,19 @@ export class LogComponent {
             othersFree: this.othersFree,
             expandComposer: this.expandComposer,
         });
+    }
+
+    /**
+     * Log Out: forget everything this device holds for the form. The queue,
+     * the sitting and the draft all carry player names, so leaving them would
+     * make "log out before sharing your screen" untrue, and a form config left
+     * behind would point the next person's entries at this person's
+     * spreadsheet — the misdirected write the per-user config exists to stop.
+     */
+    discard() {
+        this.discarded = true;
+        clearFormConfig();
+        store.clearAll();
     }
 
     /**

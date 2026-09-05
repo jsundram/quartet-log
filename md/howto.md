@@ -51,19 +51,28 @@ the **Log a Piece** form.
 That form writes to the same spreadsheet through the same Google Form, and it
 knows things the form cannot, because the app has your whole log loaded:
 
+- **The composers you actually play are one tap**, ranked by how often you play
+  them, with the whole catalogue behind **More…** and free text behind that.
 - **Names you have used before autocomplete.** Picking one instead of retyping
   it is what keeps a second Alice from becoming indistinguishable from the
   first (section 7).
 - **The seats show who they will repeat.** The greyed name in an empty Player
   field is exactly what a blank will carry forward, so you can see it rather
   than trust it (section 6).
-- **`Others?` offers you the last row's extras back**, since that is the one
-  column that does not repeat itself and the usual way a fifth player goes
-  missing.
+- **Each seat has a part beside it.** When two people swap you change a
+  dropdown instead of retyping both names into different columns, and a
+  quintet's second viola or cello can be said outright (section 5). The name
+  comes along on its own.
+- **Extra players stay for the rest of the session** and are written onto every
+  piece, so the **x** beside someone is all you do when they leave. That is the
+  one column the sheet cannot repeat for you, and the usual way a fifth player
+  goes missing (section 6).
 - **The work list follows the composer** you picked.
 - **It works with no signal.** Everything but the send is local; a piece logged
   in a basement queues up and goes out, in order, when you have a network
-  again. You can see what is waiting at the bottom of the form.
+  again. You can see what is waiting at the bottom of the form. Nothing you
+  have typed is lost either — if the phone kills the app mid-entry, the
+  half-filled form is there when you come back.
 
 Either way in works, and both write the same rows.
 
@@ -131,14 +140,20 @@ played with, but they're left out of the V1/V2/VA/VC part breakdowns, which
 only make sense for string parts.
 
 You can also put the extra player in **Others?** instead — `Alice Hart (p)`
-there is read the same way. One difference decides which to reach for: the
-player fields carry forward to the next entry in a session, so a slot you
-leave blank repeats whoever was there before, annotation included. **Others?
-does not carry forward.** Logging six movements with the pianist in Others?
-means typing them six times, while `Alice Hart (p)` in a player field is typed
-once. Put them in a player field for a long session, and in Others? when the
-seats are already full — a piano quintet, say, where four string players fill
-every slot.
+there is read the same way. In the **sheet** these behave differently: the
+player fields carry forward within a session, so a slot left blank repeats
+whoever was there, annotation included, while **`Others?` does not carry
+forward** — six movements with the pianist in Others? is six rows that each
+have to name them. Filling rows in the Google Form, that difference decides
+which to reach for: a player field for a long session, Others? when the seats
+are already full, as in a piano quintet where four string players fill every
+slot.
+
+The **Log a Piece** form removes the difference. Extras stay on the form for
+the rest of the session and it writes them onto every piece, and both a seat
+and an Others? entry get the same instrument dropdown — so you can put people
+wherever the ensemble actually puts them, and say what they played without
+remembering the `(p)` syntax.
 
 ## 6. What repeats itself, and what doesn't
 
