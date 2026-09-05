@@ -74,6 +74,7 @@
             <div class="bar"></div>
         </div>
         <div class="menu-items">
+            <a href="#" class="menu-item" data-view="log">Log a Piece</a>
             <a href="#" class="menu-item" data-view="main">Home</a>
             <a href="#" class="menu-item" data-view="calendar">Calendar</a>
             <a href="#" class="menu-item" data-view="dashboard">Dashboard</a>
@@ -139,6 +140,65 @@
     <!-- Body-level so it stays visible across all SPA views, including the
          calendar (whose day tooltips render into this same shared div). -->
     <div class="tooltip" id="tooltip"></div>
+
+    <!-- The log form. Static markup so the precached shell renders it with or
+         without a network; LogComponent fills the pickers from the catalog and
+         the datalists from whatever data is cached, and submits to the Google
+         Form's own endpoint (src/formConfig.js). Everything but the submit
+         works offline, and the submit queues when it can't. -->
+    <div id="log" style="display: none">
+        <h1 style="text-align: center">Log a Piece</h1>
+        <form id="logForm" class="log-form" autocomplete="off">
+            <div class="log-field">
+                <label for="logComposer">Composer</label>
+                <select id="logComposer"></select>
+                <input id="logComposerOther" type="text" placeholder="Composer name" hidden>
+            </div>
+            <div class="log-field">
+                <label for="logTitle">Work</label>
+                <input id="logTitle" type="text" list="logWorks" placeholder="e.g. 76#3">
+            </div>
+            <div class="log-field">
+                <label for="logPart">Your part</label>
+                <div id="logPart" class="part-buttons" role="radiogroup" aria-label="Which part"></div>
+            </div>
+
+            <p class="log-note">Leave a seat blank to repeat whoever was there. Write <code>-</code> for a seat this work doesn't have.</p>
+            <div class="log-field">
+                <label for="logPlayer1">Player 1</label>
+                <input id="logPlayer1" type="text" list="logPlayers">
+            </div>
+            <div class="log-field">
+                <label for="logPlayer2">Player 2</label>
+                <input id="logPlayer2" type="text" list="logPlayers">
+            </div>
+            <div class="log-field">
+                <label for="logPlayer3">Player 3</label>
+                <input id="logPlayer3" type="text" list="logPlayers">
+            </div>
+            <div class="log-field">
+                <label for="logOthers">Others?</label>
+                <input id="logOthers" type="text" list="logPlayers" placeholder="Name (instrument); Name">
+                <button type="button" id="logOthersRepeat" class="log-chip" hidden></button>
+            </div>
+            <div class="log-field">
+                <label for="logLocation">Location</label>
+                <input id="logLocation" type="text" list="logLocations">
+            </div>
+            <div class="log-field">
+                <label for="logComments">Comments</label>
+                <input id="logComments" type="text">
+            </div>
+
+            <datalist id="logWorks"></datalist>
+            <datalist id="logPlayers"></datalist>
+            <datalist id="logLocations"></datalist>
+
+            <button type="submit" id="logSubmit" class="log-submit">Log it</button>
+            <p id="logStatus" class="log-status"></p>
+        </form>
+        <div id="logPending" class="log-pending" hidden></div>
+    </div>
 
     <div id="calendar" style="display: none">
         <h1 style="text-align: center">Quartet Days</h1>

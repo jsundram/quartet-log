@@ -57,8 +57,10 @@ test('main view renders composer tabs with a singular UI', async ({ page }) => {
     expect(labels.length).toBeGreaterThan(5);
     expect(new Set(labels).size).toBe(labels.length);
     expect(labels).toContain('ALL');
-    // Exactly one Part button group.
-    await expect(page.locator('.part-buttons')).toHaveCount(1);
+    // Exactly one Part button group on Home. Scoped to #radioButtons because
+    // the log form has a part group of its own; the contract being pinned is
+    // that a rebuild doesn't stack a second one HERE.
+    await expect(page.locator('#radioButtons .part-buttons')).toHaveCount(1);
     // The fixture's Haydn plays show up as play squares somewhere on Home.
     await expect(page.locator('#Haydn .play-square').first()).toBeVisible();
 });
@@ -110,4 +112,159 @@ test('dashboard musician names stay inside the chart at a narrow width', async (
     const labels = await chart.locator('text.ranked-name').evaluateAll(nodes =>
         nodes.map(n => ({ shown: n.firstChild?.nodeValue, full: n.querySelector('title')?.textContent })));
     expect(labels.filter(l => l.full)).toEqual([{ shown: 'Frank', full: 'Frank Vandermeer' }]);
+});
+
+// The log form. Unit tests cover the model (test/logEntry.test.mjs) and the
+// outbox (test/logStore.test.mjs); what only a browser can pin is the wiring
+// between them and the request that actually leaves the page — the carried
+// placeholder, the Other-composer escape, and the queue-then-flush order.
+test.describe('log form', () => {
+    // Capture Forms submissions instead of sending them. The route is
+    // anchored to the /forms/ path so it can't swallow the sheet stub above.
+    async function captureSubmits(page) {
+        const bodies = [];
+        await page.route('https://docs.google.com/forms/**', route => {
+            bodies.push(route.request().postData());
+            route.fulfill({ status: 200, body: '' });
+        });
+        return bodies;
+    }
+
+    test.beforeEach(async ({ page }) => {
+        await page.evaluate(() => { window.location.hash = '#log'; });
+        await expect(page.locator('#log')).toBeVisible();
+    });
+
+    test('offers every catalog composer and suggests that composer works', async ({ page }) => {
+        const options = await page.locator('#logComposer option').allTextContents();
+        // The Google Form's own radio lists seven; the catalog knows far more,
+        // and all of them have to be reachable.
+        expect(options.length).toBeGreaterThan(10);
+        expect(options).toContain('Haydn');
+        expect(options).toContain('Debussy');   // lives only inside the MISC tab
+        expect(options.at(-1)).toBe('Other...');
+
+        await page.selectOption('#logComposer', 'Haydn');
+        const works = await page.locator('#logWorks option').evaluateAll(
+            nodes => nodes.map(n => n.value));
+        expect(works).toContain('20#2');
+        expect(works).not.toContain('K421');    // Mozart's, not Haydn's
+    });
+
+    test('shows the carried-forward seats as placeholders, and submits blanks', async ({ page }) => {
+        const bodies = await captureSubmits(page);
+        // The fixture's newest row is Haydn 20#2 with Alice / Dave / Carol.
+        await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alice');
+        await expect(page.locator('#logPlayer3')).toHaveAttribute('placeholder', 'Carol');
+        await expect(page.locator('#logLocation')).toHaveAttribute('placeholder', 'Home');
+
+        await page.selectOption('#logComposer', 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.fill('#logPlayer2', 'Erin');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+
+        const body = new URLSearchParams(bodies.at(-1));
+        expect(body.get('entry.617761884')).toBe('Haydn');
+        expect(body.get('entry.1089341946')).toBe('76#1');
+        expect(body.get('entry.906530431')).toBe('V1');
+        expect(body.get('entry.180148173')).toBe('Erin');
+        // The untouched seats submit EMPTY, not pre-filled: a blank cell is
+        // the sheet's ditto mark, and writing the name back would defeat
+        // fillForward's whole purpose.
+        expect(body.has('entry.2047796227')).toBe(false);
+        expect(body.has('entry.1831808369')).toBe(false);
+    });
+
+    test('carries forward from the row just submitted, not the stale sheet', async ({ page }) => {
+        await captureSubmits(page);
+        await page.selectOption('#logComposer', 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.fill('#logPlayer2', 'Erin');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+
+        // The published CSV lags by minutes, so the app's own data still ends
+        // at the fixture's last row. The next piece of this session must still
+        // see Erin in seat 2 — otherwise every second row of a session logs
+        // the person who was replaced.
+        await expect(page.locator('#logPlayer2')).toHaveAttribute('placeholder', 'Erin');
+        await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alice');
+        // Composer and part stay for the next piece; the title clears.
+        await expect(page.locator('#logComposer')).toHaveValue('Haydn');
+        await expect(page.locator('#logPart .part-btn.active')).toHaveText('V1');
+        await expect(page.locator('#logTitle')).toHaveValue('');
+    });
+
+    test('a composer outside the form option list rides the Other escape', async ({ page }) => {
+        const bodies = await captureSubmits(page);
+        await page.selectOption('#logComposer', 'Brahms');
+        await page.fill('#logTitle', '51#1');
+        await page.click('#logPart .part-btn[data-part="VA1"]');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+
+        const body = new URLSearchParams(bodies.at(-1));
+        expect(body.get('entry.617761884')).toBe('__other_option__');
+        expect(body.get('entry.617761884.other_option_response')).toBe('Brahms');
+    });
+
+    test('an Other composer survives the post-submit reset', async ({ page }) => {
+        await captureSubmits(page);
+        await page.selectOption('#logComposer', ' other');
+        await page.fill('#logComposerOther', 'Ligeti');
+        await page.fill('#logTitle', '1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        // The composer carries into the next piece like any other, so the
+        // select must still read "Other..." with the name under it rather than
+        // falling back to blank while "Ligeti" sits visible below.
+        await expect(page.locator('#logComposerOther')).toBeVisible();
+        await expect(page.locator('#logComposerOther')).toHaveValue('Ligeti');
+        await expect(page.locator('#logComposer')).toHaveValue(' other');
+    });
+
+    test('names a missing required field instead of submitting into the void', async ({ page }) => {
+        const bodies = await captureSubmits(page);
+        await page.selectOption('#logComposer', 'Haydn');
+        await page.click('#logSubmit');
+        // Forms rejects server-side and mode:'no-cors' hides the rejection, so
+        // an unchecked submit would look exactly like a successful one.
+        await expect(page.locator('#logStatus')).toContainText('Work Title');
+        await expect(page.locator('#logStatus')).toContainText('Which Part');
+        expect(bodies).toHaveLength(0);
+    });
+
+    test('queues when the network fails, and drains in order once it returns', async ({ page }) => {
+        let online = false;
+        const bodies = [];
+        await page.route('https://docs.google.com/forms/**', route => {
+            if (!online) return route.abort('internetdisconnected');
+            bodies.push(route.request().postData());
+            route.fulfill({ status: 200, body: '' });
+        });
+
+        await page.selectOption('#logComposer', 'Haydn');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        for (const title of ['76#1', '76#2']) {
+            await page.fill('#logTitle', title);
+            await page.click('#logSubmit');
+            await expect(page.locator('#logStatus')).toContainText('waiting for a network');
+        }
+        // An invisible outbox is how a submission silently never happens.
+        await expect(page.locator('#logPending')).toBeVisible();
+        await expect(page.locator('.log-pending-row')).toHaveCount(2);
+
+        online = true;
+        await page.evaluate(() => window.dispatchEvent(new Event('online')));
+        await expect(page.locator('#logPending')).toBeHidden();
+
+        // Order is the contract: fillForward reads each row against the one
+        // above it, so 76#1 must reach the sheet before 76#2.
+        expect(bodies.map(b => new URLSearchParams(b).get('entry.1089341946')))
+            .toEqual(['76#1', '76#2']);
+    });
 });

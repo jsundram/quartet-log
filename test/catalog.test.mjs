@@ -14,6 +14,7 @@ import {
     getOriginalWorkTitle,
     getDisplayLabel,
     generateQuartetRouletteUrl,
+    composerWorkIndex,
 } from '../src/catalog.js';
 
 // Miniature of the real shape: single-composer keys are string arrays;
@@ -84,4 +85,23 @@ test('generateQuartetRouletteUrl links quartets, suppresses the rest', () => {
     // pre-load callers keep the old behavior.
     installCatalog(null);
     assert.match(generateQuartetRouletteUrl(row('Mozart', 'K515')), /^https:/);
+});
+
+test('composerWorkIndex flattens the multi-composer tabs back into composers', () => {
+    installCatalog(FIXTURE);
+    const index = composerWorkIndex();
+    // Every composer, whatever tab carried it — the log form offers all of
+    // them, not just the ones with a tab of their own.
+    assert.deepEqual(Object.keys(index).sort(),
+        ['Britten', 'Debussy', 'Haydn', 'Mozart', 'Tchaikovsky']);
+    // Titles are UNPREFIXED: "Debussy-Quartet" is a tab-scoped display key,
+    // while the sheet cell holds the bare title.
+    assert.deepEqual(index.Debussy, ['Quartet']);
+    // A composer appearing in both its own tab and a multi-composer one gets
+    // both sets, which is what its work picker should suggest.
+    assert.deepEqual(index.Mozart, ['K421', 'K465', 'K515', 'K516']);
+});
+
+test('composerWorkIndex throws before the catalog loads', () => {
+    assert.throws(() => composerWorkIndex(), /not loaded/);
 });

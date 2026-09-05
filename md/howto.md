@@ -24,23 +24,56 @@
 
    ![Dialog to name the response spreadsheet](./img/howto/Screenshot%202017-05-31%2012.06.30.png){width=600px}
 
-## 3. Put the form on your phone
+## 3. Put it on your phone
 
-1. Back in the form editor, click the eyeball to preview, then click **Send**.
+Get the form's link first: in the form editor click **Send**, then the **Link**
+icon, and check **Shorten URL**.
 
    ![The Send button in the form editor](./img/howto/Screenshot%202017-05-31%2012.20.59.png){width=600px}
 
-2. In the Send dialog, click the **Link** icon and check **Shorten URL**.
-
    ![Send dialog showing the Link tab with the Shorten URL checkbox](./img/howto/Screenshot%202017-05-31%2012.23.34.png){width=600px}
 
-3. Open the shortened link on your phone's browser, then choose **Add to Home Screen** from the share menu.
+The obvious move is to pin that link: open it on your phone and choose **Add to
+Home Screen**.
 
    ![Add to Home Screen on an iPhone](./img/howto/IMG_9796.PNG){width=280px}
 
+That works, with one irritation. A Google Form ships no web app manifest and no
+`apple-mobile-web-app-capable` tag, so iOS treats the pin as an ordinary Safari
+bookmark rather than an app: every launch opens another browser tab, and they
+pile up.
+
+The log site does ship both, so pinning **it** gives you a real standalone app
+with no tabs. Open <https://log.quartetroulette.com/#log> on your phone (set it
+up first, section 8) and Add to Home Screen from there. It opens straight to
+the **Log a Piece** form.
+
+That form writes to the same spreadsheet through the same Google Form, and it
+knows things the form cannot, because the app has your whole log loaded:
+
+- **Names you have used before autocomplete.** Picking one instead of retyping
+  it is what keeps a second Alice from becoming indistinguishable from the
+  first (section 7).
+- **The seats show who they will repeat.** The greyed name in an empty Player
+  field is exactly what a blank will carry forward, so you can see it rather
+  than trust it (section 6).
+- **`Others?` offers you the last row's extras back**, since that is the one
+  column that does not repeat itself and the usual way a fifth player goes
+  missing.
+- **The work list follows the composer** you picked.
+- **It works with no signal.** Everything but the send is local; a piece logged
+  in a basement queues up and goes out, in order, when you have a network
+  again. You can see what is waiting at the bottom of the form.
+
+Either way in works, and both write the same rows. If you built your own form
+by following this guide, the in-app version is wired to one specific Google
+Form (its id and field ids live in `src/formConfig.js`), so pin your own form
+unless you re-point that file at yours.
+
 ## 4. Use it
 
-1. After every piece you play, open the form from your home screen and fill it out — entries are saved straight to the response spreadsheet.
+1. After every piece you play, open the app or the form from your home screen
+   and fill it out — entries are saved straight to the response spreadsheet.
 
 2. Play some Haydn.
 

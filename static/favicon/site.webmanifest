@@ -29,5 +29,13 @@
             "type": "image/png",
             "purpose": "maskable"
         }
+    ],
+    "shortcuts": [
+        {
+            "name": "Log a Piece",
+            "short_name": "Log",
+            "description": "Record what you just played",
+            "url": "./#log"
+        }
     ]
 }

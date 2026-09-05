@@ -8,6 +8,7 @@ import { NavigationComponent } from './navigationComponent.js';
 import { TabComponent } from './tabComponent.js';
 import { CalendarComponent } from './calendarComponent.js';
 import { DashboardComponent } from './dashboardComponent.js';
+import { LogComponent } from './logComponent.js';
 import { TableComponent } from './tableComponent.js';
 import { hasDataUrl, getDataUrl, consumeDataParam, buildMobileSetupLink } from './urlConfig.js';
 import { initTheme, subscribe as subscribeTheme } from './themeManager.js';
@@ -38,6 +39,7 @@ export class App {
         this.tabComponent = new TabComponent(this.tableComponent);
         this.calendarComponent = new CalendarComponent();
         this.dashboardComponent = new DashboardComponent();
+        this.logComponent = new LogComponent();
         this.pullToRefresh = new PullToRefresh({ onRefresh: () => this.revalidate() });
         this.setupView = new SetupView({ onSubmit: () => this.initialize() });
         // Lazy tab rendering (see filterData): tabs whose content is stale
@@ -136,6 +138,8 @@ export class App {
         // The dashboard SVGs size themselves from the live container width,
         // so they need a re-render once the view is actually visible.
         if (view === 'dashboard') this.dashboardComponent.notifyShown();
+        // The log form retries whatever it queued while offline.
+        if (view === 'log') this.logComponent.notifyShown();
     }
 
     // Mount (or re-mount) the whole UI. Every step is idempotent, so the
@@ -161,6 +165,11 @@ export class App {
         } else {
             this.dashboardComponent.init(this.data);
         }
+
+        // The log form's suggestions and carry-forward come from the same
+        // rows; it renders from cache and needs no network until submit.
+        this.logComponent.setData(this.data);
+        this.logComponent.mount();
 
         // Initial data filter
         this.filterData("date");  // need players to update
@@ -260,6 +269,7 @@ export class App {
         d3.select('#calendar').selectAll(':scope > .calendar-gen').remove();
         this.calendarComponent.createCalendar(this.data);
         this.dashboardComponent.setData(this.data);
+        this.logComponent.setData(this.data);
         this.filterData('date');
     }
 

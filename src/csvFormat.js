@@ -46,12 +46,14 @@ export function formatTimestamp(d) {
 // pianist is indistinguishable from a violinist in the re-read file, so
 // scripts/audit_ensembles.mjs could never see one. Re-reading this restores
 // the same annotation, since instrumentFromSlot parses what we write here.
+// Shared with the log form, which shows a carried-forward seat as the cell
+// the logger typed rather than the split-apart pair the pipeline made of it.
 /**
  * @param {string|null} name
  * @param {string|null|undefined} instrument
  * @returns {string|null}
  */
-function withInstrument(name, instrument) {
+export function withInstrument(name, instrument) {
     return name && instrument ? `${name} (${instrument})` : name;
 }
 

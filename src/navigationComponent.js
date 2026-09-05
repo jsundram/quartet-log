@@ -12,11 +12,12 @@ function updateThemeLabel() {
 
 // In-page views participate in hash routing. Each one corresponds to a
 // `#<view>` URL fragment so the browser back button works as expected.
-const IN_PAGE_VIEWS = new Set(['main', 'calendar', 'dashboard']);
+const IN_PAGE_VIEWS = new Set(['main', 'calendar', 'dashboard', 'log']);
 const VIEW_TO_SELECTOR = {
     main: '#mainContent',
     calendar: '#calendar',
     dashboard: '#dashboard',
+    log: '#log',
 };
 
 function viewFromHash() {

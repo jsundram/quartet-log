@@ -467,6 +467,19 @@ h1 {
     color: var(--color-part-va-text);
 }
 
+/* The log form writes the sheet's own vocabulary, which distinguishes the two
+   viola seats; processRow folds VA1 back to VA on the way in, so the Home
+   filter above never needs these two. */
+.part-btn.active[data-part="VA1"] {
+    background: var(--color-part-va);
+    color: var(--color-part-va-text);
+}
+
+.part-btn.active[data-part="VA2"] {
+    background: var(--color-part-va2);
+    color: var(--color-text-light);
+}
+
 .part-btn.active[data-part="ANY"] {
     background: var(--color-accent);
 }
@@ -1420,4 +1433,205 @@ body.network-fullscreen-open {
 
 .setup-help a:hover {
     text-decoration: underline;
+}
+
+/* ============================================================================
+   Log form (#log)
+
+   A label column and a field column: every row reads left-to-right as
+   "what this is" then "what it says", and the eye scans one edge instead of
+   two. The grid collapses to stacked rows on phones, where the form is
+   actually used. Inputs are 16px so iOS Safari doesn't zoom the page on
+   focus — smaller text there costs a viewport reset on every tap.
+   ========================================================================= */
+.log-form {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 7px 14px;
+    align-items: center;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 0 16px 24px;
+}
+
+.log-field {
+    display: contents;
+}
+
+.log-field label {
+    color: var(--color-text-secondary);
+    justify-self: end;
+    white-space: nowrap;
+}
+
+.log-field input,
+.log-field select {
+    width: 100%;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 16px;
+    color: var(--color-text-primary);
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border-standard);
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+
+.log-field input:focus,
+.log-field select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-focus-ring);
+}
+
+/* The carried-forward value shows here, so it has to read as a real name
+   that WILL be recorded rather than as absent text. */
+.log-field input::placeholder {
+    color: var(--color-text-tertiary);
+    opacity: 1;
+}
+
+/* "Other..." composer, and the Others? repeat chip: second element in an
+   already-occupied field column. */
+#logComposerOther,
+#logOthersRepeat {
+    grid-column: 2;
+}
+
+#logPart {
+    justify-self: start;
+}
+
+.log-note,
+.log-status,
+.log-submit,
+.log-pending-title {
+    grid-column: 1 / -1;
+}
+
+.log-note {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--color-text-tertiary);
+}
+
+/* The literal the note is about is a single hyphen, which reads as
+   punctuation unless it's given an edge. */
+.log-note code {
+    padding: 1px 5px;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-secondary);
+    border-radius: 3px;
+}
+
+/* One-tap re-entry of the previous row's Others?, which is the only column
+   that doesn't carry itself forward. Low weight: it's an offer, not a state. */
+.log-chip {
+    justify-self: start;
+    width: auto;
+    padding: 4px 10px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--color-accent);
+    background: transparent;
+    border: 1px dashed var(--color-accent);
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.log-chip:hover {
+    background: var(--color-bg-hover);
+}
+
+.log-submit {
+    margin-top: 10px;
+    padding: 12px;
+    font: inherit;
+    font-size: 16px;
+    color: var(--color-text-light);
+    background: var(--color-accent);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.log-submit:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+}
+
+.log-submit:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.log-status {
+    min-height: 1.2em;
+    margin: 0;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+}
+
+.log-status.ok { color: var(--color-accent-selected); }
+.log-status.error { color: var(--color-text-error); }
+
+/* Queued entries. Visible and discardable on purpose: an invisible outbox is
+   how a submission silently never happens. */
+.log-pending {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 12px 16px 32px;
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+.log-pending-title {
+    margin: 0 0 8px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+}
+
+.log-pending-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 0;
+    font-size: 14px;
+}
+
+.log-pending-what {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.log-pending-drop {
+    flex-shrink: 0;
+    padding: 2px 9px;
+    font: inherit;
+    color: var(--color-destructive);
+    background: transparent;
+    border: 1px solid var(--color-border-standard);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+@media only screen and (max-width: 640px) {
+    .log-form {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 4px;
+    }
+
+    .log-field label {
+        justify-self: start;
+        margin-top: 8px;
+        font-size: 13px;
+    }
+
+    /* Single column now, so the second-element placements above would mint a
+       phantom one. */
+    #logComposerOther,
+    #logOthersRepeat {
+        grid-column: 1;
+    }
 }
