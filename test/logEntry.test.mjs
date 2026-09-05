@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
-    warnings, knownPlayers, knownLocations, nextInSession, LABELS,
+    warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
 } from '../src/logEntry.js';
 
 // A processed row, as normalizePlayerNames leaves it: annotations split off
@@ -127,4 +127,28 @@ test('nextInSession keeps what describes the session and clears what describes t
     assert.equal(next.location, '');
     // Others? clears too, and othersReminder is what offers it back.
     assert.equal(next.others, '');
+});
+
+test('frequentComposers ranks by how often you play them, not by the catalog', () => {
+    // The chip row is the one-tap path, so it has to hold the composers this
+    // log actually plays. Ranking by the catalog would put a never-played
+    // composer on a tap target ahead of a weekly one.
+    const rows = [
+        row({ composer: 'Haydn' }), row({ composer: 'Haydn' }), row({ composer: 'Haydn' }),
+        row({ composer: 'Mozart' }), row({ composer: 'Mozart' }),
+        row({ composer: 'Ligeti' }),
+    ];
+    assert.deepEqual(frequentComposers(rows), ['Haydn', 'Mozart', 'Ligeti']);
+    // A composer entered through "Other" earns a chip like any other once it
+    // has been played -- the catalog has never heard of Ligeti.
+    assert.ok(frequentComposers(rows).includes('Ligeti'));
+});
+
+test('frequentComposers caps the row and is empty before there is any data', () => {
+    const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].flatMap((c, i) =>
+        Array.from({ length: 7 - i }, () => row({ composer: c })));
+    assert.deepEqual(frequentComposers(rows), ['A', 'B', 'C', 'D', 'E', 'F']);
+    assert.deepEqual(frequentComposers(rows, 2), ['A', 'B']);
+    // First launch: no chips, and the picker behind "More" is the whole UI.
+    assert.deepEqual(frequentComposers([]), []);
 });

@@ -152,6 +152,23 @@ export function knownPlayers(rows) {
     return byFrequency(counts);
 }
 
+/**
+ * The composers this log actually plays, most-played first — the chip row's
+ * content, so the common case is one tap on something already on screen rather
+ * than a scroll through a picker.
+ *
+ * Taken from the DATA, not the catalog: a composer entered through "Other"
+ * earns a chip once it's played, and a catalogued one never played doesn't
+ * take up a tap target. The catalog is still the full list behind "More".
+ * @param {Row[]} rows @param {number} [limit] @returns {string[]}
+ */
+export function frequentComposers(rows, limit = 6) {
+    /** @type {Map<string, number>} */
+    const counts = new Map();
+    for (const d of rows) tally(counts, d.composer);
+    return byFrequency(counts).slice(0, limit);
+}
+
 /** @param {Row[]} rows @returns {string[]} */
 export function knownLocations(rows) {
     /** @type {Map<string, number>} */

@@ -7,7 +7,8 @@ import {
 import * as store from './logStore.js';
 import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
-    warnings, knownPlayers, knownLocations, nextInSession, FIELDS, LABELS,
+    warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
+    FIELDS, LABELS,
 } from './logEntry.js';
 
 // The entry field each text input owns. `part` is absent: it's a segmented
@@ -30,7 +31,10 @@ const CARRIED_INPUTS = ['player1', 'player2', 'player3', 'location'];
 // What to mark and focus when a required field is missing. Composer resolves
 // to whichever of its two controls is live.
 const REQUIRED_SELECTOR = {
-    composer: () => (d3.select('#logComposerOther').property('hidden') ? '#logComposer' : '#logComposerOther'),
+    composer: () => {
+        if (!d3.select('#logComposerOther').property('hidden')) return '#logComposerOther';
+        return d3.select('#logComposer').property('hidden') ? '#logComposerChips' : '#logComposer';
+    },
     title: () => '#logTitle',
     part: () => '#logPart',
 };
@@ -42,6 +46,10 @@ const SETUP_ERROR = {
     'not-a-form-link': 'That is not a Google Forms link. Use Get pre-filled link in the form editor, not the form address itself.',
     'field-count': `That link has the wrong number of fields: this log needs one per sheet column (${FIELDS.length}). Fill in every field before copying the link, and check the form matches your sheet.`,
 };
+
+// Sentinel for the chip that opens the full catalog. Leading space so no
+// composer name can collide with it.
+const MORE_COMPOSERS = ' more';
 
 // Enough of a form id to tell two apart without printing the whole thing.
 const shortId = (/** @type {string} */ id) => `...${id.slice(-6)}`;
@@ -64,6 +72,8 @@ export class LogComponent {
         // unconfigured visitor gets the setup panel rather than a form that
         // would post someone else's rows into a stranger's spreadsheet.
         this.config = null;
+        // "More" was tapped, so the full-catalog picker stays open.
+        this.expandComposer = false;
         // A ?form= link that would replace this.config, awaiting a decision.
         this.proposed = null;
         this.mounted = false;
@@ -194,6 +204,35 @@ export class LogComponent {
         if (this.mounted) this.renderMode();
     }
 
+    // The chips are the composers this log plays; the select behind "More" is
+    // the whole catalog. One state (entry.composer), two views.
+    renderComposerChips() {
+        const chips = frequentComposers(this.rows);
+        const group = d3.select('#logComposerChips');
+        group.selectAll('.log-chip-btn')
+            .data([...chips, MORE_COMPOSERS], d => d)
+            .join('button')
+            .attr('type', 'button')
+            .attr('class', d => 'log-chip-btn'
+                + (d === MORE_COMPOSERS ? ' log-chip-btn--more' : '')
+                + (d === this.entry.composer ? ' active' : ''))
+            .attr('role', d => (d === MORE_COMPOSERS ? null : 'radio'))
+            .attr('aria-checked', d => (d === MORE_COMPOSERS ? null : String(d === this.entry.composer)))
+            .text(d => (d === MORE_COMPOSERS ? 'More...' : d))
+            .on('click', (_, d) => {
+                if (d === MORE_COMPOSERS) {
+                    this.expandComposer = true;
+                } else {
+                    this.entry.composer = d;
+                    this.expandComposer = false;
+                }
+                this.clearMissing();
+                this.renderFields();
+                this.renderWorkOptions();
+                if (this.expandComposer) d3.select('#logComposer').node()?.focus();
+            });
+    }
+
     buildComposerPicker() {
         this.works = composerWorkIndex();
         const select = d3.select('#logComposer');
@@ -216,6 +255,8 @@ export class LogComponent {
                 other.property('value', '');
                 other.node().focus();
             }
+            this.clearMissing();
+            this.renderComposerChips();
             this.renderWorkOptions();
         });
         d3.select('#logComposerOther').on('input', (e) => {
@@ -299,12 +340,18 @@ export class LogComponent {
         for (const [field, sel] of Object.entries(TEXT_INPUTS)) {
             d3.select(sel).property('value', this.entry[field]);
         }
+        this.renderComposerChips();
+        // The picker opens on request, and stays open whenever it holds the
+        // answer — a composer with no chip would otherwise be set but invisible.
+        const onAChip = frequentComposers(this.rows).includes(this.entry.composer);
+        const showPicker = this.expandComposer || (!!this.entry.composer && !onAChip);
         // A composer the catalog doesn't list is held in the Other input, and
         // the select has to show that rather than silently falling back to its
         // blank option while the name sits visible underneath it.
         const listed = this.entry.composer in this.works;
-        d3.select('#logComposer').property('value',
-            listed ? this.entry.composer : (this.entry.composer ? OTHER_COMPOSER : ''));
+        d3.select('#logComposer')
+            .property('hidden', !showPicker)
+            .property('value', listed ? this.entry.composer : (this.entry.composer ? OTHER_COMPOSER : ''));
         d3.select('#logComposerOther')
             .property('hidden', listed || !this.entry.composer)
             .property('value', listed ? '' : this.entry.composer);

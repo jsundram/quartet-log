@@ -1554,11 +1554,53 @@ body.network-fullscreen-open {
     opacity: 1;
 }
 
-/* "Other..." composer, and the Others? repeat chip: second element in an
-   already-occupied field column. */
+/* Extra controls in an already-occupied field column. */
+#logComposer,
 #logComposerOther,
 #logOthersRepeat {
     grid-column: 2;
+}
+
+/* One-tap composers. Wraps rather than scrolls: seeing all of them at once is
+   the whole advantage over the picker. */
+.log-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.log-chip-btn {
+    padding: 7px 12px;
+    font: inherit;
+    font-size: 15px;
+    color: var(--color-text-primary);
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border-standard);
+    border-radius: 999px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.log-chip-btn:hover {
+    background: var(--color-bg-hover);
+}
+
+.log-chip-btn.active {
+    color: var(--color-text-light);
+    background: var(--color-accent-selected);
+    border-color: var(--color-accent-selected);
+}
+
+/* The escape to the full catalog reads as a control, not as a composer. */
+.log-chip-btn--more {
+    color: var(--color-accent);
+    border-style: dashed;
+    border-color: var(--color-accent);
+}
+
+.log-chips.is-missing .log-chip-btn {
+    border-color: var(--color-text-error);
 }
 
 #logPart {

@@ -185,9 +185,14 @@
         </div>
 
         <form id="logForm" class="log-form" autocomplete="off">
+            <!-- The composers you actually play, as one-tap chips, because the
+                 Google Form this replaces shows its handful as radios and a
+                 22-item picker would be slower than what it replaces. The full
+                 catalog stays one tap away behind "More". -->
             <div class="log-field">
                 <label for="logComposer">Composer</label>
-                <select id="logComposer"></select>
+                <div id="logComposerChips" class="log-chips" role="radiogroup" aria-label="Composer"></div>
+                <select id="logComposer" hidden></select>
                 <input id="logComposerOther" type="text" placeholder="Composer name" autocapitalize="words" autocorrect="off" spellcheck="false" hidden>
             </div>
             <!-- autocorrect off on every name field: iOS helpfully "fixes"

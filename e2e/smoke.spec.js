@@ -191,6 +191,17 @@ test('a link cannot connect a form to a fresh device without being asked', async
 test.describe('log form', () => {
     // Capture Forms submissions instead of sending them. The route is
     // anchored to the /forms/ path so it can't swallow the sheet stub above.
+
+    // Composers this log plays are chips; anything else lives behind "More".
+    // Tests should go through whichever one a person would.
+    async function pickComposer(page, name) {
+        const chip = page.locator('#logComposerChips .log-chip-btn')
+            .filter({ hasText: new RegExp(`^${name}$`) });
+        if (await chip.count()) return chip.click();
+        await page.click('#logComposerChips .log-chip-btn--more');
+        await page.selectOption('#logComposer', name);
+    }
+
     async function captureSubmits(page) {
         const bodies = [];
         await page.route('https://docs.google.com/forms/**', route => {
@@ -235,7 +246,38 @@ test.describe('log form', () => {
         expect(places).toEqual(['Home', 'Hall']);
     });
 
+    test('the composers you play are one tap, the rest are behind More', async ({ page }) => {
+        // The Google Form this replaces shows its handful of composers as
+        // radios, so Haydn is one tap. A 22-item picker would be slower than
+        // the thing being replaced.
+        const chips = page.locator('#logComposerChips .log-chip-btn');
+        await expect(chips).toHaveText(['Haydn', 'Mozart', 'Beethoven', 'More...']);
+        await expect(page.locator('#logComposer')).toBeHidden();
+
+        await chips.filter({ hasText: 'Haydn' }).click();
+        await expect(chips.filter({ hasText: 'Haydn' })).toHaveAttribute('aria-checked', 'true');
+        // Picking a chip answers the field outright: no picker, no typing.
+        await expect(page.locator('#logComposer')).toBeHidden();
+        const works = await page.locator('#logWorks option').evaluateAll(n => n.map(o => o.value));
+        expect(works).toContain('20#2');
+
+        // The full catalog is one tap away and includes composers never played.
+        await page.click('#logComposerChips .log-chip-btn--more');
+        await expect(page.locator('#logComposer')).toBeVisible();
+        const options = await page.locator('#logComposer option').allTextContents();
+        expect(options).toContain('Debussy');
+        expect(options.at(-1)).toBe('Other...');
+
+        // A composer with no chip keeps the picker open, so it is never set
+        // but invisible.
+        await page.selectOption('#logComposer', 'Debussy');
+        await expect(page.locator('#logComposer')).toBeVisible();
+        await expect(page.locator('#logComposer')).toHaveValue('Debussy');
+        await expect(chips.filter({ hasText: 'Haydn' })).toHaveAttribute('aria-checked', 'false');
+    });
+
     test('offers every catalog composer and suggests that composer works', async ({ page }) => {
+        await page.click('#logComposerChips .log-chip-btn--more');
         const options = await page.locator('#logComposer option').allTextContents();
         // The Google Form's own radio lists seven; the catalog knows far more,
         // and all of them have to be reachable.
@@ -244,7 +286,7 @@ test.describe('log form', () => {
         expect(options).toContain('Debussy');   // lives only inside the MISC tab
         expect(options.at(-1)).toBe('Other...');
 
-        await page.selectOption('#logComposer', 'Haydn');
+        await pickComposer(page, 'Haydn');
         const works = await page.locator('#logWorks option').evaluateAll(
             nodes => nodes.map(n => n.value));
         expect(works).toContain('20#2');
@@ -258,7 +300,7 @@ test.describe('log form', () => {
         await expect(page.locator('#logPlayer3')).toHaveAttribute('placeholder', 'Carol');
         await expect(page.locator('#logLocation')).toHaveAttribute('placeholder', 'Home');
 
-        await page.selectOption('#logComposer', 'Haydn');
+        await pickComposer(page, 'Haydn');
         await page.fill('#logTitle', '76#1');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.fill('#logPlayer2', 'Erin');
@@ -279,7 +321,7 @@ test.describe('log form', () => {
 
     test('carries forward from the row just submitted, not the stale sheet', async ({ page }) => {
         await captureSubmits(page);
-        await page.selectOption('#logComposer', 'Haydn');
+        await pickComposer(page, 'Haydn');
         await page.fill('#logTitle', '76#1');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.fill('#logPlayer2', 'Erin');
@@ -300,7 +342,7 @@ test.describe('log form', () => {
 
     test('a composer outside the form option list rides the Other escape', async ({ page }) => {
         const bodies = await captureSubmits(page);
-        await page.selectOption('#logComposer', 'Brahms');
+        await pickComposer(page, 'Brahms');
         await page.fill('#logTitle', '51#1');
         await page.click('#logPart .part-btn[data-part="VA1"]');
         await page.click('#logSubmit');
@@ -313,7 +355,7 @@ test.describe('log form', () => {
 
     test('an Other composer survives the post-submit reset', async ({ page }) => {
         await captureSubmits(page);
-        await page.selectOption('#logComposer', ' other');
+        await pickComposer(page, ' other');
         await page.fill('#logComposerOther', 'Ligeti');
         await page.fill('#logTitle', '1');
         await page.click('#logPart .part-btn[data-part="V1"]');
@@ -329,7 +371,7 @@ test.describe('log form', () => {
 
     test('names a missing required field instead of submitting into the void', async ({ page }) => {
         const bodies = await captureSubmits(page);
-        await page.selectOption('#logComposer', 'Haydn');
+        await pickComposer(page, 'Haydn');
         await page.click('#logSubmit');
         // Forms rejects server-side and mode:'no-cors' hides the rejection, so
         // an unchecked submit would look exactly like a successful one.
@@ -351,7 +393,7 @@ test.describe('log form', () => {
 
     test('says what it logged, and leaves the cursor on the next piece', async ({ page }) => {
         await captureSubmits(page);
-        await page.selectOption('#logComposer', 'Haydn');
+        await pickComposer(page, 'Haydn');
         await page.fill('#logTitle', '76#1');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.click('#logSubmit');
@@ -395,7 +437,7 @@ test.describe('log form', () => {
         await expect(page.locator('#logForm')).toBeVisible();
         await expect(page.locator('#logProposal')).toBeHidden();
 
-        await page.selectOption('#logComposer', 'Haydn');
+        await pickComposer(page, 'Haydn');
         await page.fill('#logTitle', '76#4');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.click('#logSubmit');
@@ -414,7 +456,7 @@ test.describe('log form', () => {
         // copy of the just-submitted row that keeps the placeholders honest
         // while the published CSV catches up.
         await captureSubmits(page);
-        await page.selectOption('#logComposer', 'Haydn');
+        await pickComposer(page, 'Haydn');
         await page.fill('#logTitle', '76#9');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.fill('#logPlayer1', 'Alise Hart');   // typo, as typed
@@ -452,7 +494,7 @@ test.describe('log form', () => {
             route.fulfill({ status: 200, body: '' });
         });
 
-        await page.selectOption('#logComposer', 'Haydn');
+        await pickComposer(page, 'Haydn');
         await page.click('#logPart .part-btn[data-part="V1"]');
         for (const title of ['76#1', '76#2']) {
             await page.fill('#logTitle', title);
