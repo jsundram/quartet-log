@@ -138,10 +138,17 @@ test('an unconfigured visitor gets the setup panel, not someone else\'s form', a
     await expect(page.locator('#logForm')).toBeHidden();
     await expect(page.locator('#logSetupSave')).toBeDisabled();
 
+    // The likeliest wrong paste is the sheet URL, and it gets its own sentence
+    // — telling a copy-paste slip and a mismatched form the same thing sends
+    // one of the two users off to re-paste forever.
+    await page.fill('#logSetupLink', SHEET_URL);
+    await expect(page.locator('#logSetupError')).toContainText('not a Google Forms link');
+    await expect(page.locator('#logSetupSave')).toBeDisabled();
+
     // A link that isn't one field per column is refused rather than guessed
     // at — a shifted mapping writes every column one cell over.
     await page.fill('#logSetupLink', `https://docs.google.com/forms/d/e/${FORM_ID}/viewform?entry.1=a`);
-    await expect(page.locator('#logSetupError')).toContainText('pre-filled link');
+    await expect(page.locator('#logSetupError')).toContainText('wrong number of fields');
     await expect(page.locator('#logSetupSave')).toBeDisabled();
 
     // A good one previews the mapping before committing to it, which is the
@@ -179,6 +186,27 @@ test.describe('log form', () => {
         await expect(page.locator('#logForm')).toBeVisible();
         // The param is stripped so it can't linger in history or re-apply.
         expect(new URL(page.url()).searchParams.get('form')).toBeNull();
+    });
+
+    test('autofills names and places from the visitor own log', async ({ page }) => {
+        // The suggestions are the reason to log from here rather than from the
+        // Google Form, and they have to come from THIS user's sheet — the
+        // fixture's people, nobody else's.
+        const players = await page.locator('#logPlayers option').evaluateAll(
+            nodes => nodes.map(n => n.value));
+        expect(players).toContain('Alice');
+        expect(players).toContain('Frank Vandermeer');
+        // Others? entries are as retypeable as seats, so they are offered too.
+        expect(players).toContain('Grace');
+        // Alice is in the most rows, and a datalist renders in list order:
+        // the people you play with weekly should not sit below a one-off.
+        expect(players[0]).toBe('Alice');
+        // "-" is an empty seat, not a person.
+        expect(players).not.toContain('-');
+
+        const places = await page.locator('#logLocations option').evaluateAll(
+            nodes => nodes.map(n => n.value));
+        expect(places).toEqual(['Home', 'Hall']);
     });
 
     test('offers every catalog composer and suggests that composer works', async ({ page }) => {

@@ -1614,6 +1614,16 @@ body.network-fullscreen-open {
     width: 100%;
 }
 
+.log-setup-help {
+    margin: 14px 0 0;
+    font-size: 13px;
+    color: var(--color-text-tertiary);
+}
+
+.log-setup-help a {
+    color: var(--color-accent);
+}
+
 /* The parsed mapping, shown before saving. Ids map to columns positionally,
    which is right by construction for a form and the sheet it created and
    wrong if the questions were later reordered — this is the one moment

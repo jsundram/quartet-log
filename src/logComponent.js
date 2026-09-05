@@ -1,7 +1,7 @@
 import * as d3 from "d3";
 import { composerWorkIndex } from './catalog.js';
 import {
-    CHOICES, postEntry, parsePrefilledLink, getFormConfig, setFormConfig,
+    CHOICES, postEntry, readPrefilledLink, getFormConfig, setFormConfig,
     clearFormConfig,
 } from './formConfig.js';
 import * as store from './logStore.js';
@@ -29,6 +29,11 @@ const CARRIED_INPUTS = ['player1', 'player2', 'player3', 'location'];
 
 // Leading space: no composer name can collide with it.
 const OTHER_COMPOSER = ' other';
+
+const SETUP_ERROR = {
+    'not-a-form-link': 'That is not a Google Forms link. Use Get pre-filled link in the form editor, not the form address itself.',
+    'field-count': `That link has the wrong number of fields: this log needs one per sheet column (${FIELDS.length}). Fill in every field before copying the link, and check the form matches your sheet.`,
+};
 
 /** @param {number} ms */
 function ago(ms) {
@@ -89,12 +94,14 @@ export class LogComponent {
         // sheet it created, but wrong if the questions were reordered
         // afterwards. This is the only moment anyone can catch that.
         d3.select('#logSetupLink').on('input', (e) => {
-            const link = e.target.value.trim();
-            this.pendingConfig = link ? parsePrefilledLink(link) : null;
-            d3.select('#logSetupSave').property('disabled', !this.pendingConfig);
-            d3.select('#logSetupError').text(
-                !link || this.pendingConfig ? ''
-                    : `That doesn't look like a pre-filled link with one field per column (${FIELDS.length} needed).`);
+            const read = readPrefilledLink(e.target.value);
+            this.pendingConfig = read.config;
+            d3.select('#logSetupSave').property('disabled', !read.config);
+            // The two failures need different fixes, so they get different
+            // sentences: a wrong link is a copy-paste slip, while the wrong
+            // NUMBER of fields means the form doesn't match the ten columns
+            // this app requires, and re-pasting will never help.
+            d3.select('#logSetupError').text(SETUP_ERROR[read.reason] ?? '');
             this.renderSetupMap();
         });
         d3.select('#logSetupSave').on('click', () => {

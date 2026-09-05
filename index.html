@@ -153,16 +153,21 @@
              their own sheet, so a baked-in form id would send every visitor's
              entries to one person's spreadsheet. -->
         <div id="logSetup" class="log-setup" hidden>
-            <p>To log from here, connect the Google Form that feeds your sheet.</p>
+            <p>Log new pieces from here, with the names you already play with
+               filled in from your own log. First, connect the Google Form that
+               feeds your sheet &mdash; this site writes through your form, so it
+               needs to know which one.</p>
             <ol>
                 <li>Open your form for editing, then <b>&#8942;</b> &rarr; <b>Get pre-filled link</b>.</li>
-                <li>Put anything in every field, then <b>Get link</b> &rarr; <b>Copy link</b>.</li>
+                <li>Put anything at all in every field, then <b>Get link</b> &rarr; <b>Copy link</b>.</li>
                 <li>Paste it below. Nothing is submitted &mdash; only the field ids are read.</li>
             </ol>
             <input id="logSetupLink" type="url" placeholder="https://docs.google.com/forms/d/e/.../viewform?usp=pp_url&amp;entry...">
             <div id="logSetupMap" class="log-setup-map"></div>
-            <p id="logSetupError" class="log-status"></p>
+            <p id="logSetupError" class="log-status error"></p>
             <button type="button" id="logSetupSave" class="log-submit" disabled>Connect form</button>
+            <p class="log-setup-help">No form feeding your sheet yet?
+               <a href="howto.html">How to make a chamber music log</a> walks through building one.</p>
         </div>
 
         <form id="logForm" class="log-form" autocomplete="off">

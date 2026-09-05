@@ -8,7 +8,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    parsePrefilledLink, buildPrefilledLink, getFormConfig, setFormConfig,
+    parsePrefilledLink, readPrefilledLink, buildPrefilledLink, getFormConfig, setFormConfig,
     clearFormConfig, toFormBody, formAction, CHOICES,
 } from '../src/formConfig.js';
 import { FIELDS, LABELS, blankEntry } from '../src/logEntry.js';
@@ -24,8 +24,9 @@ beforeEach(() => {
 });
 
 const FORM_ID = '1FAIpQLSfEXAMPLEfixtureformidforthetestsuite0000000000';
-const IDS = ['617761884', '1089341946', '906530431', '2047796227', '180148173',
-    '1831808369', '1922346688', '1954495027', '526774847'];
+// Obviously-fake: nothing in the repo carries a real form's ids, since the
+// config is per-user and there is no default.
+const IDS = ['201', '202', '203', '204', '205', '206', '207', '208', '209'];
 const LINK = `https://docs.google.com/forms/d/e/${FORM_ID}/viewform?usp=pp_url&`
     + IDS.map((id, i) => `entry.${id}=v${i}`).join('&');
 
@@ -65,6 +66,32 @@ test('a repeated entry id does not shift the mapping', () => {
         + IDS.map((id, i) => `entry.${id}=v${i}`).join('&');
     assert.deepEqual(FIELDS.map(f => parsePrefilledLink(dupe).entry[f]),
         IDS.map(id => `entry.${id}`));
+});
+
+test('readPrefilledLink says WHICH way a link is wrong, since the fixes differ', () => {
+    // A wrong link is a copy-paste slip and re-pasting fixes it. The wrong
+    // NUMBER of fields means the form does not match the ten columns this app
+    // requires (processRow demands them), and no amount of re-pasting helps —
+    // so the panel must not tell both users the same thing.
+    assert.deepEqual(readPrefilledLink(''), { config: null, reason: 'empty' });
+    assert.deepEqual(readPrefilledLink('   '), { config: null, reason: 'empty' });
+    assert.deepEqual(readPrefilledLink('not a url'), { config: null, reason: 'not-a-form-link' });
+    assert.deepEqual(readPrefilledLink('https://evil.example/forms/d/e/x/viewform?entry.1=a'),
+        { config: null, reason: 'not-a-form-link' });
+    // The sheet's own URL is the likeliest wrong paste, and it is not a form.
+    assert.deepEqual(readPrefilledLink('https://docs.google.com/spreadsheets/d/e/x/pub?output=csv'),
+        { config: null, reason: 'not-a-form-link' });
+    assert.deepEqual(
+        readPrefilledLink(`https://docs.google.com/forms/d/e/${FORM_ID}/viewform?entry.1=a&entry.2=b`),
+        { config: null, reason: 'field-count', found: 2 });
+    assert.equal(readPrefilledLink(LINK).config.formId, FORM_ID);
+});
+
+test('parsePrefilledLink is a view of readPrefilledLink, not a second parser', () => {
+    // A second copy of the parse is exactly the drift the audits keep finding.
+    for (const link of ['', 'nope', LINK, `${LINK}&entry.999=x`]) {
+        assert.deepEqual(parsePrefilledLink(link), readPrefilledLink(link).config);
+    }
 });
 
 test('buildPrefilledLink round-trips a config, for the ?form= setup link', () => {

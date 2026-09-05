@@ -41,12 +41,12 @@ export const CHOICES = {
 const OTHER_OPTION = '__other_option__';
 
 /**
- * Pull the form id and its entry ids out of a Google Forms "pre-filled link".
+ * Read a Google Forms "pre-filled link" into a config, or say why it can't be.
  *
- * This is the only way to learn another user's entry ids from the browser: the
- * form's own page carries them in a FB_PUBLIC_LOAD_DATA_ blob, but it is
- * cross-origin and unfetchable, while a pre-filled link is a URL the user can
- * copy out of the form editor in one step.
+ * This is the only way to learn a user's entry ids from the browser: the form's
+ * own page carries them in a FB_PUBLIC_LOAD_DATA_ blob, but it is cross-origin
+ * and unfetchable, while a pre-filled link is a URL they can copy out of the
+ * form editor in one step.
  *
  * Ids map to columns POSITIONALLY, which is correct by construction rather
  * than by luck: Forms builds the response sheet's columns from the questions
@@ -54,28 +54,46 @@ const OTHER_OPTION = '__other_option__';
  * were reordered after the sheet already existed, which is why the caller
  * shows the mapping back for confirmation.
  *
+ * Returns a reason rather than a bare null because the two failures need
+ * different fixes: a wrong link is a copy-paste problem, while the wrong
+ * NUMBER of fields means the form doesn't match the sheet this app requires
+ * (processRow demands all ten columns), and no amount of re-pasting helps.
+ *
  * @param {string} link
- * @returns {FormConfig|null} null when the link isn't a pre-filled form link
- *   with exactly one entry per column
+ * @returns {{ config: FormConfig } | { config: null, reason: 'empty'|'not-a-form-link'|'field-count', found?: number }}
  */
-export function parsePrefilledLink(link) {
+export function readPrefilledLink(link) {
+    const text = (link ?? '').trim();
+    if (!text) return { config: null, reason: 'empty' };
+
     let url;
-    try { url = new URL(link.trim()); } catch { return null; }
-    if (!url.hostname.endsWith('google.com') || !url.pathname.includes('/forms/')) return null;
+    try { url = new URL(text); } catch { return { config: null, reason: 'not-a-form-link' }; }
+    const formId = url.hostname.endsWith('google.com')
+        ? url.pathname.match(/\/forms\/d\/e\/([^/]+)/)?.[1] : null;
+    if (!formId) return { config: null, reason: 'not-a-form-link' };
 
-    const formId = url.pathname.match(/\/forms\/d\/e\/([^/]+)/)?.[1];
-    if (!formId) return null;
-
-    // Order matters, so read the query string rather than the (unordered)
-    // params object. Forms repeats an id for checkbox questions; the log has
-    // none, and de-duplicating keeps a stray repeat from shifting the mapping.
+    // Order matters, so read the query in order. Forms repeats an id for
+    // checkbox questions; the log has none, and de-duplicating keeps a stray
+    // repeat from shifting every column one cell over.
     const ids = [];
     for (const [key] of url.searchParams) {
         if (/^entry\.\d+$/.test(key) && !ids.includes(key)) ids.push(key);
     }
-    if (ids.length !== FIELDS.length) return null;
+    if (ids.length !== FIELDS.length) {
+        return { config: null, reason: 'field-count', found: ids.length };
+    }
+    return { config: { formId, entry: Object.fromEntries(FIELDS.map((f, i) => [f, ids[i]])) } };
+}
 
-    return { formId, entry: Object.fromEntries(FIELDS.map((f, i) => [f, ids[i]])) };
+/**
+ * The predicate view of readPrefilledLink, for callers that only need the
+ * config. One parser, two views — a second copy of the parse is exactly the
+ * drift the audits keep finding.
+ * @param {string} link
+ * @returns {FormConfig|null}
+ */
+export function parsePrefilledLink(link) {
+    return readPrefilledLink(link).config;
 }
 
 /** @returns {FormConfig|null} */
