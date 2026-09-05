@@ -603,6 +603,76 @@ test.describe('log form', () => {
             .toBeVisible();
     });
 
+    test('nothing on screen is lost to a reload', async ({ page }) => {
+        // An installed PWA is evicted from memory whenever the phone decides
+        // to. A half-entered piece that lives only in a component field is one
+        // the user loses by putting the phone down mid-session.
+        await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#11');
+        await page.click('#logPart .part-btn[data-part="VA1"]');
+        await page.fill('#logPlayer2', 'Erin Fry');
+        await page.selectOption('#logSlotPart2', 'V1');
+        await page.click('#logOthersAdd');
+        await page.locator('.log-other-row').first().locator('input').fill('Dana Ellis');
+        await page.locator('.log-other-row').first().locator('select').selectOption('P');
+        await page.fill('#logOthersFree', 'Laura (v2, shadowing on I)');
+        await page.fill('#logComments', 'lovely reading');
+
+        await page.reload();
+        await expect(page.locator('#logForm')).toBeVisible();
+
+        await expect(page.locator('#logTitle')).toHaveValue('76#11');
+        await expect(page.locator('#logPart .part-btn.active')).toHaveText('VA1');
+        await expect(page.locator('#logComposerChips .log-chip-btn.active')).toHaveText('Haydn');
+        await expect(page.locator('#logPlayer2')).toHaveValue('Erin Fry');
+        await expect(page.locator('#logSlotPart2')).toHaveValue('V1');
+        await expect(page.locator('.log-other-row').first().locator('input')).toHaveValue('Dana Ellis');
+        await expect(page.locator('.log-other-row').first().locator('select')).toHaveValue('P');
+        await expect(page.locator('#logOthersFree')).toHaveValue('Laura (v2, shadowing on I)');
+        await expect(page.locator('#logComments')).toHaveValue('lovely reading');
+    });
+
+    test('removing an extra sticks, even if another control is touched after', async ({ page }) => {
+        // Seeding the extras used to happen inside renderFields, so any
+        // repaint re-seeded the cell: remove someone, tap a composer chip, and
+        // they came back and were submitted.
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logOthersAdd');
+        await page.locator('.log-other-row').first().locator('input').fill('Dana Ellis');
+        await page.fill('#logTitle', '76#12');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+
+        // Next piece starts with Dana carried; remove her, then touch two
+        // other controls before submitting.
+        await expect(page.locator('.log-other-row')).toHaveCount(1);
+        await page.locator('.log-other-row').first().locator('.log-other-drop').click();
+        await pickComposer(page, 'Mozart');
+        await page.click('#logPart .part-btn[data-part="V2"]');
+        await page.fill('#logTitle', 'K421');
+        await expect(page.locator('.log-other-row')).toHaveCount(0);
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        expect(new URLSearchParams(bodies.at(-1)).has(OTHERS_ID)).toBe(false);
+    });
+
+    test('the Home part filter does not touch the log form selection', async ({ page }) => {
+        // Both views use .part-btn, and the restyle used to be document-wide.
+        await page.click('#logPart .part-btn[data-part="VA2"]');
+        await expect(page.locator('#logPart .part-btn.active')).toHaveText('VA2');
+
+        await page.evaluate(() => { window.location.hash = '#main'; });
+        await page.click('#radioButtons .part-btn[data-part="V1"]');
+        await page.evaluate(() => { window.location.hash = '#log'; });
+
+        // Still VA2, and still what a submission would carry.
+        await expect(page.locator('#logPart .part-btn.active')).toHaveText('VA2');
+        await expect(page.locator('#radioButtons .part-btn.active')).toHaveText('V1');
+    });
+
     test('freeform Others? survives the round trip and merges on write', async ({ page }) => {
         // A row is a name and a dropdown; "shadowing on I" is prose, and prose
         // needs a text field. It rejoins the same cell on write.

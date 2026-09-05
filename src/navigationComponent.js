@@ -193,8 +193,11 @@ export class NavigationComponent {
 
     handlePartClick(part) {
         this.selectedPart = part;
-        // Reflect state into the DOM (never read back from it).
-        d3.selectAll(".part-btn").classed("active", function () {
+        // Reflect state into the DOM (never read back from it). Scoped to this
+        // group: the log form has a part selector of its own, and a
+        // document-wide restyle would clear its selection while its own state
+        // still said otherwise.
+        d3.selectAll("#radioButtons .part-btn").classed("active", function () {
             return d3.select(this).attr("data-part") === part;
         });
         this.onFilterChange("part");

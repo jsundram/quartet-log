@@ -122,6 +122,7 @@ export class LogComponent {
             // Coming back from a dead zone is the moment the queue can drain.
             window.addEventListener('online', () => this.flushQueue());
         }
+        this.restoreDraft();
         this.refresh();
     }
 
@@ -241,6 +242,7 @@ export class LogComponent {
                     this.expandComposer = false;
                 }
                 this.clearMissing();
+                this.touch();
                 this.renderFields();
                 this.renderWorkOptions();
                 if (this.expandComposer) d3.select('#logComposer').node()?.focus();
@@ -270,6 +272,7 @@ export class LogComponent {
                 other.node().focus();
             }
             this.clearMissing();
+            this.touch();
             this.renderComposerChips();
             this.renderWorkOptions();
         });
@@ -305,11 +308,7 @@ export class LogComponent {
                 // Every seat now means something else, so an override kept
                 // from the old layout would be describing a seat that moved.
                 this.slotPartOverrides = [null, null, null];
-        // One editable row per Others? entry. The cell text is derived from
-        // these (syncOthers), never the other way round while editing.
-        this.otherRows = [];
-        this.othersFree = '';
-        this._otherId = 0;
+                this.touch();
                 // Reflect state into the DOM; never read the selection back out
                 // of it (same contract as the Home part filter). aria-checked
                 // rides along because the part is a required field, and an
@@ -330,13 +329,14 @@ export class LogComponent {
         for (const [field, sel] of Object.entries(TEXT_INPUTS)) {
             d3.select(sel).on('input', (e) => {
                 this.entry[field] = e.target.value;
-                if (field === 'others') this.renderOthersChip();
                 this.clearMissing();
+                this.touch();
             });
         }
         SEATS.forEach((_, i) => {
             d3.select(`#logSlotPart${i + 1}`).on('change', (e) => {
                 this.slotPartOverrides[i] = e.target.value;
+                this.touch();
             });
         });
         d3.select('#logOthersFree').on('input', (e) => {
@@ -430,7 +430,6 @@ export class LogComponent {
         this.renderWorkOptions();
         this.renderSuggestions();
         this.renderSlotParts();
-        this.renderOtherRows();
         this.renderSessionPeople();
         this.renderMode();
     }
@@ -439,20 +438,8 @@ export class LogComponent {
         for (const [field, sel] of Object.entries(TEXT_INPUTS)) {
             d3.select(sel).property('value', this.entry[field]);
         }
-        // Rebuilt from the cell, which is where a reset (nextInSession) or a
-        // restored draft leaves the truth. Entries carrying a comment go to
-        // the freeform box, which is the only control that can edit prose.
-        // A fresh entry (mount, or the reset after a submit) starts from the
-        // sitting's extras. Mid-edit nothing calls this, so removing the last
-        // row cannot bounce back.
-        const { rows, freeform } = splitOthersCell(this.entry.others || this.defaultOthersCell());
-        this.otherRows = rows.map(r => this.newOtherRow(r));
-        this.othersFree = freeform;
-        d3.select('#logOthersFree').property('value', freeform);
-        // Write the carried extras back into the entry. Without this they are
-        // on screen and absent from the submission, which is the failure this
-        // whole feature is meant to prevent, wearing a convincing disguise.
-        this.syncOthers();
+        d3.select('#logOthersFree').property('value', this.othersFree);
+        this.renderOtherRows();
         this.renderComposerChips();
         // The picker opens on request, and stays open whenever it holds the
         // answer — a composer with no chip would otherwise be set but invisible.
@@ -533,6 +520,46 @@ export class LogComponent {
             .on('click', (_, d) => this.setOtherRows([...this.otherRows, this.newOtherRow(d)]));
     }
 
+    /**
+     * Start a piece with the sitting's extras. A TRANSITION, not a render:
+     * doing it inside renderFields meant any repaint re-seeded the cell, so
+     * removing someone and then tapping a composer chip brought them back and
+     * submitted them. Called only where a new piece actually begins.
+     */
+    // Every mutation routes through here, so the thing on screen is never more
+    // than one keystroke ahead of what a reload would restore.
+    touch() {
+        store.saveDraft({
+            entry: this.entry,
+            slotPartOverrides: this.slotPartOverrides,
+            otherRows: this.otherRows,
+            othersFree: this.othersFree,
+            expandComposer: this.expandComposer,
+        });
+    }
+
+    /**
+     * Pick the form back up where it was left, or start a fresh piece.
+     * An installed PWA is evicted from memory whenever the phone decides to,
+     * and a half-entered piece that lives only in a field is one the user
+     * loses by putting the phone down.
+     */
+    restoreDraft() {
+        const draft = store.readDraft();
+        if (!draft) return this.seedOthers();
+        this.entry = blankEntry(draft.entry);
+        this.slotPartOverrides = draft.slotPartOverrides ?? [null, null, null];
+        this.othersFree = draft.othersFree ?? '';
+        this.expandComposer = !!draft.expandComposer;
+        this.otherRows = (draft.otherRows ?? []).map(r => this.newOtherRow(r));
+    }
+
+    seedOthers() {
+        const { rows, freeform } = splitOthersCell(this.defaultOthersCell());
+        this.othersFree = freeform;
+        this.setOtherRows(rows);
+    }
+
     newOtherRow(row = {}) {
         return { id: ++this._otherId, name: '', instrument: '', comment: '', ...row };
     }
@@ -547,6 +574,7 @@ export class LogComponent {
     // the user is typing, so a background revalidate cannot move a caret.
     syncOthers() {
         this.entry.others = mergeOthersCell(this.otherRows, this.othersFree);
+        this.touch();
         this.renderSessionPeople();
     }
 
@@ -677,11 +705,8 @@ export class LogComponent {
         // The parts the row just set become the next row's defaults, via the
         // carried cell — an override kept here would shadow them.
         this.slotPartOverrides = [null, null, null];
-        // One editable row per Others? entry. The cell text is derived from
-        // these (syncOthers), never the other way round while editing.
-        this.otherRows = [];
-        this.othersFree = '';
-        this._otherId = 0;
+        store.clearDraft();
+        this.seedOthers();
         this.refresh();
         // Straight to the next piece: composer, part and the seats all carry,
         // so the work title is the only thing left to type.

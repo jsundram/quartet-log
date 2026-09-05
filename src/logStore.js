@@ -9,6 +9,7 @@ import { blankEntry } from './logEntry.js';
 /** @typedef {{ id: string, at: number, entry: Entry }} Queued */
 
 const PENDING_KEY = 'quartetlog_pending';
+const DRAFT_KEY = 'quartetlog_draft';
 const RECENT_KEY = 'quartetlog_recent';
 
 // Every read is defensive: localStorage throws in private-mode Safari and can
@@ -65,16 +66,32 @@ export function drop(id) {
  * @param {(entry: Entry) => Promise<void>} post
  * @returns {Promise<{ sent: number, remaining: number }>}
  */
+/** @type {Promise<{ sent: number, remaining: number }>|null} */
+let inFlight = null;
+
 export async function flush(post) {
-    const list = pending();
-    let sent = 0;
-    while (list.length) {
-        try { await post(list[0].entry); } catch { break; }
-        list.shift();
-        sent++;
-        write(PENDING_KEY, list);
-    }
-    return { sent, remaining: list.length };
+    // One flush at a time. `online`, becoming visible and submit all call
+    // this, and two overlapping runs would each read the same head entry and
+    // POST it — a duplicate row in the sheet, which nothing downstream can
+    // tell from a real one. Joining the run in progress also means a submit
+    // during a flush is picked up by it, since the loop re-reads the queue.
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+        let sent = 0;
+        for (;;) {
+            // Re-read every iteration rather than working from a snapshot: an
+            // entry enqueued mid-flush must go out in this run, and writing a
+            // stale list back would drop it.
+            const list = pending();
+            if (!list.length) break;
+            const head = list[0];
+            try { await post(head.entry); } catch { break; }
+            write(PENDING_KEY, pending().filter(q => q.id !== head.id));
+            sent++;
+        }
+        return { sent, remaining: pending().length };
+    })();
+    try { return await inFlight; } finally { inFlight = null; }
 }
 
 // How long a submission the sheet never took delivery of goes on describing
@@ -158,4 +175,30 @@ export function recent(lastRow) {
     if (!saved) return null;
     if (lastRow && isSameRow(lastRow, saved.entry)) return null;
     return { entry: blankEntry(saved.entry), at: saved.at };
+}
+
+/**
+ * The piece being entered right now.
+ *
+ * An installed PWA is evicted from memory whenever the phone feels like it, so
+ * a half-filled form that lives only in a component field is a form that
+ * vanishes between putting the phone down and picking it up. The queue and the
+ * sitting survive a reload; this is what makes the thing on screen survive it
+ * too. Cleared on a successful submit, when it has become a row instead.
+ *
+ * @param {object} draft
+ * @returns {boolean}
+ */
+export function saveDraft(draft) {
+    return write(DRAFT_KEY, draft);
+}
+
+/** @returns {object|null} */
+export function readDraft() {
+    const draft = read(DRAFT_KEY, null);
+    return draft?.entry ? draft : null;
+}
+
+export function clearDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* nothing to clear */ }
 }

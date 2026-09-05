@@ -7,7 +7,10 @@
 // dataService tests: logStore reads it at call time, never at import time.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { pending, enqueue, drop, flush, setRecent, recent, recentAll } from '../src/logStore.js';
+import {
+    pending, enqueue, drop, flush, setRecent, recent, recentAll,
+    saveDraft, readDraft, clearDraft,
+} from '../src/logStore.js';
 import { blankEntry } from '../src/logEntry.js';
 
 function makeLocalStorage() {
@@ -167,4 +170,53 @@ test('submissions age out, so yesterday is not part of today sitting', () => {
         { at: Date.now(), entry: blankEntry({ title: 'new' }) },
     ]));
     assert.deepEqual(recentAll().map(r => r.entry.title), ['new']);
+});
+
+test('two overlapping flushes do not send the same entry twice', async () => {
+    // `online`, becoming visible and submit all call flush. Two runs each
+    // reading the same head entry means a duplicate row in the sheet, and
+    // nothing downstream can tell it from a real one.
+    ['76#1', '76#2'].forEach(t => enqueue(entry(t)));
+    const sentTitles = [];
+    let release;
+    const gate = new Promise(r => { release = r; });
+    const post = async (e) => { sentTitles.push(e.title); await gate; };
+
+    const first = flush(post);
+    const second = flush(post);       // arrives mid-send, must not duplicate
+    release();
+    await Promise.all([first, second]);
+
+    assert.deepEqual(sentTitles, ['76#1', '76#2']);
+    assert.deepEqual(pending(), []);
+});
+
+test('an entry queued during a flush goes out in that same run', async () => {
+    // Writing a stale snapshot back would have dropped it instead.
+    enqueue(entry('76#1'));
+    const sentTitles = [];
+    const post = async (e) => {
+        sentTitles.push(e.title);
+        if (e.title === '76#1') enqueue(entry('76#2'));
+    };
+    const result = await flush(post);
+    assert.deepEqual(sentTitles, ['76#1', '76#2']);
+    assert.deepEqual(result, { sent: 2, remaining: 0 });
+});
+
+test('a draft survives a reload, and a submit retires it', () => {
+    // An installed PWA is evicted from memory whenever the phone decides to.
+    assert.equal(readDraft(), null);
+    saveDraft({ entry: blankEntry({ composer: 'Haydn', title: '76#1' }), othersFree: 'Laura (v2)' });
+    assert.equal(readDraft().entry.title, '76#1');
+    assert.equal(readDraft().othersFree, 'Laura (v2)');
+    clearDraft();
+    assert.equal(readDraft(), null);
+});
+
+test('a corrupt draft reads as none rather than breaking the form', () => {
+    ls.setItem('quartetlog_draft', 'not json');
+    assert.equal(readDraft(), null);
+    ls.setItem('quartetlog_draft', JSON.stringify({ nothing: true }));
+    assert.equal(readDraft(), null);
 });
