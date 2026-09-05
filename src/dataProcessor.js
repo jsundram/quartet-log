@@ -481,7 +481,10 @@ export function defaultMinPiecesForGraph(rows, maxNodes = 50) {
 // listing the violins and cello in the slots with the other violist under
 // Others — same mapping as VA. Read only through slotPartsFor below, which
 // layers slot annotations on top; undefined for any other part value.
-const SLOT_TO_PART = {
+// Exported for the log form, which has to show the same seat-to-part mapping
+// the reader applies; a second copy of this table is how the form and the app
+// would come to disagree about what a blank slot means.
+export const SLOT_TO_PART = {
     V1: ['V2', 'VA', 'VC'],
     V2: ['V1', 'VA', 'VC'],
     VA: ['V1', 'V2', 'VC'],

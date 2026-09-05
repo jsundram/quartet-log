@@ -208,18 +208,28 @@
                 <div id="logPart" class="part-buttons" role="radiogroup" aria-label="Which part"></div>
             </div>
 
-            <p class="log-note">Leave a seat blank to repeat whoever was there. Write <code>-</code> for a seat this work doesn't have.</p>
+            <p class="log-note">Leave a seat blank to repeat whoever was there. Write <code>-</code> for a seat this work doesn't have.
+               Change a part to say someone swapped &mdash; the name comes along on its own.</p>
             <div class="log-field">
                 <label for="logPlayer1">Player 1</label>
-                <input id="logPlayer1" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
+                <div class="log-slot">
+                    <input id="logPlayer1" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
+                    <select id="logSlotPart1" class="log-slot-part" aria-label="Player 1's part"></select>
+                </div>
             </div>
             <div class="log-field">
                 <label for="logPlayer2">Player 2</label>
-                <input id="logPlayer2" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
+                <div class="log-slot">
+                    <input id="logPlayer2" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
+                    <select id="logSlotPart2" class="log-slot-part" aria-label="Player 2's part"></select>
+                </div>
             </div>
             <div class="log-field">
                 <label for="logPlayer3">Player 3</label>
-                <input id="logPlayer3" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
+                <div class="log-slot">
+                    <input id="logPlayer3" type="text" list="logPlayers" autocapitalize="words" autocorrect="off" spellcheck="false">
+                    <select id="logSlotPart3" class="log-slot-part" aria-label="Player 3's part"></select>
+                </div>
             </div>
             <div class="log-field">
                 <label for="logOthers">Others?</label>

@@ -449,6 +449,56 @@ test.describe('log form', () => {
         expect(posted.join(' ')).not.toContain('SOMEONE-ELSES-FORM');
     });
 
+    test('a swap is a dropdown, not a retype', async ({ page }) => {
+        // The workflow this exists for: playing viola, the two violinists swap
+        // between pieces. Positionally that meant retyping both names into
+        // different columns; now it is one dropdown and the names stay put.
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#5');
+        await page.click('#logPart .part-btn[data-part="VA1"]');
+
+        // Seat 1 is V1 by the quartet layout, and says so.
+        await expect(page.locator('#logSlotPart1')).toHaveValue('V1');
+        await expect(page.locator('#logSlotPart1 option[value="V1"]')).toHaveText('V1 (seat)');
+        await expect(page.locator('#logSlotPart3')).toHaveValue('VC');
+
+        // Move seat 1 to V2 without touching the name field.
+        await page.selectOption('#logSlotPart1', 'V2');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+
+        const body = new URLSearchParams(bodies.at(-1));
+        // The name was materialised from the carried row precisely because a
+        // blank would have dittoed the old part along with it.
+        expect(body.get(PLAYER1_ID)).toBe('Alice (v2)');
+        // Untouched seats still ditto, so the sheet gains no needless text.
+        expect(body.has(PLAYER2_ID)).toBe(false);
+        expect(body.has(PLAYER3_ID)).toBe(false);
+
+        // And the role sticks for the next piece, like a name does.
+        await expect(page.locator('#logSlotPart1')).toHaveValue('V2');
+        await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alice (v2)');
+    });
+
+    test('a quintet second viola is one dropdown away', async ({ page }) => {
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Mozart');
+        await page.fill('#logTitle', 'K515');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        // Playing violin in a viola quintet: the other violist is a second
+        // viola, which the seat layout has no way to say.
+        await page.fill('#logPlayer2', 'Erin Fry');
+        await page.selectOption('#logSlotPart2', 'VA2');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+
+        const body = new URLSearchParams(bodies.at(-1));
+        // partFromInstrument folds va2 into VA for the charts, but the sheet
+        // keeps the distinction -- which is the reason to write it.
+        expect(body.get(PLAYER2_ID)).toBe('Erin Fry (va2)');
+    });
+
     test('a name fixed in the sheet afterwards wins over what was typed', async ({ page }) => {
         // The established fix for a misspelling, or for a surname learned after
         // the fact, is editing the sheet. The form only ever writes, so a

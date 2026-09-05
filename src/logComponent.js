@@ -8,7 +8,7 @@ import * as store from './logStore.js';
 import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
-    FIELDS, LABELS,
+    impliedSlotParts, defaultSlotParts, slotCell, SLOT_PARTS, FIELDS, LABELS,
 } from './logEntry.js';
 
 // The entry field each text input owns. `part` is absent: it's a segmented
@@ -27,6 +27,7 @@ const TEXT_INPUTS = {
 };
 
 const CARRIED_INPUTS = ['player1', 'player2', 'player3', 'location'];
+const SEATS = ['player1', 'player2', 'player3'];
 
 // What to mark and focus when a required field is missing. Composer resolves
 // to whichever of its two controls is live.
@@ -74,6 +75,9 @@ export class LogComponent {
         this.config = null;
         // "More" was tapped, so the full-catalog picker stays open.
         this.expandComposer = false;
+        // Per-seat part, only where the user has overridden the default. Kept
+        // sparse so the defaults stay live as the carried row changes.
+        this.slotPartOverrides = [null, null, null];
         // A ?form= link that would replace this.config, awaiting a decision.
         this.proposed = null;
         this.mounted = false;
@@ -91,6 +95,7 @@ export class LogComponent {
         if (this.mounted) {
             this.renderSuggestions();
             this.renderPlaceholders();
+            this.renderSlotParts();
             this.renderOthersChip();
         }
     }
@@ -288,6 +293,9 @@ export class LogComponent {
             .text(d => d)
             .on('click', (_, part) => {
                 this.entry.part = part;
+                // Every seat now means something else, so an override kept
+                // from the old layout would be describing a seat that moved.
+                this.slotPartOverrides = [null, null, null];
                 // Reflect state into the DOM; never read the selection back out
                 // of it (same contract as the Home part filter). aria-checked
                 // rides along because the part is a required field, and an
@@ -300,6 +308,7 @@ export class LogComponent {
                         return String(d3.select(this).attr('data-part') === part);
                     });
                 this.clearMissing();
+                this.renderSlotParts();
             });
     }
 
@@ -311,10 +320,43 @@ export class LogComponent {
                 this.clearMissing();
             });
         }
+        SEATS.forEach((_, i) => {
+            d3.select(`#logSlotPart${i + 1}`).on('change', (e) => {
+                this.slotPartOverrides[i] = e.target.value;
+            });
+        });
         d3.select('#logOthersRepeat').on('click', () => {
             this.entry.others = d3.select('#logOthersRepeat').attr('data-value');
             d3.select('#logOthers').property('value', this.entry.others);
             this.renderOthersChip();
+        });
+    }
+
+    // The part each seat is currently set to: what the carried row says (a
+    // role sticks across a session like a name does), unless overridden here.
+    slotParts() {
+        const defaults = defaultSlotParts(carriedForward(this.carrySource()), this.entry.part);
+        return defaults.map((d, i) => this.slotPartOverrides[i] ?? d);
+    }
+
+    renderSlotParts() {
+        const chosen = this.slotParts();
+        const implied = impliedSlotParts(this.entry.part);
+        SEATS.forEach((_, i) => {
+            const value = chosen[i];
+            // An annotation the option list cannot express is offered as
+            // itself, so selecting it round-trips instead of being rewritten.
+            const extra = value && !SLOT_PARTS.some(p => p.key === value)
+                ? [{ key: value, label: value }] : [];
+            const select = d3.select(`#logSlotPart${i + 1}`);
+            select.selectAll('option')
+                .data([...SLOT_PARTS, ...extra], d => d.key)
+                .join('option')
+                .attr('value', d => d.key)
+                // The seat's own part is the one you are departing from, so say
+                // which that is rather than leaving the default unremarkable.
+                .text(d => (d.key === implied[i] ? `${d.label} (seat)` : d.label));
+            select.property('value', value ?? '');
         });
     }
 
@@ -332,6 +374,7 @@ export class LogComponent {
         this.buildPartButtons();
         this.renderWorkOptions();
         this.renderSuggestions();
+        this.renderSlotParts();
         this.renderOthersChip();
         this.renderMode();
     }
@@ -455,11 +498,23 @@ export class LogComponent {
             this.markMissing(missing);
             return;
         }
+        const carried = carriedForward(this.carrySource());
+        const implied = impliedSlotParts(this.entry.part);
+        const chosen = this.slotParts();
+        // Names and parts are two controls; the sheet has one cell. A part
+        // changed on a blank seat materialises the carried name here, which is
+        // the retyping this whole control replaces.
         const entry = { ...this.entry };
+        SEATS.forEach((field, i) => {
+            entry[field] = slotCell({
+                typed: this.entry[field], carried: carried[field],
+                chosen: chosen[i], implied: implied[i],
+            });
+        });
         // Resolve the blanks against what they ditto BEFORE advancing, so the
         // next piece of this session carries forward from what this row will
         // hold rather than from the row above it.
-        const resolved = resolveCarry(entry, carriedForward(this.carrySource()));
+        const resolved = resolveCarry(entry, carried);
 
         // Always through the queue, even online: anything already waiting has
         // to reach the sheet first, since fillForward reads each row against
@@ -472,6 +527,9 @@ export class LogComponent {
 
         store.setRecent(resolved);
         this.entry = nextInSession(entry);
+        // The parts the row just set become the next row's defaults, via the
+        // carried cell — an override kept here would shadow them.
+        this.slotPartOverrides = [null, null, null];
         this.refresh();
         // Straight to the next piece: composer, part and the seats all carry,
         // so the work title is the only thing left to type.

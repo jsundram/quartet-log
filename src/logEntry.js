@@ -7,6 +7,7 @@
 // time and Google Forms does not. That is the only real difference between
 // this form and the one it replaces.
 import { withInstrument } from './csvFormat.js';
+import { SLOT_TO_PART, stripParens, instrumentFromSlot } from './dataProcessor.js';
 
 /** @typedef {import('./dataProcessor.js').Row} Row */
 /** @typedef {Record<string, string>} Entry */
@@ -187,4 +188,121 @@ export function knownLocations(rows) {
  */
 export function nextInSession(entry) {
     return blankEntry({ composer: entry.composer, part: entry.part });
+}
+
+// --- Slot parts -------------------------------------------------------------
+//
+// The three player slots are positional: which part each holds is implied by
+// your own part (SLOT_TO_PART). That works until two people swap, or a quintet
+// puts a second viola or cello on the stand — and then the only way to say so
+// was to retype names into different columns.
+//
+// The form instead offers a part per slot. The names stay put and carry
+// forward as ever; the part is written as the SAME "(code)" annotation the
+// sheet has always used, so nothing about the data at rest changes shape.
+// Only the codes the app can actually read back are offered: partFromInstrument
+// buckets into V1/V2/VA/VC/OTHER, folding va1|va2 to VA and vc1|vc2 to VC. The
+// numbered forms are still worth offering, because the SHEET keeps the
+// distinction even where the charts group it — that is the point of writing
+// them for a quintet.
+
+/** @typedef {{ key: string, label: string, code: string }} SlotPart */
+
+/** @type {SlotPart[]} */
+export const SLOT_PARTS = [
+    { key: 'V1', label: 'V1', code: 'v1' },
+    { key: 'V2', label: 'V2', code: 'v2' },
+    { key: 'VA', label: 'VA', code: 'va' },
+    { key: 'VA2', label: 'VA2', code: 'va2' },
+    { key: 'VC', label: 'VC', code: 'vc' },
+    { key: 'VC2', label: 'VC2', code: 'vc2' },
+    { key: 'P', label: 'Piano', code: 'p' },
+];
+
+const BY_KEY = new Map(SLOT_PARTS.map(p => [p.key, p]));
+
+/**
+ * Which option an existing annotation corresponds to, or null when the sheet
+ * carries something this list cannot express (`(cl)`, `(hn)`). Null matters:
+ * re-serialising an annotation we cannot represent would silently rewrite it,
+ * so the caller offers the raw code as its own option instead.
+ * @param {string|null|undefined} annotation
+ * @returns {string|null}
+ */
+export function slotPartKey(annotation) {
+    const s = (annotation ?? '').toLowerCase().trim();
+    if (!s) return null;
+    if (/^vc2|^vlc2/.test(s)) return 'VC2';
+    if (/^(?:vc|vlc|cello|violoncello|c)(?![a-z])/.test(s)) return 'VC';
+    if (/^va2|^vla2/.test(s)) return 'VA2';
+    if (/^(?:vla|viola|va)(?![a-z])/.test(s)) return 'VA';
+    if (/^v1/.test(s)) return 'V1';
+    if (/^v2/.test(s)) return 'V2';
+    if (/^(?:p|pf|pno|piano)(?![a-z])/.test(s)) return 'P';
+    return null;
+}
+
+/**
+ * The part each seat holds when nothing overrides it. `VA1` is folded because
+ * processRow folds it before anything downstream sees the row, so the form has
+ * to read the same table the same way.
+ * @param {string} part your own part, in the form's vocabulary
+ * @returns {(string|null)[]}
+ */
+export function impliedSlotParts(part) {
+    return SLOT_TO_PART[part === 'VA1' ? 'VA' : part] ?? [null, null, null];
+}
+
+/**
+ * What to write in one player slot.
+ *
+ * The rule that makes the whole thing worth having: a part changed on a seat
+ * whose name field is blank MATERIALISES the carried name, because a blank
+ * cell is a ditto mark and would repeat the old part with it. That is exactly
+ * the retyping this replaces — you change the part, the form writes the name.
+ *
+ * Conversely a cell that would come out identical to the one above is left
+ * blank, so the sheet keeps dittoing as it always has and only rows that
+ * actually say something new carry text.
+ *
+ * @param {object} a
+ * @param {string} a.typed what is in the name field (blank means "as before")
+ * @param {string} a.carried the cell this slot would ditto, annotation included
+ * @param {string|null} a.chosen selected part key, or a raw code passed through
+ * @param {string|null} a.implied the part the seat implies
+ * @returns {string} the cell to submit
+ */
+export function slotCell({ typed, carried = '', chosen, implied }) {
+    const written = (typed ?? '').trim();
+    // "-" is "nobody in this seat" (howto section 5), not a person to annotate.
+    if (written === '-') return '-';
+
+    const name = written || stripParens(carried) || '';
+    if (!name) return written;
+
+    const annotate = chosen && chosen !== implied;
+    const code = BY_KEY.get(/** @type {string} */ (chosen))?.code ?? chosen;
+    const desired = annotate ? `${name} (${code})` : name;
+    // Identical to the row above: leave it blank and let fillForward ditto,
+    // which is how every row in this sheet has always been written.
+    return desired === carried.trim() ? '' : desired;
+}
+
+/**
+ * The part each slot should show before the user touches anything: whatever
+ * the carried cell says, falling back to the seat's own implication. Reading
+ * the carried annotation is what makes a role stick across a session — a
+ * violinist moved to V2 stays on V2 for the next piece, like their name does.
+ * @param {Entry} carried carriedForward() output, annotations attached
+ * @param {string} part your own part
+ * @returns {(string|null)[]}
+ */
+export function defaultSlotParts(carried, part) {
+    const implied = impliedSlotParts(part);
+    return ['player1', 'player2', 'player3'].map((f, i) => {
+        const annotation = instrumentFromSlot(carried[f]);
+        // An annotation this list cannot express is passed through as itself,
+        // so submitting cannot rewrite it into something else.
+        return annotation ? (slotPartKey(annotation) ?? annotation) : implied[i];
+    });
 }

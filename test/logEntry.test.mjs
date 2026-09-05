@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
+    impliedSlotParts, slotCell, slotPartKey, defaultSlotParts,
 } from '../src/logEntry.js';
 
 // A processed row, as normalizePlayerNames leaves it: annotations split off
@@ -151,4 +152,93 @@ test('frequentComposers caps the row and is empty before there is any data', () 
     assert.deepEqual(frequentComposers(rows, 2), ['A', 'B']);
     // First launch: no chips, and the picker behind "More" is the whole UI.
     assert.deepEqual(frequentComposers([]), []);
+});
+
+// --- Slot parts -------------------------------------------------------------
+// The point of the feature: saying who played what without retyping anyone.
+
+test('impliedSlotParts reads the same seat table the app does, VA1 folded', () => {
+    assert.deepEqual(impliedSlotParts('VA'), ['V1', 'V2', 'VC']);
+    // processRow folds VA1 to VA before anything downstream sees a row, so the
+    // form must fold it too or every viola row's seats come out null.
+    assert.deepEqual(impliedSlotParts('VA1'), ['V1', 'V2', 'VC']);
+    assert.deepEqual(impliedSlotParts('V1'), ['V2', 'VA', 'VC']);
+    assert.deepEqual(impliedSlotParts(''), [null, null, null]);
+});
+
+test('changing a part on a blank seat materialises the carried name', () => {
+    // This is the whole workflow: two violinists swap, and instead of retyping
+    // both names into different columns you change one dropdown.
+    assert.equal(
+        slotCell({ typed: '', carried: 'Alice Hart', chosen: 'V2', implied: 'V1' }),
+        'Alice Hart (v2)');
+});
+
+test('a slot that would repeat the row above stays blank', () => {
+    // The sheet has always been written with blanks dittoing; annotating every
+    // cell would churn 1900 rows worth of convention for nothing.
+    assert.equal(slotCell({ typed: '', carried: 'Alice Hart', chosen: 'V1', implied: 'V1' }), '');
+    assert.equal(slotCell({ typed: '', carried: 'Alice Hart (v2)', chosen: 'V2', implied: 'V1' }), '');
+    assert.equal(slotCell({ typed: 'Alice Hart', carried: 'Alice Hart', chosen: 'V1', implied: 'V1' }), '');
+});
+
+test('going back to the implied part writes the bare name, clearing the annotation', () => {
+    // A blank would ditto "(v2)" forward, so the only way to say "back to V1"
+    // is to write the name without it.
+    assert.equal(
+        slotCell({ typed: '', carried: 'Alice Hart (v2)', chosen: 'V1', implied: 'V1' }),
+        'Alice Hart');
+});
+
+test('a typed name takes the chosen part, and an empty seat stays empty', () => {
+    assert.equal(
+        slotCell({ typed: 'Erin Fry', carried: 'Alice Hart', chosen: 'VA2', implied: 'V2' }),
+        'Erin Fry (va2)');
+    // "-" is "this work has no such seat" (howto section 5), not a person.
+    assert.equal(slotCell({ typed: '-', carried: 'Alice Hart', chosen: 'VC2', implied: 'VC' }), '-');
+    // Nothing carried and nothing typed: still nothing.
+    assert.equal(slotCell({ typed: '', carried: '', chosen: 'V1', implied: 'V1' }), '');
+});
+
+test('an annotation the options cannot express passes through unrewritten', () => {
+    // The sheet carries instruments this list does not offer. Re-serialising
+    // one into the nearest option would silently rewrite the record.
+    assert.equal(slotPartKey('cl'), null);
+    assert.equal(
+        slotCell({ typed: '', carried: 'Erin Fry (cl)', chosen: 'cl', implied: 'V2' }),
+        '');
+    assert.equal(
+        slotCell({ typed: 'Erin Fry', carried: '', chosen: 'cl', implied: 'V2' }),
+        'Erin Fry (cl)');
+});
+
+test('slotPartKey folds the codes the app folds, and keeps the ones it does not', () => {
+    // partFromInstrument buckets va1/va2 into VA and vc1/vc2 into VC, so the
+    // charts group them -- but the SHEET keeps the distinction, which is the
+    // reason to offer the numbered forms at all.
+    assert.equal(slotPartKey('va'), 'VA');
+    assert.equal(slotPartKey('vla'), 'VA');
+    assert.equal(slotPartKey('va2'), 'VA2');
+    assert.equal(slotPartKey('vc'), 'VC');
+    assert.equal(slotPartKey('cello'), 'VC');
+    assert.equal(slotPartKey('vc2'), 'VC2');
+    assert.equal(slotPartKey('v1'), 'V1');
+    assert.equal(slotPartKey('piano'), 'P');
+    assert.equal(slotPartKey(''), null);
+});
+
+test('defaultSlotParts keeps a role across a session, like a name', () => {
+    // A violinist moved to V2 last piece is still on V2 for the next one,
+    // exactly as their name carries forward -- otherwise the dropdown would
+    // have to be re-set on every row of a session.
+    const carried = carriedForward(row({
+        player1: 'Alice Hart', player2: 'Bob Bek', player3: 'Carol Diaz',
+        playerInstruments: ['v2', null, null],
+    }));
+    assert.deepEqual(defaultSlotParts(carried, 'VA'), ['V2', 'V2', 'VC']);
+    // With nothing annotated, the seats mean what the layout says.
+    assert.deepEqual(defaultSlotParts(carriedForward(row()), 'VA'), ['V1', 'V2', 'VC']);
+    // An unrepresentable annotation comes back as itself, not as a guess.
+    const odd = carriedForward(row({ playerInstruments: [null, 'cl', null] }));
+    assert.deepEqual(defaultSlotParts(odd, 'VA'), ['V1', 'cl', 'VC']);
 });

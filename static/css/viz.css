@@ -1561,6 +1561,27 @@ body.network-fullscreen-open {
     grid-column: 2;
 }
 
+/* Name plus the part they played. The part is a secondary attribute changed
+   occasionally, so it sits beside the name at its natural width rather than
+   taking a row of its own. */
+.log-slot {
+    display: flex;
+    gap: 6px;
+}
+
+.log-slot input {
+    flex: 1;
+    min-width: 0;
+}
+
+.log-field .log-slot-part {
+    width: auto;
+    flex-shrink: 0;
+    padding: 8px 6px;
+    font-size: 15px;
+    color: var(--color-text-secondary);
+}
+
 /* One-tap composers. Wraps rather than scrolls: seeing all of them at once is
    the whole advantage over the picker. */
 .log-chips {
