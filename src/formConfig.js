@@ -27,17 +27,25 @@ export function formAction(formId) {
     return `https://docs.google.com/forms/d/e/${formId}/formResponse`;
 }
 
-// Composer and Which Part are radio questions on the reference form, and a
-// value outside a radio's option list has to arrive through Forms' "Other"
-// escape: the entry carries a sentinel and the real text rides on a companion
-// field. We cannot know another user's option lists without fetching their
-// form (cross-origin, so we can't), and Other is harmless on a question that
-// accepts free text anyway — so these are the values known to need it, and
-// anything unlisted is sent through the escape rather than guessed at.
-export const CHOICES = {
-    composer: ['Bartok', 'Beethoven', 'Boccherini', 'Haydn', 'Mendelssohn', 'Mozart', 'Shostakovich'],
-    part: ['V1', 'V2', 'VA1', 'VA2'],
-};
+// Composer and Which Part are multiple-choice questions, and every value for
+// them is sent through Forms' "Other" escape: the entry carries a sentinel and
+// the real text rides on a companion field. Forms stores an Other response as
+// plain text in the response-sheet column, so a value that IS one of the
+// options lands in the same cell either way — the only visible difference is
+// the Form's own built-in response summary, which nothing here reads.
+//
+// ALWAYS, rather than only for values outside the list, because there is no
+// list to be outside of: another user's options can't be read cross-origin.
+// This used to hold the reference form's seven composers and send anything
+// else through the escape, which meant a form whose Composer question was
+// built as SHORT ANSWER wrote those seven correctly and corrupted the other
+// thirteen the catalog knows — the worst shape a failure can take here, since
+// the opaque response says "Logged" either way and the damage only starts on
+// whichever piece first uses an unlisted composer. Requiring Other is a
+// condition we can state up front (md/howto.md section 1) instead of a guess we
+// re-make on every submit, and a form that does not meet it now fails on the
+// first piece rather than the eighth.
+const OTHER_FIELDS = new Set(['composer', 'part']);
 const OTHER_OPTION = '__other_option__';
 
 /**
@@ -142,8 +150,7 @@ export function toFormBody(entry, config) {
         // skipping keeps the request small without changing what lands.
         if (!value) continue;
         const id = config.entry[field];
-        const choices = /** @type {Record<string, string[]>} */ (CHOICES)[field];
-        if (choices && !choices.includes(value)) {
+        if (OTHER_FIELDS.has(field)) {
             body.set(id, OTHER_OPTION);
             body.set(`${id}.other_option_response`, value);
         } else {

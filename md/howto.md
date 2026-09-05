@@ -12,6 +12,32 @@
 
    ![Sample form with fields for date, composer, work, players, and so on](./img/howto/Screenshot%202017-05-31%2012.17.39.png){width=600px}
 
+**Two things the log site needs from that form**, if you plan to use **Log a
+Piece** (section 3) rather than the Google Form itself:
+
+- **Make Composer and Which Part multiple-choice questions, and switch on
+  "Other" for both.** Every value the app submits for those two arrives through
+  Google's *Other* box, including ones that match an option you listed. It has
+  to: your form's option list is on Google's servers and the app cannot read
+  it, so it can never know whether the composer you just picked is on it. An
+  Other response lands in the response sheet as ordinary text, so the column
+  reads exactly the same either way.
+
+  If those questions are short-answer boxes instead, the cell fills with the
+  literal text `__other_option__`, and if they are multiple-choice *without*
+  Other, Google rejects the whole row. Either way the app still says "Logged",
+  because Google's reply to a submission tells it nothing (section 3). You will
+  see it on your first piece, so log one and look at the sheet.
+
+- **Everything else can be whatever you like** — the other eight questions are
+  read as plain text.
+
+**Cellists: not yet.** The app assumes the person logging is a violinist or
+violist, because it has to know which seat is which — playing V1 means Player 3
+is the cellist. There is no VC option in **Log a Piece**, so if you play cello
+you will have to use the Google Form itself for now. Nothing about the sheet
+changes; it is the app that cannot read those rows back correctly yet.
+
 ## 2. Set up the response sheet
 
 1. Click **Responses**, then the green **Sheets** button.

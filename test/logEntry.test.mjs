@@ -11,6 +11,7 @@ import {
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
     sessionRows, sessionPeople,
 } from '../src/logEntry.js';
+import { SLOT_TO_PART } from '../src/dataProcessor.js';
 
 // A processed row, as normalizePlayerNames leaves it: annotations split off
 // into playerInstruments, Others? parsed into othersList.
@@ -376,10 +377,16 @@ test('canonicalOthersCell falls back to the raw cell when the two views disagree
     assert.equal(canonicalOthersCell(undefined), '');
 });
 
-test('the part buttons are the app own vocabulary, not one form option list', () => {
-    // CHOICES.part describes ONE user's radio question; PART_CHOICES describes
-    // the button row every user sees. They hold the same four today, which is
-    // exactly why the coupling was invisible -- pin them apart so a change to
-    // the submit shape cannot silently change what anyone can log.
+test('the part buttons are the app own vocabulary, and VC is not in it yet', () => {
+    // This used to be formConfig's list of one user's radio options, which
+    // coupled what anyone could log to how the reference form was built.
+    //
+    // VC's absence is load-bearing rather than an oversight: SLOT_TO_PART has
+    // no VC key and SLOT_CLASS hardcodes slot 3 as the cello, so a cellist's
+    // row would put a violist in the cello slot. Offering the button before
+    // the reader can take it would write rows nothing downstream reads back
+    // correctly.
     assert.deepEqual([...PART_CHOICES], ['V1', 'V2', 'VA1', 'VA2']);
+    assert.equal(PART_CHOICES.includes('VC'), false);
+    assert.equal(SLOT_TO_PART.VC, undefined);
 });

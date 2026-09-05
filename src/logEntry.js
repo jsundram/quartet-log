@@ -25,11 +25,17 @@ export const FIELDS = /** @type {const} */ ([
 ]);
 
 // The seats a logger can say they were on — the app's own vocabulary (howto
-// section 5), not a form's option list. formConfig.CHOICES.part happens to
-// hold the same four today, but that one describes ONE user's radio question
-// and this describes the button row every user sees; driving the UI from the
-// former couples what anyone can log to what the reference form was built
-// with.
+// section 5). It used to be formConfig's list of one user's radio options,
+// which coupled what anyone could log to how the reference form was built.
+//
+// VC is deliberately absent: a cellist logger is not supported yet, and the
+// gap is in the reader, not here. SLOT_TO_PART has no VC key and SLOT_CLASS
+// hardcodes slot 3 as the cello, both of which encode "the logger is not the
+// cellist" — for a cellist the other three are V1/V2/VA, so slot 3 holds a
+// violist who would be aliased in the wrong class and counted in the wrong
+// column. Offering the button before that is fixed would write rows the reader
+// misreads; leaving it off means a cellist cannot log, which is the failure
+// worth having (howto section 1 says so out loud).
 export const PART_CHOICES = /** @type {const} */ (['V1', 'V2', 'VA1', 'VA2']);
 
 // The form's own required questions. Forms enforces them server-side and the

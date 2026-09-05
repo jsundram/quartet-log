@@ -9,7 +9,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     parsePrefilledLink, readPrefilledLink, buildPrefilledLink, getFormConfig, setFormConfig,
-    clearFormConfig, toFormBody, formAction, CHOICES, consumeFormParam,
+    clearFormConfig, toFormBody, formAction, consumeFormParam,
 } from '../src/formConfig.js';
 import { FIELDS, LABELS, blankEntry } from '../src/logEntry.js';
 import { CSV_HEADERS } from '../src/csvFormat.js';
@@ -136,24 +136,36 @@ test('toFormBody maps each field to its configured id and drops empties', () => 
     const body = toFormBody(blankEntry({
         composer: 'Haydn', title: '76#3', part: 'V1', player1: 'Alice Hart',
     }), config);
-    assert.equal(body.get(config.entry.composer), 'Haydn');
+    assert.equal(body.get(`${config.entry.composer}.other_option_response`), 'Haydn');
     assert.equal(body.get(config.entry.title), '76#3');
     assert.equal(body.get(config.entry.player1), 'Alice Hart');
     // A blank seat is a ditto mark; omitting it lands the same empty cell.
     assert.equal(body.has(config.entry.player2), false);
 });
 
-test('toFormBody routes a value outside a radio option list through Other', () => {
+test('toFormBody sends the two choice questions through Other, always', () => {
+    // Always, not just for unlisted values: there is no list to be outside of,
+    // since another user's options cannot be read cross-origin. Forms stores an
+    // Other response as plain text in the column, so a value that IS an option
+    // lands in the same cell either way -- while a hardcoded list of the
+    // reference form's seven composers would write those seven correctly on a
+    // SHORT ANSWER form and corrupt the other thirteen, silently, starting on
+    // whichever piece first used one.
     const config = parsePrefilledLink(LINK);
-    assert.ok(!CHOICES.composer.includes('Brahms'));
     const body = toFormBody(blankEntry({ composer: 'Brahms', title: '51#1', part: 'V1' }), config);
-    // Without this the form silently rejects every composer past the original
-    // seven, which is most of the catalog.
     assert.equal(body.get(config.entry.composer), '__other_option__');
     assert.equal(body.get(`${config.entry.composer}.other_option_response`), 'Brahms');
-    // A listed value stays a plain option.
-    assert.equal(body.get(config.entry.part), 'V1');
-    assert.equal(body.has(`${config.entry.part}.other_option_response`), false);
+    assert.equal(body.get(config.entry.part), '__other_option__');
+    assert.equal(body.get(`${config.entry.part}.other_option_response`), 'V1');
+
+    // A composer that IS on the reference form takes the same path.
+    const listed = toFormBody(blankEntry({ composer: 'Haydn', title: '76#3', part: 'V1' }), config);
+    assert.equal(listed.get(config.entry.composer), '__other_option__');
+    assert.equal(listed.get(`${config.entry.composer}.other_option_response`), 'Haydn');
+
+    // Everything else is a text question and is sent plainly.
+    assert.equal(listed.get(config.entry.title), '76#3');
+    assert.equal(listed.has(`${config.entry.title}.other_option_response`), false);
 });
 
 test('toFormBody trims, so a stray space cannot mint a phantom name', () => {
