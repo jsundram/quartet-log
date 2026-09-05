@@ -1,62 +1,119 @@
 // @ts-check
-// The Google Form behind the sheet, addressed as a submit target.
+// Which Google Form the log view writes through, and how to address it.
 //
-// POSTing to /formResponse is exactly what the form's own page does, so Forms
-// stays the writer: the sheet keeps its Timestamp column and everything
-// downstream (fillForward, the audits, the CSV export) sees rows it already
-// understands. Only the UI is ours, which is the whole point — the form can't
-// see the log, and the app can.
+// POSTing to a form's /formResponse endpoint is exactly what the form's own
+// page does, so Forms stays the writer: the sheet keeps its Timestamp column
+// and everything downstream (fillForward, the audits, the CSV export) sees
+// rows it already understands. Only the UI is ours.
 //
-// The ids come from the form's own FB_PUBLIC_LOAD_DATA_ blob. They are stable
-// for the life of the form and are re-minted if it is ever rebuilt, which is
-// why they live here alone: one file to re-derive rather than nine call sites.
-// The form itself keeps working untouched, so it stays the fallback.
+// The configuration is PER USER, stored beside the data URL, with no default
+// baked into the bundle. That is not a preference: this site is deployed
+// publicly and anyone can point it at their own sheet, so a hardcoded form id
+// would mean every visitor's entries landing in one person's spreadsheet while
+// their own log stayed empty. A form belongs to whoever configured the sheet
+// it feeds.
+import { FIELDS } from './logEntry.js';
 
-export const FORM_ID = '1FAIpQLSfClydp6ACsHewe7-kJHsl7lrgUS9HCFUvnHFQB5XGa7N41Ow';
-export const FORM_ACTION = `https://docs.google.com/forms/d/e/${FORM_ID}/formResponse`;
-export const FORM_VIEW = `https://docs.google.com/forms/d/e/${FORM_ID}/viewform`;
+/**
+ * @typedef {object} FormConfig
+ * @property {string} formId
+ * @property {Record<string, string>} entry - log field name -> "entry.NNN"
+ */
 
-// One entry id per sheet column, keyed by Entry's field names.
-export const ENTRY = {
-    composer: 'entry.617761884',
-    title:    'entry.1089341946',
-    part:     'entry.906530431',
-    player1:  'entry.2047796227',
-    player2:  'entry.180148173',
-    player3:  'entry.1831808369',
-    others:   'entry.1922346688',
-    location: 'entry.1954495027',
-    comments: 'entry.526774847',
-};
+const STORAGE_KEY = 'quartetlog_form';
 
-// Composer and Which Part are radio questions, so a value outside the option
-// list has to arrive through Forms' "Other" escape: the entry carries a
-// sentinel and the real text rides on a companion field. Every composer past
-// the original seven — the catalog knows twenty — reaches the sheet this way,
-// so these lists are the form's vocabulary, NOT a limit on what can be logged.
+/** @param {string} formId */
+export function formAction(formId) {
+    return `https://docs.google.com/forms/d/e/${formId}/formResponse`;
+}
+
+// Composer and Which Part are radio questions on the reference form, and a
+// value outside a radio's option list has to arrive through Forms' "Other"
+// escape: the entry carries a sentinel and the real text rides on a companion
+// field. We cannot know another user's option lists without fetching their
+// form (cross-origin, so we can't), and Other is harmless on a question that
+// accepts free text anyway — so these are the values known to need it, and
+// anything unlisted is sent through the escape rather than guessed at.
 export const CHOICES = {
     composer: ['Bartok', 'Beethoven', 'Boccherini', 'Haydn', 'Mendelssohn', 'Mozart', 'Shostakovich'],
     part: ['V1', 'V2', 'VA1', 'VA2'],
 };
 const OTHER_OPTION = '__other_option__';
 
-// The form's own required questions. Forms enforces them server-side and the
-// opaque response means a rejection is invisible, so the client has to mirror
-// them — see logEntry.missingFields.
-export const REQUIRED_FIELDS = /** @type {const} */ (['composer', 'title', 'part']);
+/**
+ * Pull the form id and its entry ids out of a Google Forms "pre-filled link".
+ *
+ * This is the only way to learn another user's entry ids from the browser: the
+ * form's own page carries them in a FB_PUBLIC_LOAD_DATA_ blob, but it is
+ * cross-origin and unfetchable, while a pre-filled link is a URL the user can
+ * copy out of the form editor in one step.
+ *
+ * Ids map to columns POSITIONALLY, which is correct by construction rather
+ * than by luck: Forms builds the response sheet's columns from the questions
+ * in order, so the Nth question is the Nth column. It breaks only if questions
+ * were reordered after the sheet already existed, which is why the caller
+ * shows the mapping back for confirmation.
+ *
+ * @param {string} link
+ * @returns {FormConfig|null} null when the link isn't a pre-filled form link
+ *   with exactly one entry per column
+ */
+export function parsePrefilledLink(link) {
+    let url;
+    try { url = new URL(link.trim()); } catch { return null; }
+    if (!url.hostname.endsWith('google.com') || !url.pathname.includes('/forms/')) return null;
+
+    const formId = url.pathname.match(/\/forms\/d\/e\/([^/]+)/)?.[1];
+    if (!formId) return null;
+
+    // Order matters, so read the query string rather than the (unordered)
+    // params object. Forms repeats an id for checkbox questions; the log has
+    // none, and de-duplicating keeps a stray repeat from shifting the mapping.
+    const ids = [];
+    for (const [key] of url.searchParams) {
+        if (/^entry\.\d+$/.test(key) && !ids.includes(key)) ids.push(key);
+    }
+    if (ids.length !== FIELDS.length) return null;
+
+    return { formId, entry: Object.fromEntries(FIELDS.map((f, i) => [f, ids[i]])) };
+}
+
+/** @returns {FormConfig|null} */
+export function getFormConfig() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        // A shape check, not decoration: a half-written config would submit
+        // rows with missing columns and no visible failure (see postEntry).
+        return parsed?.formId && FIELDS.every(f => parsed.entry?.[f]) ? parsed : null;
+    } catch { return null; }
+}
+
+/** @param {FormConfig} config @returns {boolean} */
+export function setFormConfig(config) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); return true; }
+    catch { return false; }
+}
+
+export function clearFormConfig() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* nothing to clear */ }
+}
 
 /**
  * @param {Record<string, string>} entry
+ * @param {FormConfig} config
  * @returns {URLSearchParams}
  */
-export function toFormBody(entry) {
+export function toFormBody(entry, config) {
+    if (!config) throw new TypeError('toFormBody: pass a form config');
     const body = new URLSearchParams();
-    for (const [field, id] of Object.entries(ENTRY)) {
+    for (const field of FIELDS) {
         const value = (entry[field] ?? '').trim();
         // An omitted entry and an empty one produce the same empty cell, and
         // an empty cell is a ditto mark (see logEntry.carriedForward) — so
         // skipping keeps the request small without changing what lands.
         if (!value) continue;
+        const id = config.entry[field];
         const choices = /** @type {Record<string, string[]>} */ (CHOICES)[field];
         if (choices && !choices.includes(value)) {
             body.set(id, OTHER_OPTION);
@@ -74,9 +131,43 @@ export function toFormBody(entry) {
 // available — hence the client-side required-field check in logEntry, and the
 // sheet itself as the real confirmation on the next refresh. A rejection is
 // therefore a TRANSPORT failure, which is exactly the signal the queue wants.
-// URLSearchParams keeps the content type CORS-safelisted, so there's no
+// URLSearchParams keeps the content type CORS-safelisted, so there is no
 // preflight to be blocked.
-/** @param {Record<string, string>} entry */
-export async function postEntry(entry) {
-    await fetch(FORM_ACTION, { method: 'POST', mode: 'no-cors', body: toFormBody(entry) });
+/** @param {Record<string, string>} entry @param {FormConfig} config */
+export async function postEntry(entry, config) {
+    await fetch(formAction(config.formId), {
+        method: 'POST', mode: 'no-cors', body: toFormBody(entry, config),
+    });
+}
+
+/**
+ * Cross-device setup, mirroring urlConfig's ?data= link: if the page URL has
+ * ?form=<pre-filled link>, persist the config it describes and strip the
+ * param. Returns true when one was consumed.
+ */
+export function consumeFormParam() {
+    const params = new URLSearchParams(window.location.search);
+    const link = params.get('form');
+    if (!link) return false;
+    const config = parsePrefilledLink(link);
+    if (config) setFormConfig(config);
+
+    params.delete('form');
+    const search = params.toString();
+    window.history.replaceState(null, '',
+        window.location.pathname + (search ? '?' + search : '') + window.location.hash);
+    return !!config;
+}
+
+/**
+ * The inverse of parsePrefilledLink: a link that round-trips this config, for
+ * the ?form= setup link. Values are left empty — only the ids and their order
+ * carry information.
+ * @param {FormConfig} config
+ * @returns {string}
+ */
+export function buildPrefilledLink(config) {
+    const params = new URLSearchParams({ usp: 'pp_url' });
+    for (const field of FIELDS) params.set(config.entry[field], '');
+    return `https://docs.google.com/forms/d/e/${config.formId}/viewform?${params}`;
 }

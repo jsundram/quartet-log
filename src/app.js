@@ -11,6 +11,7 @@ import { DashboardComponent } from './dashboardComponent.js';
 import { LogComponent } from './logComponent.js';
 import { TableComponent } from './tableComponent.js';
 import { hasDataUrl, getDataUrl, consumeDataParam, buildMobileSetupLink } from './urlConfig.js';
+import { consumeFormParam, getFormConfig, buildPrefilledLink } from './formConfig.js';
 import { initTheme, subscribe as subscribeTheme } from './themeManager.js';
 import { PullToRefresh } from './pullToRefresh.js';
 import { SetupView, flashLabel } from './setupView.js';
@@ -67,6 +68,11 @@ export class App {
         // device (e.g. desktop generates the link → AirDrop/iMessage to
         // phone → opening it on the phone lands here).
         consumeDataParam();
+        // The companion for the log form: a setup link can carry which Google
+        // Form this device writes through, so a second device needs no
+        // re-pasting. Consumed before the UI mounts so the log view opens
+        // already connected.
+        consumeFormParam();
 
         if (hasDataUrl()) {
             this.initialize();
@@ -99,7 +105,11 @@ export class App {
             flashLabel(label, 'No URL set');
             return;
         }
-        const link = buildMobileSetupLink(url);
+        // Carry the log form's config along when there is one, so the other
+        // device is set up for reading AND writing in a single link.
+        const config = getFormConfig();
+        const link = buildMobileSetupLink(url)
+            + (config ? '&form=' + encodeURIComponent(buildPrefilledLink(config)) : '');
         navigator.clipboard.writeText(link).then(
             () => flashLabel(label, 'Copied!'),
             () => flashLabel(label, 'Copy failed'),

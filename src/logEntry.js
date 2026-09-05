@@ -7,15 +7,22 @@
 // time and Google Forms does not. That is the only real difference between
 // this form and the one it replaces.
 import { withInstrument } from './csvFormat.js';
-import { REQUIRED_FIELDS } from './formConfig.js';
 
 /** @typedef {import('./dataProcessor.js').Row} Row */
 /** @typedef {Record<string, string>} Entry */
 
+// The sheet's columns after Timestamp, in sheet order. The order is
+// load-bearing twice over: it is the order Forms asks its questions in, which
+// is how parsePrefilledLink maps entry ids to columns, and LABELS below must
+// stay in step with CSV_HEADERS (test/logEntry.test.mjs pins both).
 export const FIELDS = /** @type {const} */ ([
     'composer', 'title', 'part', 'player1', 'player2', 'player3',
     'others', 'location', 'comments',
 ]);
+
+// The form's own required questions. Forms enforces them server-side and the
+// opaque response means a rejection is invisible, so the client mirrors them.
+export const REQUIRED_FIELDS = /** @type {const} */ (['composer', 'title', 'part']);
 
 // Sheet columns, for messages that have to name a field the user can see.
 export const LABELS = {

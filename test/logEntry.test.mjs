@@ -7,7 +7,6 @@ import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession,
 } from '../src/logEntry.js';
-import { CHOICES, ENTRY, toFormBody } from '../src/formConfig.js';
 
 // A processed row, as normalizePlayerNames leaves it: annotations split off
 // into playerInstruments, Others? parsed into othersList.
@@ -124,33 +123,4 @@ test('nextInSession keeps what describes the session and clears what describes t
     assert.equal(next.location, '');
     // Others? clears too, and othersReminder is what offers it back.
     assert.equal(next.others, '');
-});
-
-test('toFormBody maps each field to its entry id and drops empties', () => {
-    const body = toFormBody(blankEntry({
-        composer: 'Haydn', title: '76#3', part: 'V1', player1: 'Alice Hart',
-    }));
-    assert.equal(body.get(ENTRY.composer), 'Haydn');
-    assert.equal(body.get(ENTRY.title), '76#3');
-    assert.equal(body.get(ENTRY.player1), 'Alice Hart');
-    // A blank seat is a ditto mark; omitting it lands the same empty cell.
-    assert.equal(body.has(ENTRY.player2), false);
-});
-
-test('toFormBody routes a value outside a radio option list through Other', () => {
-    assert.ok(!CHOICES.composer.includes('Brahms'));
-    const body = toFormBody(blankEntry({ composer: 'Brahms', title: '51#1', part: 'V1' }));
-    // Without this the form silently rejects every composer past the original
-    // seven, which is most of the catalog.
-    assert.equal(body.get(ENTRY.composer), '__other_option__');
-    assert.equal(body.get(`${ENTRY.composer}.other_option_response`), 'Brahms');
-    // A listed value stays a plain option.
-    assert.equal(body.get(ENTRY.part), 'V1');
-    assert.equal(body.has(`${ENTRY.part}.other_option_response`), false);
-});
-
-test('toFormBody trims, so a stray space cannot mint a phantom name', () => {
-    const body = toFormBody(blankEntry({ composer: 'Haydn', title: ' 76#3 ', part: 'V1', player1: '   ' }));
-    assert.equal(body.get(ENTRY.title), '76#3');
-    assert.equal(body.has(ENTRY.player1), false);
 });

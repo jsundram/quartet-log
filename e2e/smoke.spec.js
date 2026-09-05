@@ -114,10 +114,50 @@ test('dashboard musician names stay inside the chart at a narrow width', async (
     expect(labels.filter(l => l.full)).toEqual([{ shown: 'Frank', full: 'Frank Vandermeer' }]);
 });
 
-// The log form. Unit tests cover the model (test/logEntry.test.mjs) and the
-// outbox (test/logStore.test.mjs); what only a browser can pin is the wiring
-// between them and the request that actually leaves the page — the carried
-// placeholder, the Other-composer escape, and the queue-then-flush order.
+// The log form. Unit tests cover the model (test/logEntry.test.mjs), the
+// transport (test/formConfig.test.mjs) and the outbox
+// (test/logStore.test.mjs); what only a browser can pin is the wiring between
+// them and the request that actually leaves the page.
+//
+// Obviously-fake entry ids: nothing in the repo carries a real form's, since
+// the config is per-user and there is no default (see src/formConfig.js).
+const FORM_ID = 'FIXTURE-FORM-E2E';
+const FORM_IDS = ['101', '102', '103', '104', '105', '106', '107', '108', '109'];
+const PREFILL = `https://docs.google.com/forms/d/e/${FORM_ID}/viewform?usp=pp_url&`
+    + FORM_IDS.map((id, i) => `entry.${id}=v${i}`).join('&');
+const [COMPOSER_ID, TITLE_ID, PART_ID, , PLAYER2_ID] = FORM_IDS.map(id => `entry.${id}`);
+const PLAYER1_ID = 'entry.104';
+const PLAYER3_ID = 'entry.106';
+
+test('an unconfigured visitor gets the setup panel, not someone else\'s form', async ({ page }) => {
+    // The whole point of per-user config: this site is public, so a visitor
+    // with their own sheet must never be handed a form that posts their rows
+    // into a stranger's spreadsheet.
+    await page.evaluate(() => { window.location.hash = '#log'; });
+    await expect(page.locator('#logSetup')).toBeVisible();
+    await expect(page.locator('#logForm')).toBeHidden();
+    await expect(page.locator('#logSetupSave')).toBeDisabled();
+
+    // A link that isn't one field per column is refused rather than guessed
+    // at — a shifted mapping writes every column one cell over.
+    await page.fill('#logSetupLink', `https://docs.google.com/forms/d/e/${FORM_ID}/viewform?entry.1=a`);
+    await expect(page.locator('#logSetupError')).toContainText('pre-filled link');
+    await expect(page.locator('#logSetupSave')).toBeDisabled();
+
+    // A good one previews the mapping before committing to it, which is the
+    // only moment a reordered-questions form can be caught.
+    await page.fill('#logSetupLink', PREFILL);
+    await expect(page.locator('#logSetupError')).toHaveText('');
+    await expect(page.locator('.log-setup-row')).toHaveCount(9);
+    await expect(page.locator('.log-setup-row').first()).toContainText('Composer');
+    await expect(page.locator('.log-setup-row').first()).toContainText(COMPOSER_ID);
+
+    await page.click('#logSetupSave');
+    await expect(page.locator('#logForm')).toBeVisible();
+    await expect(page.locator('#logSetup')).toBeHidden();
+    await expect(page.locator('#logFormId')).toContainText('M-E2E');
+});
+
 test.describe('log form', () => {
     // Capture Forms submissions instead of sending them. The route is
     // anchored to the /forms/ path so it can't swallow the sheet stub above.
@@ -131,8 +171,14 @@ test.describe('log form', () => {
     }
 
     test.beforeEach(async ({ page }) => {
+        // Configure through the setup link, which exercises consumeFormParam
+        // on the way in.
+        await page.goto(`/?data=${encodeURIComponent(SHEET_URL)}&form=${encodeURIComponent(PREFILL)}`);
+        await expect(page.locator('#update')).toContainText(/Data updated|from cache/, { timeout: 15000 });
         await page.evaluate(() => { window.location.hash = '#log'; });
-        await expect(page.locator('#log')).toBeVisible();
+        await expect(page.locator('#logForm')).toBeVisible();
+        // The param is stripped so it can't linger in history or re-apply.
+        expect(new URL(page.url()).searchParams.get('form')).toBeNull();
     });
 
     test('offers every catalog composer and suggests that composer works', async ({ page }) => {
@@ -166,15 +212,15 @@ test.describe('log form', () => {
         await expect(page.locator('#logStatus')).toContainText('Logged');
 
         const body = new URLSearchParams(bodies.at(-1));
-        expect(body.get('entry.617761884')).toBe('Haydn');
-        expect(body.get('entry.1089341946')).toBe('76#1');
-        expect(body.get('entry.906530431')).toBe('V1');
-        expect(body.get('entry.180148173')).toBe('Erin');
+        expect(body.get(COMPOSER_ID)).toBe('Haydn');
+        expect(body.get(TITLE_ID)).toBe('76#1');
+        expect(body.get(PART_ID)).toBe('V1');
+        expect(body.get(PLAYER2_ID)).toBe('Erin');
         // The untouched seats submit EMPTY, not pre-filled: a blank cell is
         // the sheet's ditto mark, and writing the name back would defeat
         // fillForward's whole purpose.
-        expect(body.has('entry.2047796227')).toBe(false);
-        expect(body.has('entry.1831808369')).toBe(false);
+        expect(body.has(PLAYER1_ID)).toBe(false);
+        expect(body.has(PLAYER3_ID)).toBe(false);
     });
 
     test('carries forward from the row just submitted, not the stale sheet', async ({ page }) => {
@@ -207,8 +253,8 @@ test.describe('log form', () => {
         await expect(page.locator('#logStatus')).toContainText('Logged');
 
         const body = new URLSearchParams(bodies.at(-1));
-        expect(body.get('entry.617761884')).toBe('__other_option__');
-        expect(body.get('entry.617761884.other_option_response')).toBe('Brahms');
+        expect(body.get(COMPOSER_ID)).toBe('__other_option__');
+        expect(body.get(`${COMPOSER_ID}.other_option_response`)).toBe('Brahms');
     });
 
     test('an Other composer survives the post-submit reset', async ({ page }) => {
@@ -264,7 +310,7 @@ test.describe('log form', () => {
 
         // Order is the contract: fillForward reads each row against the one
         // above it, so 76#1 must reach the sheet before 76#2.
-        expect(bodies.map(b => new URLSearchParams(b).get('entry.1089341946')))
+        expect(bodies.map(b => new URLSearchParams(b).get(TITLE_ID)))
             .toEqual(['76#1', '76#2']);
     });
 });

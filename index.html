@@ -148,6 +148,23 @@
          works offline, and the submit queues when it can't. -->
     <div id="log" style="display: none">
         <h1 style="text-align: center">Log a Piece</h1>
+        <!-- Shown until this device knows which Google Form feeds its sheet.
+             There is no default: the site is public and anyone can point it at
+             their own sheet, so a baked-in form id would send every visitor's
+             entries to one person's spreadsheet. -->
+        <div id="logSetup" class="log-setup" hidden>
+            <p>To log from here, connect the Google Form that feeds your sheet.</p>
+            <ol>
+                <li>Open your form for editing, then <b>&#8942;</b> &rarr; <b>Get pre-filled link</b>.</li>
+                <li>Put anything in every field, then <b>Get link</b> &rarr; <b>Copy link</b>.</li>
+                <li>Paste it below. Nothing is submitted &mdash; only the field ids are read.</li>
+            </ol>
+            <input id="logSetupLink" type="url" placeholder="https://docs.google.com/forms/d/e/.../viewform?usp=pp_url&amp;entry...">
+            <div id="logSetupMap" class="log-setup-map"></div>
+            <p id="logSetupError" class="log-status"></p>
+            <button type="button" id="logSetupSave" class="log-submit" disabled>Connect form</button>
+        </div>
+
         <form id="logForm" class="log-form" autocomplete="off">
             <div class="log-field">
                 <label for="logComposer">Composer</label>
@@ -196,6 +213,7 @@
 
             <button type="submit" id="logSubmit" class="log-submit">Log it</button>
             <p id="logStatus" class="log-status"></p>
+            <p class="log-connected">Writing to form <code id="logFormId"></code>. <a href="#" id="logChangeForm">Change</a></p>
         </form>
         <div id="logPending" class="log-pending" hidden></div>
     </div>

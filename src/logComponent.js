@@ -1,10 +1,13 @@
 import * as d3 from "d3";
 import { composerWorkIndex } from './catalog.js';
-import { CHOICES, postEntry } from './formConfig.js';
+import {
+    CHOICES, postEntry, parsePrefilledLink, getFormConfig, setFormConfig,
+    clearFormConfig,
+} from './formConfig.js';
 import * as store from './logStore.js';
 import {
     blankEntry, carriedForward, resolveCarry, othersReminder, missingFields,
-    warnings, knownPlayers, knownLocations, nextInSession,
+    warnings, knownPlayers, knownLocations, nextInSession, FIELDS, LABELS,
 } from './logEntry.js';
 
 // The entry field each text input owns. `part` is absent: it's a segmented
@@ -41,6 +44,10 @@ export class LogComponent {
         this.rows = [];
         this.entry = blankEntry();
         this.works = {};
+        // Which form this device writes through. There is no default, so an
+        // unconfigured visitor gets the setup panel rather than a form that
+        // would post someone else's rows into a stranger's spreadsheet.
+        this.config = null;
         this.mounted = false;
     }
 
@@ -63,8 +70,10 @@ export class LogComponent {
     // Idempotent, per initializeUI's re-init contract: a second call rebuilds
     // the pickers rather than stacking a second set of part buttons.
     mount() {
+        this.config = getFormConfig();
         this.buildComposerPicker();
         this.wireFields();
+        this.wireSetup();
         if (!this.mounted) {
             this.mounted = true;
             d3.select('#logForm').on('submit', (e) => { e.preventDefault(); this.submit(); });
@@ -74,9 +83,71 @@ export class LogComponent {
         this.refresh();
     }
 
+    wireSetup() {
+        // Preview the mapping BEFORE saving: the ids map to columns
+        // positionally, which is right by construction for a form and the
+        // sheet it created, but wrong if the questions were reordered
+        // afterwards. This is the only moment anyone can catch that.
+        d3.select('#logSetupLink').on('input', (e) => {
+            const link = e.target.value.trim();
+            this.pendingConfig = link ? parsePrefilledLink(link) : null;
+            d3.select('#logSetupSave').property('disabled', !this.pendingConfig);
+            d3.select('#logSetupError').text(
+                !link || this.pendingConfig ? ''
+                    : `That doesn't look like a pre-filled link with one field per column (${FIELDS.length} needed).`);
+            this.renderSetupMap();
+        });
+        d3.select('#logSetupSave').on('click', () => {
+            if (!this.pendingConfig) return;
+            setFormConfig(this.pendingConfig);
+            this.config = this.pendingConfig;
+            this.pendingConfig = null;
+            d3.select('#logSetupLink').property('value', '');
+            this.renderMode();
+            this.status('Form connected.', 'ok');
+            this.flushQueue();
+        });
+        d3.select('#logChangeForm').on('click', (e) => {
+            e.preventDefault();
+            clearFormConfig();
+            this.config = null;
+            this.renderMode();
+        });
+    }
+
+    renderSetupMap() {
+        const rows = this.pendingConfig
+            ? FIELDS.map(f => ({ label: LABELS[f], id: this.pendingConfig.entry[f] }))
+            : [];
+        d3.select('#logSetupMap').selectAll('.log-setup-row')
+            .data(rows, d => d.label)
+            .join(enter => {
+                const row = enter.append('div').attr('class', 'log-setup-row');
+                row.append('span').attr('class', 'log-setup-col');
+                row.append('code');
+                return row;
+            })
+            .call(row => {
+                row.select('.log-setup-col').text(d => d.label);
+                row.select('code').text(d => d.id);
+            });
+    }
+
+    // Form or setup panel, never both.
+    renderMode() {
+        d3.select('#logForm').property('hidden', !this.config);
+        d3.select('#logSetup').property('hidden', !!this.config);
+        d3.select('#logFormId').text(this.config ? `...${this.config.formId.slice(-6)}` : '');
+        this.renderPending();
+    }
+
     // The view just became visible: retry anything queued.
     notifyShown() {
         if (this.mounted) this.flushQueue();
+    }
+
+    hasForm() {
+        return !!this.config;
     }
 
     buildComposerPicker() {
@@ -168,7 +239,7 @@ export class LogComponent {
         this.renderWorkOptions();
         this.renderSuggestions();
         this.renderOthersChip();
-        this.renderPending();
+        this.renderMode();
     }
 
     renderFields() {
@@ -237,13 +308,15 @@ export class LogComponent {
     }
 
     async flushQueue() {
-        if (!store.pending().length) return;
-        const { sent, remaining } = await store.flush(postEntry);
+        // Nothing can be sent without knowing where to; the entries keep.
+        if (!this.config || !store.pending().length) return;
+        const { sent, remaining } = await store.flush(e => postEntry(e, this.config));
         this.renderPending();
         if (sent) this.status(remaining ? `Sent ${sent}; ${remaining} still waiting.` : `Sent ${sent}.`, 'ok');
     }
 
     async submit() {
+        if (!this.config) return;   // the form is hidden without one
         const missing = missingFields(this.entry);
         if (missing.length) {
             this.status(`Still needs: ${missing.join(', ')}.`, 'error');
@@ -261,7 +334,7 @@ export class LogComponent {
         // previous row.
         store.enqueue(entry);
         const button = d3.select('#logSubmit').property('disabled', true);
-        const { remaining } = await store.flush(postEntry);
+        const { remaining } = await store.flush(e => postEntry(e, this.config));
         button.property('disabled', false);
 
         store.setRecent(resolved);

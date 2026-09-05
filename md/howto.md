@@ -65,10 +65,24 @@ knows things the form cannot, because the app has your whole log loaded:
   in a basement queues up and goes out, in order, when you have a network
   again. You can see what is waiting at the bottom of the form.
 
-Either way in works, and both write the same rows. If you built your own form
-by following this guide, the in-app version is wired to one specific Google
-Form (its id and field ids live in `src/formConfig.js`), so pin your own form
-unless you re-point that file at yours.
+Either way in works, and both write the same rows.
+
+**Connecting your form.** The site has no form of its own — it writes through
+yours, and it has to be told which. The first time you open **Log a Piece** it
+asks for a *pre-filled link*, which is where Google Forms puts the field ids:
+
+1. Open your form for editing and choose **⋮ → Get pre-filled link**.
+2. Put anything at all in every field, then **Get link → Copy link**.
+3. Paste it into the log form's setup panel.
+
+Nothing is submitted by that step: only the ids are read, and they are matched
+to your sheet's columns in order, which is the order Forms created them in.
+The panel shows you the mapping before you commit to it, so a form whose
+questions were reordered after the sheet already existed is something you can
+see rather than discover months later.
+
+The connection lives on that device, next to your sheet URL. **Copy setup
+link** in the menu carries both, so setting up a second device is one link.
 
 ## 4. Use it
 

@@ -1458,6 +1458,13 @@ body.network-fullscreen-open {
     display: contents;
 }
 
+/* An element with its own `display` outranks the UA's [hidden] rule, so the
+   form/setup toggle has to say it again with the attribute in the selector. */
+.log-form[hidden],
+.log-setup[hidden] {
+    display: none;
+}
+
 .log-field label {
     color: var(--color-text-secondary);
     justify-self: end;
@@ -1574,6 +1581,83 @@ body.network-fullscreen-open {
 
 .log-status.ok { color: var(--color-accent-selected); }
 .log-status.error { color: var(--color-text-error); }
+
+/* Connect-your-form panel, shown in place of the fields until this device
+   knows where to write. */
+.log-setup {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 0 16px 24px;
+}
+
+.log-setup ol {
+    margin: 10px 0;
+    padding-left: 22px;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+}
+
+.log-setup input {
+    width: 100%;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 16px;
+    color: var(--color-text-primary);
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border-standard);
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+
+.log-setup .log-submit {
+    display: block;
+    width: 100%;
+}
+
+/* The parsed mapping, shown before saving. Ids map to columns positionally,
+   which is right by construction for a form and the sheet it created and
+   wrong if the questions were later reordered — this is the one moment
+   anyone can catch that. */
+.log-setup-map:not(:empty) {
+    margin: 12px 0;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 6px;
+}
+
+.log-setup-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 10px;
+    font-size: 13px;
+}
+
+.log-setup-row:nth-child(odd) {
+    background: var(--color-bg-stripe);
+}
+
+.log-setup-col {
+    color: var(--color-text-secondary);
+}
+
+.log-setup-row code,
+.log-connected code {
+    color: var(--color-text-primary);
+}
+
+/* Which form this device writes through. Low weight, but present: "am I
+   writing to my own sheet" should be answerable without opening devtools. */
+.log-connected {
+    grid-column: 1 / -1;
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    text-align: center;
+}
+
+.log-connected a {
+    color: var(--color-accent);
+}
 
 /* Queued entries. Visible and discardable on purpose: an invisible outbox is
    how a submission silently never happens. */
