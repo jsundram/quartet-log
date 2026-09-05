@@ -327,11 +327,12 @@ test.describe('log form', () => {
         await expect(page.locator('#logStatus')).toContainText('Logged');
 
         const body = new URLSearchParams(bodies.at(-1));
-        // Composer and Which Part always ride the Other escape (the form has
-        // no option list this app can read); everything else is sent plainly.
+        // Composer always rides the Other escape (its value space is unbounded
+        // and the app cannot read the form's options); everything else,
+        // Which Part included, is sent plainly.
         expect(body.get(`${COMPOSER_ID}.other_option_response`)).toBe('Haydn');
         expect(body.get(TITLE_ID)).toBe('76#1');
-        expect(body.get(`${PART_ID}.other_option_response`)).toBe('V1');
+        expect(body.get(PART_ID)).toBe('V1');
         expect(body.get(PLAYER2_ID)).toBe('Erin');
         // The untouched seats submit EMPTY, not pre-filled: a blank cell is
         // the sheet's ditto mark, and writing the name back would defeat
@@ -361,11 +362,17 @@ test.describe('log form', () => {
         await expect(page.locator('#logTitle')).toHaveValue('');
     });
 
-    test('every composer rides the Other escape, listed on the reference form or not', async ({ page }) => {
-        // There is no option list to be outside of -- another user's cannot be
-        // read cross-origin -- so the escape is the only path, and a form whose
-        // Composer question is not multiple-choice-with-Other now fails on the
-        // FIRST piece rather than on whichever one first used an unlisted name.
+    test('every composer rides the Other escape; Which Part never does', async ({ page }) => {
+        // There is no composer option list to be outside of -- another user's
+        // cannot be read cross-origin -- so the escape is the only path, and a
+        // form whose Composer question is not multiple-choice-with-Other now
+        // fails on the FIRST piece rather than on whichever one first used an
+        // unlisted name.
+        //
+        // Which Part goes plainly, because the escape is not free: it requires
+        // Other to be switched on, and a multiple-choice question without it
+        // rejects the response silently. A fixed four-seat question is the last
+        // one anyone would enable Other for.
         const bodies = await captureSubmits(page);
         for (const [composer, title] of [['Brahms', '51#1'], ['Haydn', '76#1']]) {
             await pickComposer(page, composer);
@@ -377,8 +384,8 @@ test.describe('log form', () => {
             const body = new URLSearchParams(bodies.at(-1));
             expect(body.get(COMPOSER_ID)).toBe('__other_option__');
             expect(body.get(`${COMPOSER_ID}.other_option_response`)).toBe(composer);
-            expect(body.get(PART_ID)).toBe('__other_option__');
-            expect(body.get(`${PART_ID}.other_option_response`)).toBe('VA1');
+            expect(body.get(PART_ID)).toBe('VA1');
+            expect(body.has(`${PART_ID}.other_option_response`)).toBe(false);
         }
     });
 

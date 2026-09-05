@@ -15,21 +15,27 @@
 **Two things the log site needs from that form**, if you plan to use **Log a
 Piece** (section 3) rather than the Google Form itself:
 
-- **Make Composer and Which Part multiple-choice questions, and switch on
-  "Other" for both.** Every value the app submits for those two arrives through
-  Google's *Other* box, including ones that match an option you listed. It has
-  to: your form's option list is on Google's servers and the app cannot read
-  it, so it can never know whether the composer you just picked is on it. An
-  Other response lands in the response sheet as ordinary text, so the column
-  reads exactly the same either way.
+- **Composer must be a multiple-choice question with "Other" switched on.**
+  Every composer the app submits arrives through Google's *Other* box, even one
+  that matches an option you listed. It has to: your option list lives on
+  Google's servers and the app cannot read it, so it can never know whether the
+  composer you just picked is on it — and the list could not cover them anyway,
+  since **Other…** in the app accepts any name you type. An Other response lands
+  in the response sheet as ordinary text, so the column reads the same either
+  way.
 
-  If those questions are short-answer boxes instead, the cell fills with the
-  literal text `__other_option__`, and if they are multiple-choice *without*
-  Other, Google rejects the whole row. Either way the app still says "Logged",
-  because Google's reply to a submission tells it nothing (section 3). You will
-  see it on your first piece, so log one and look at the sheet.
+  Get this wrong and it shows on your very first piece: a short-answer Composer
+  box fills with the literal text `__other_option__`, and a multiple-choice one
+  *without* Other makes Google reject the whole row so nothing arrives. The app
+  says "Logged" in both cases, because Google's reply to a submission tells it
+  nothing (section 3) — so log one piece and look at the sheet.
 
-- **Everything else can be whatever you like** — the other eight questions are
+- **Which Part should offer V1, V2, VA1 and VA2.** Those are the four the app
+  submits, and it sends them as plain values, so this question can be
+  multiple-choice or short answer and does not need Other. (Cello is not among
+  them — see below.)
+
+- **Everything else can be whatever you like** — the other seven questions are
   read as plain text.
 
 **Cellists: not yet.** The app assumes the person logging is a violinist or

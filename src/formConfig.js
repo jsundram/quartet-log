@@ -27,25 +27,36 @@ export function formAction(formId) {
     return `https://docs.google.com/forms/d/e/${formId}/formResponse`;
 }
 
-// Composer and Which Part are multiple-choice questions, and every value for
-// them is sent through Forms' "Other" escape: the entry carries a sentinel and
-// the real text rides on a companion field. Forms stores an Other response as
-// plain text in the response-sheet column, so a value that IS one of the
-// options lands in the same cell either way — the only visible difference is
-// the Form's own built-in response summary, which nothing here reads.
+// Composer alone is sent through Forms' "Other" escape: the entry carries a
+// sentinel and the real text rides on a companion field. Forms stores an Other
+// response as plain text in the response-sheet column, so a value that IS one
+// of the question's options lands in the same cell either way — the only
+// visible difference is the Form's own summary view, which nothing here reads.
 //
-// ALWAYS, rather than only for values outside the list, because there is no
-// list to be outside of: another user's options can't be read cross-origin.
-// This used to hold the reference form's seven composers and send anything
-// else through the escape, which meant a form whose Composer question was
-// built as SHORT ANSWER wrote those seven correctly and corrupted the other
-// thirteen the catalog knows — the worst shape a failure can take here, since
-// the opaque response says "Logged" either way and the damage only starts on
-// whichever piece first uses an unlisted composer. Requiring Other is a
-// condition we can state up front (md/howto.md section 1) instead of a guess we
-// re-make on every submit, and a form that does not meet it now fails on the
-// first piece rather than the eighth.
-const OTHER_FIELDS = new Set(['composer', 'part']);
+// The escape is used where the VALUE SPACE IS UNBOUNDED, which is the only
+// place it earns its cost. Composer is unbounded: the catalog knows twenty and
+// "Other..." accepts anything, so no option list could cover it, and we cannot
+// read the user's list to find out (cross-origin). Which Part is not — the app
+// only ever submits one of PART_CHOICES' four, which a form feeding this sheet
+// has to offer anyway or the column would hold values the reader can't map to
+// a seat. So it goes plainly.
+//
+// That asymmetry matters because the escape is not free: it REQUIRES "Other"
+// to be enabled on the question, and a multiple-choice question without it
+// rejects the whole response — silently, since the reply is opaque. Sending
+// Which Part through the escape would therefore have made every submission
+// depend on Other being switched on for a fixed four-seat question, which is
+// the last question anyone would think to enable it for. A plain value works
+// whether the question is multiple-choice or short answer, and whether or not
+// Other is on; the escape works only in the one case. So the precondition
+// stated in md/howto.md section 1 is about Composer, and only Composer.
+//
+// This all replaced a hardcoded list of the reference form's seven composers,
+// which sent those seven plainly and everything else through the escape: on a
+// SHORT ANSWER Composer question that wrote seven correctly and put the literal
+// __other_option__ in the cell for the other thirteen — partial, delayed, and
+// invisible behind the opaque response.
+const OTHER_FIELDS = new Set(['composer']);
 const OTHER_OPTION = '__other_option__';
 
 /**

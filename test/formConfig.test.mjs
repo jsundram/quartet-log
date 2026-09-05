@@ -143,7 +143,7 @@ test('toFormBody maps each field to its configured id and drops empties', () => 
     assert.equal(body.has(config.entry.player2), false);
 });
 
-test('toFormBody sends the two choice questions through Other, always', () => {
+test('composer always rides the Other escape, listed or not', () => {
     // Always, not just for unlisted values: there is no list to be outside of,
     // since another user's options cannot be read cross-origin. Forms stores an
     // Other response as plain text in the column, so a value that IS an option
@@ -152,20 +152,30 @@ test('toFormBody sends the two choice questions through Other, always', () => {
     // SHORT ANSWER form and corrupt the other thirteen, silently, starting on
     // whichever piece first used one.
     const config = parsePrefilledLink(LINK);
-    const body = toFormBody(blankEntry({ composer: 'Brahms', title: '51#1', part: 'V1' }), config);
-    assert.equal(body.get(config.entry.composer), '__other_option__');
-    assert.equal(body.get(`${config.entry.composer}.other_option_response`), 'Brahms');
-    assert.equal(body.get(config.entry.part), '__other_option__');
-    assert.equal(body.get(`${config.entry.part}.other_option_response`), 'V1');
+    for (const composer of ['Brahms', 'Haydn']) {
+        const body = toFormBody(blankEntry({ composer, title: '51#1', part: 'V1' }), config);
+        assert.equal(body.get(config.entry.composer), '__other_option__');
+        assert.equal(body.get(`${config.entry.composer}.other_option_response`), composer);
+    }
+});
 
-    // A composer that IS on the reference form takes the same path.
-    const listed = toFormBody(blankEntry({ composer: 'Haydn', title: '76#3', part: 'V1' }), config);
-    assert.equal(listed.get(config.entry.composer), '__other_option__');
-    assert.equal(listed.get(`${config.entry.composer}.other_option_response`), 'Haydn');
-
-    // Everything else is a text question and is sent plainly.
-    assert.equal(listed.get(config.entry.title), '76#3');
-    assert.equal(listed.has(`${config.entry.title}.other_option_response`), false);
+test('everything else is sent plainly, Which Part included', () => {
+    // The escape REQUIRES "Other" to be enabled, and a multiple-choice question
+    // without it rejects the whole response -- silently, since the reply is
+    // opaque. Which Part is a fixed four the form must already offer, so a
+    // plain value works whether the question is multiple-choice or short
+    // answer and whether or not Other is on; routing it through the escape
+    // would have made every submission depend on Other being switched on for
+    // the one question nobody would think to enable it for.
+    const config = parsePrefilledLink(LINK);
+    const body = toFormBody(blankEntry({
+        composer: 'Haydn', title: '76#3', part: 'VA1', location: 'Home',
+    }), config);
+    assert.equal(body.get(config.entry.part), 'VA1');
+    assert.equal(body.has(`${config.entry.part}.other_option_response`), false);
+    assert.equal(body.get(config.entry.title), '76#3');
+    assert.equal(body.has(`${config.entry.title}.other_option_response`), false);
+    assert.equal(body.get(config.entry.location), 'Home');
 });
 
 test('toFormBody trims, so a stray space cannot mint a phantom name', () => {
