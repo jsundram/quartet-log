@@ -281,7 +281,10 @@
 
             <button type="submit" id="logSubmit" class="log-submit">Log it</button>
             <p id="logStatus" class="log-status" role="status" aria-live="polite"></p>
-            <p class="log-connected">Writing to form <code id="logFormId"></code>. <a href="#" id="logChangeForm">Change</a></p>
+            <!-- The id is a plain span; the <code> and the link inside it are
+                 rendered, because the tail is only a useful answer to "am I
+                 writing to my own sheet" if you can open the form and look. -->
+            <p class="log-connected">Writing to form <span id="logFormId"></span>. <a href="#" id="logChangeForm">Change</a></p>
         </form>
         <div id="logPending" class="log-pending" hidden></div>
     </div>

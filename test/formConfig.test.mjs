@@ -9,7 +9,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     parsePrefilledLink, readPrefilledLink, buildPrefilledLink, getFormConfig, setFormConfig,
-    clearFormConfig, toFormBody, formAction, consumeFormParam,
+    clearFormConfig, toFormBody, formAction, formViewUrl, consumeFormParam,
 } from '../src/formConfig.js';
 import { FIELDS, LABELS, blankEntry } from '../src/logEntry.js';
 import { CSV_HEADERS } from '../src/csvFormat.js';
@@ -129,6 +129,19 @@ test('a half-written or corrupt config reads as unconfigured', () => {
 test('formAction addresses the submit endpoint of the configured form', () => {
     assert.equal(formAction(FORM_ID),
         `https://docs.google.com/forms/d/e/${FORM_ID}/formResponse`);
+});
+
+test('formViewUrl addresses the form a human can open, which is how "is this mine" is answered', () => {
+    // The UI prints only the last characters of an id. That distinguishes two
+    // forms for someone who knows their own id and answers nothing for someone
+    // deciding on a link they were sent, which is the only moment it is asked.
+    assert.equal(formViewUrl(FORM_ID),
+        `https://docs.google.com/forms/d/e/${FORM_ID}/viewform`);
+});
+
+test('the setup link is the view URL plus the ids, not a second address for the form', () => {
+    const config = parsePrefilledLink(LINK);
+    assert.ok(buildPrefilledLink(config).startsWith(formViewUrl(config.formId) + '?'));
 });
 
 test('toFormBody maps each field to its configured id and drops empties', () => {
