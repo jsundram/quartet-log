@@ -221,7 +221,7 @@ export function consumeFormParam() {
     const link = params.get('form');
     if (!link) return null;
 
-    const config = parsePrefilledLink(link);
+    const proposal = proposalFromLink(link);
     // Strip ?form= however it turns out, so a declined proposal can't return
     // on reload and a bad one doesn't linger in history.
     params.delete('form');
@@ -229,6 +229,25 @@ export function consumeFormParam() {
     window.history.replaceState(null, '',
         window.location.pathname + (search ? '?' + search : '') + window.location.hash);
 
+    return proposal;
+}
+
+/**
+ * A pre-filled link read as a PROPOSAL: parsed, and silent both when it will
+ * not parse and when it names the form already configured (re-opening your own
+ * setup link asks nothing, because it changes nothing).
+ *
+ * Separate from consumeFormParam because the link now arrives two ways — from
+ * the address bar, and pasted into the setup box as part of a setup link — and
+ * "never adopt, and don't ask about my own form" is the rule that must hold
+ * for both. A second copy of it in the caller is a rule that can come to
+ * disagree with itself; only the STRIPPING above is specific to the URL route.
+ *
+ * @param {string|null} link
+ * @returns {FormConfig|null} a config awaiting the user's decision
+ */
+export function proposalFromLink(link) {
+    const config = link ? parsePrefilledLink(link) : null;
     if (!config) return null;
     return config.formId === getFormConfig()?.formId ? null : config;
 }

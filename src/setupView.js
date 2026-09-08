@@ -2,7 +2,7 @@
 // Google Sheets CSV URL. Split out of app.js: owns everything under
 // #setupView plus the show/hide of the main chrome around it.
 import * as d3 from "d3";
-import { setDataUrl, isValidGoogleSheetsUrl, buildMobileSetupLink } from './urlConfig.js';
+import { setDataUrl, isValidGoogleSheetsUrl, buildMobileSetupLink, readSetupLink } from './urlConfig.js';
 
 // Briefly swap a selection's text, then restore it. Re-entrancy-safe: rapid
 // re-clicks keep the true original (not the flashed text) and reset the
@@ -21,9 +21,26 @@ export function flashLabel(sel, msg) {
     }, 1500);
 }
 
+// What the box accepts: the published-CSV URL it asks for, or a setup link
+// carrying one. Both are things a user has in hand at this moment and neither
+// is distinguishable from the other by eye, so refusing the second taught
+// nothing — "Invalid URL" for a link the app itself generated. Returns the
+// data URL plus the setup link's form half, if it had one.
+/**
+ * @param {string} raw
+ * @returns {{ url: string, formLink: string|null }|null}
+ */
+function readDataUrlOrSetupLink(raw) {
+    if (isValidGoogleSheetsUrl(raw)) return { url: raw, formLink: null };
+    const link = readSetupLink(raw);
+    return link ? { url: link.dataUrl, formLink: link.formLink } : null;
+}
+
 export class SetupView {
-    // `onSubmit` receives nothing — the URL is already persisted via
-    // setDataUrl when it fires; the app just re-runs its initialize path.
+    // `onSubmit` fires with the URL already persisted via setDataUrl; the app
+    // just re-runs its initialize path. It receives `{ formLink }` — the
+    // ?form= half of a pasted setup link, unparsed and unadopted, for the app
+    // to put to the user the same way an address-bar ?form= is put.
     constructor({ onSubmit }) {
         this.onSubmit = onSubmit;
     }
@@ -82,14 +99,15 @@ export class SetupView {
             errorEl.text('Please enter a URL').style('display', 'block');
             return;
         }
-        if (!isValidGoogleSheetsUrl(url)) {
-            errorEl.text('Invalid URL. Please enter a Google Sheets CSV export URL (must contain "output=csv")').style('display', 'block');
+        const parsed = readDataUrlOrSetupLink(url);
+        if (!parsed) {
+            errorEl.text('Invalid URL. Paste a Google Sheets CSV export URL (must contain "output=csv"), or a setup link copied from your other device.').style('display', 'block');
             return;
         }
 
-        setDataUrl(url);
+        setDataUrl(parsed.url);
         this.hide();
-        this.onSubmit();
+        this.onSubmit({ formLink: parsed.formLink });
     }
 
     handleCopyMobileLink() {
@@ -102,13 +120,17 @@ export class SetupView {
                 .style('display', 'block');
             return;
         }
-        if (!isValidGoogleSheetsUrl(url)) {
+        // A setup link pasted in here is already the thing this button makes,
+        // and it may carry a ?form= half that rebuilding from the data URL
+        // alone would silently drop — so copy it through verbatim.
+        const setupLink = readSetupLink(url);
+        if (!setupLink && !isValidGoogleSheetsUrl(url)) {
             errorEl.text('Invalid URL. Please enter a valid Google Sheets CSV export URL (must contain "output=csv") before copying.')
                 .style('display', 'block');
             return;
         }
 
-        const mobileLink = buildMobileSetupLink(url);
+        const mobileLink = setupLink ? url : buildMobileSetupLink(url);
         navigator.clipboard.writeText(mobileLink).then(
             () => {
                 flashLabel(d3.select('#copyMobileLink'), 'Copied!');

@@ -222,6 +222,31 @@ test('a link cannot connect a form to a fresh device without being asked', async
     expect(await page.evaluate(() => localStorage.getItem('quartetlog_form'))).toBeNull();
 });
 
+test('the setup box takes a setup link, and still only proposes its form', async ({ page }) => {
+    // A setup link is meant for the address bar, but it is URL-shaped and the
+    // setup box is the first URL-shaped box a new device shows — so that is
+    // where it gets pasted, and it used to be refused as "Invalid URL": the
+    // app rejecting a link the app itself generated. The sheet half is read
+    // out of it; the FORM half is still only proposed, because pasting a link
+    // is no more a decision about where rows are sent than opening one is.
+    const link = `/?data=${encodeURIComponent(SHEET_URL)}&form=${encodeURIComponent(PREFILL)}`;
+    await page.evaluate(() => localStorage.clear());
+    await page.goto('/');
+    await expect(page.locator('#setupView')).toBeVisible({ timeout: 15000 });
+
+    await page.fill('#dataUrlInput', new URL(link, page.url()).href);
+    await page.click('#setupForm button[type="submit"]');
+    await expect(page.locator('#update')).toContainText(/Data updated|from cache/, { timeout: 15000 });
+    await expect(page.locator('#setupView')).toBeHidden();
+
+    await page.evaluate(() => { window.location.hash = '#log'; });
+    await expect(page.locator('#logProposal')).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('quartetlog_form'))).toBeNull();
+    await page.click('#logProposalAccept');
+    await expect(page.locator('#logForm')).toBeVisible();
+    await expect(page.locator('#logFormId')).toContainText('M-E2E');
+});
+
 test.describe('log form', () => {
     // Capture Forms submissions instead of sending them. The route is
     // anchored to the /forms/ path so it can't swallow the sheet stub above.

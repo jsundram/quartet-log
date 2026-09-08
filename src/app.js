@@ -11,7 +11,7 @@ import { DashboardComponent } from './dashboardComponent.js';
 import { LogComponent } from './logComponent.js';
 import { TableComponent } from './tableComponent.js';
 import { hasDataUrl, getDataUrl, consumeDataParam, buildMobileSetupLink } from './urlConfig.js';
-import { consumeFormParam, getFormConfig, buildPrefilledLink } from './formConfig.js';
+import { consumeFormParam, getFormConfig, buildPrefilledLink, proposalFromLink } from './formConfig.js';
 import { initTheme, subscribe as subscribeTheme } from './themeManager.js';
 import { PullToRefresh } from './pullToRefresh.js';
 import { SetupView, flashLabel } from './setupView.js';
@@ -43,7 +43,7 @@ export class App {
         this.dashboardComponent = new DashboardComponent();
         this.logComponent = new LogComponent();
         this.pullToRefresh = new PullToRefresh({ onRefresh: () => this.revalidate() });
-        this.setupView = new SetupView({ onSubmit: () => this.initialize() });
+        this.setupView = new SetupView({ onSubmit: (opts) => this.applySetup(opts) });
         // Lazy tab rendering (see filterData): tabs whose content is stale
         // under the latest filter, rendered only when they become visible.
         this._dirtyTabs = new Set();
@@ -97,6 +97,18 @@ export class App {
             this.dashboardComponent.render();
             this.filterData("date"); // refreshes tab content (play-square colors etc.)
         }
+    }
+
+    // The setup screen accepted a URL. A setup link pasted there can carry the
+    // log form too, and it arrives here for the same treatment an address-bar
+    // ?form= gets in start(): a PROPOSAL, never an adoption. Pasting a link is
+    // no more a decision about where entries are sent than opening one is, and
+    // this is exactly the moment someone has a link they were handed — so the
+    // one question the user must answer themselves is asked, not skipped.
+    applySetup({ formLink } = {}) {
+        const proposed = proposalFromLink(formLink);
+        if (proposed) this.logComponent.proposeConfig(proposed);
+        this.initialize();
     }
 
     // Menu "Copy setup link": same as the setup-screen button, but the URL

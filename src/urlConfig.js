@@ -144,3 +144,36 @@ export function isValidGoogleSheetsUrl(url) {
         return false;
     }
 }
+
+/**
+ * The inverse of buildMobileSetupLink, for text a human pasted rather than a
+ * URL the browser is already on.
+ *
+ * A setup link is meant for the address bar, but it looks exactly like a URL,
+ * and the first URL-shaped box a new user meets is the setup screen's — so
+ * that is where it gets pasted, and it was refused as "Invalid URL" for the
+ * un-actionable reason that it is not a Sheets URL. Reading it here costs one
+ * parse and makes both routes land in the same place.
+ *
+ * Only the params are read: no navigation, and no trust in the link's own
+ * origin or path (a link copied from a dev build is still the user's own
+ * config). The data URL is validated exactly as the address-bar route
+ * validates it, and the form half is returned UNPARSED — the caller puts it
+ * to the user as a proposal, because pasting a link is not a decision about
+ * where entries get sent any more than opening one is (see
+ * formConfig.consumeFormParam).
+ *
+ * @param {string} text
+ * @returns {{ dataUrl: string, formLink: string|null }|null}
+ */
+export function readSetupLink(text) {
+    let params;
+    try {
+        params = new URL(String(text).trim()).searchParams;
+    } catch {
+        return null;
+    }
+    const dataUrl = params.get('data');
+    if (!isValidGoogleSheetsUrl(dataUrl)) return null;
+    return { dataUrl, formLink: params.get('form') };
+}

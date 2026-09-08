@@ -44,7 +44,7 @@ You don't have to retype the CSV URL on your phone or another computer. On the s
 https://log.quartetroulette.com/?data=...
 ```
 
-Send that link to yourself via AirDrop, iMessage, email, etc. Opening it on the other device configures Quartet Log automatically — no setup screen.
+Send that link to yourself via AirDrop, iMessage, email, etc. Opening it on the other device configures Quartet Log automatically — no setup screen. If you end up on the setup screen anyway, paste the setup link into the box there instead: it accepts either a CSV URL or a setup link.
 
 Already logged in? You can grab the same link any time from the hamburger menu &rarr; **Copy setup link**.
 
@@ -63,6 +63,8 @@ Make sure your URL:
 - Comes from Google Sheets (domain ends with `google.com`)
 - Contains `/spreadsheets/` in the path
 - Has `output=csv` as a query parameter
+
+A **setup link** (`https://log.quartetroulette.com/?data=...`) is also accepted in that box — the CSV URL is read out of it. If one is rejected, the CSV URL inside it is the thing to check against the list above.
 
 ### Data Not Loading
 

@@ -9,7 +9,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     parsePrefilledLink, readPrefilledLink, buildPrefilledLink, getFormConfig, setFormConfig,
-    clearFormConfig, toFormBody, formAction, formViewUrl, consumeFormParam,
+    clearFormConfig, toFormBody, formAction, formViewUrl, consumeFormParam, proposalFromLink,
 } from '../src/formConfig.js';
 import { FIELDS, LABELS, blankEntry } from '../src/logEntry.js';
 import { CSV_HEADERS } from '../src/csvFormat.js';
@@ -237,6 +237,25 @@ test('re-opening your own setup link asks nothing, because it changes nothing', 
     setFormConfig(parsePrefilledLink(LINK));
     assert.equal(consumeFormParam(), null);
     assert.equal(getFormConfig().formId, FORM_ID);
+});
+
+test('the proposal rule holds for a link that never touched the address bar', () => {
+    // A setup link pasted into the SETUP box carries the same ?form= half, and
+    // reaches proposalFromLink without a URL to strip. "Never adopt, and don't
+    // ask about my own form" has to be the same rule on both routes — a second
+    // copy in the caller is one that can come to disagree.
+    assert.equal(proposalFromLink(OTHER_LINK)?.formId, OTHER_ID);
+    assert.equal(getFormConfig(), null, 'reading a link stores nothing');
+
+    setFormConfig(parsePrefilledLink(LINK));
+    assert.equal(proposalFromLink(LINK), null, 'your own form asks nothing');
+    assert.equal(proposalFromLink(OTHER_LINK)?.formId, OTHER_ID);
+    assert.equal(getFormConfig().formId, FORM_ID, 'the existing form is untouched');
+
+    // Nothing to propose, and no throw: a setup link with no ?form= half is
+    // the ordinary case (a device that had no form when the link was made).
+    assert.equal(proposalFromLink(null), null);
+    assert.equal(proposalFromLink('https://docs.google.com/spreadsheets/d/e/x/pub?output=csv'), null);
 });
 
 test('a ?form= link that will not parse proposes nothing', () => {
