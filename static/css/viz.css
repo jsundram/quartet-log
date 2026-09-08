@@ -1486,6 +1486,16 @@ body.network-fullscreen-open {
     color: var(--color-text-primary);
 }
 
+/* The form ids in the warning are links to the forms themselves. Underlined
+   rather than only recoloured: this is the one place the id is not decoration
+   but the thing to go and check, and inside a <code> run a colour shift alone
+   reads as syntax highlighting. */
+.log-proposal code a,
+.log-connected code a {
+    color: inherit;
+    text-decoration: underline;
+}
+
 .log-proposal-actions {
     display: flex;
     align-items: center;

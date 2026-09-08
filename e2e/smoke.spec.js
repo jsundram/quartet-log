@@ -164,6 +164,13 @@ test('an unconfigured visitor gets the setup panel, not someone else\'s form', a
     await expect(page.locator('#logForm')).toBeVisible();
     await expect(page.locator('#logSetup')).toBeHidden();
     await expect(page.locator('#logFormId')).toContainText('M-E2E');
+    // The tail is a LINK to the form. Six characters of an id only answer "am
+    // I writing to my own sheet" for someone who already knows their own id;
+    // being able to open the form is what makes the footer checkable.
+    const footer = page.locator('#logFormId a');
+    await expect(footer).toHaveAttribute('href',
+        `https://docs.google.com/forms/d/e/${FORM_ID}/viewform`);
+    await expect(footer).toHaveAttribute('target', '_blank');
 });
 
 test('Change reopens an empty setup panel, not the old form mapping', async ({ page }) => {
@@ -197,6 +204,14 @@ test('a link cannot connect a form to a fresh device without being asked', async
     await expect(page.locator('#logProposal')).toBeVisible();
     // The copy names the risk rather than assuming a form is being replaced.
     await expect(page.locator('#logProposalText')).toContainText('only accept it if the form is yours');
+    // ...and gives them the means to check, which a printed tail does not: the
+    // id links to the form. In a NEW tab, because consumeFormParam has already
+    // stripped ?form= from the address, so leaving this page would discard the
+    // undecided proposal with no way back but the original link.
+    const link = page.locator('#logProposalText a');
+    await expect(link).toHaveAttribute('href',
+        'https://docs.google.com/forms/d/e/SOMEONE-ELSES-FORM/viewform');
+    await expect(link).toHaveAttribute('target', '_blank');
     await expect(page.locator('#logProposalReject')).toHaveText('Not now');
     await expect(page.locator('#logForm')).toBeHidden();
     await expect(page.locator('#logSetup')).toBeHidden();
@@ -459,6 +474,14 @@ test.describe('log form', () => {
         // Both ends named, so the choice is informed rather than a leap.
         await expect(page.locator('#logProposal')).toContainText('...S-FORM');
         await expect(page.locator('#logProposal')).toContainText('...RM-E2E');
+        // Both ends are openable, not just named: telling an incoming form
+        // from the one it would replace is the whole decision, and neither
+        // tail settles it on its own.
+        await expect(page.locator('#logProposalText a')).toHaveCount(2);
+        await expect(page.locator('#logProposalText a').first())
+            .toHaveAttribute('href', 'https://docs.google.com/forms/d/e/SOMEONE-ELSES-FORM/viewform');
+        await expect(page.locator('#logProposalText a').nth(1))
+            .toHaveAttribute('href', `https://docs.google.com/forms/d/e/${FORM_ID}/viewform`);
         await expect(page.locator('#logForm')).toBeHidden();
         await expect(page.locator('#logSetup')).toBeHidden();
 

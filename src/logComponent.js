@@ -2,6 +2,7 @@ import * as d3 from "d3";
 import { composerWorkIndex } from './catalog.js';
 import {
     postEntry, readPrefilledLink, getFormConfig, setFormConfig, clearFormConfig,
+    formViewUrl,
 } from './formConfig.js';
 import { stripParens } from './dataProcessor.js';
 import * as store from './logStore.js';
@@ -57,6 +58,50 @@ const MORE_COMPOSERS = ' more';
 
 // Enough of a form id to tell two apart without printing the whole thing.
 const shortId = (/** @type {string} */ id) => `...${id.slice(-6)}`;
+
+/**
+ * That tail, linked to the form itself, so "is this form mine" can be answered
+ * by looking rather than by recognising six characters.
+ *
+ * Built as nodes and attributes, never as interpolated markup: a form id in the
+ * proposal arrives from a ?form= link, which is precisely the input someone
+ * else controls. `readPrefilledLink` already constrains it to [\w-]+, so this
+ * is belt and braces — but the sentence around it is set as text for the same
+ * reason, and one markup path would undo both.
+ *
+ * @param {string} formId
+ * @returns {HTMLAnchorElement}
+ */
+function formIdLink(formId) {
+    const a = document.createElement('a');
+    a.href = formViewUrl(formId);
+    a.textContent = shortId(formId);
+    a.title = `Open this form in a new tab to check whose it is`;
+    // A NEW tab, not this one. consumeFormParam has already stripped ?form=
+    // from the address bar, so a proposal lives only in memory: navigating
+    // away to check the form would discard the very decision being checked,
+    // with no way back but re-opening the original link.
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    return a;
+}
+
+/**
+ * Set a sentence built from plain strings and form ids, where each id becomes
+ * a linked `<code>`. Strings go in as text nodes, so nothing here parses HTML.
+ * @param {d3.Selection<any, any, any, any>} sel
+ * @param {Array<string | { formId: string }>} parts
+ */
+function setLinkedText(sel, parts) {
+    const node = sel.node();
+    node.textContent = '';
+    for (const part of parts) {
+        if (typeof part === 'string') { node.append(part); continue; }
+        const code = document.createElement('code');
+        code.append(formIdLink(part.formId));
+        node.append(code);
+    }
+}
 
 /** @param {number} ms */
 function ago(ms) {
@@ -223,7 +268,7 @@ export class LogComponent {
         if (deciding) this.renderProposal();
         d3.select('#logForm').property('hidden', deciding || !this.config);
         d3.select('#logSetup').property('hidden', deciding || !!this.config);
-        d3.select('#logFormId').text(this.config ? shortId(this.config.formId) : '');
+        setLinkedText(d3.select('#logFormId'), this.config ? [{ formId: this.config.formId }] : []);
         this.renderPending();
     }
 
@@ -543,14 +588,19 @@ export class LogComponent {
     // working one carry different risk, and "Keep mine" is nonsense when there
     // is nothing to keep. Set as text, never markup.
     renderProposal() {
-        const id = shortId(this.proposed.formId);
+        const proposed = { formId: this.proposed.formId };
         const replacing = !!this.config;
-        d3.select('#logProposalText').text(replacing
-            ? `This link points your log at a different Google Form, ${id}, replacing `
-                + `${shortId(this.config.formId)}. Everything you log would go to that `
-                + `form's spreadsheet instead of yours.`
-            : `This link would connect your log to Google Form ${id}. Everything you log `
-                + `goes to that form's spreadsheet, so only accept it if the form is yours.`);
+        // Both ids are links: this is the one screen that asks "is this form
+        // yours", and six characters of an id someone else sent you cannot
+        // answer it. Opening the form can.
+        setLinkedText(d3.select('#logProposalText'), replacing
+            ? ['This link points your log at a different Google Form, ', proposed,
+                ', replacing ', { formId: this.config.formId },
+                ". Everything you log would go to that form's spreadsheet instead of "
+                + 'yours. Open it to check whose it is.']
+            : ['This link would connect your log to Google Form ', proposed,
+                ". Everything you log goes to that form's spreadsheet, so open it and "
+                + 'only accept it if the form is yours.']);
         d3.select('#logProposalReject').text(replacing ? 'Keep mine' : 'Not now');
         d3.select('#logProposalAccept').text(replacing ? 'Use the new form' : 'Connect this form');
     }

@@ -27,6 +27,18 @@ export function formAction(formId) {
     return `https://docs.google.com/forms/d/e/${formId}/formResponse`;
 }
 
+/**
+ * The form as a human can look at it. The UI prints the last characters of an
+ * id to say which form is connected, which only distinguishes two forms for
+ * someone who already knows their own id — and the one moment that question
+ * actually gets asked, a ?form= proposal, is the moment they don't. So the
+ * printed tail links here: "is this form mine" is answerable by opening it.
+ * @param {string} formId
+ */
+export function formViewUrl(formId) {
+    return `https://docs.google.com/forms/d/e/${formId}/viewform`;
+}
+
 // Composer alone is sent through Forms' "Other" escape: the entry carries a
 // sentinel and the real text rides on a companion field. Forms stores an Other
 // response as plain text in the response-sheet column, so a value that IS one
@@ -231,5 +243,5 @@ export function consumeFormParam() {
 export function buildPrefilledLink(config) {
     const params = new URLSearchParams({ usp: 'pp_url' });
     for (const field of FIELDS) params.set(config.entry[field], '');
-    return `https://docs.google.com/forms/d/e/${config.formId}/viewform?${params}`;
+    return `${formViewUrl(config.formId)}?${params}`;
 }
