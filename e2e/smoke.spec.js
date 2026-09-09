@@ -247,6 +247,83 @@ test('the setup box takes a setup link, and still only proposes its form', async
     await expect(page.locator('#logFormId')).toContainText('M-E2E');
 });
 
+// The chips and the picker are complements, and the set they are cut from is
+// derived from the log -- so a background revalidate is the one thing that can
+// move it under a form someone is filling in. setData deliberately re-renders
+// neither (it never touches what the user might be typing into), which leaves
+// the two views to be rebuilt together on the seams that do render. Nothing
+// smaller than a real revalidate can show this, hence the fake clock: the
+// poll is gated on staleness, so time has to actually pass.
+test('the picker stays the chips\' complement across a background revalidate', async ({ page }) => {
+    const NOW = new Date('2026-06-01T12:00:00Z');
+    const on = (daysAgo) => {
+        const d = new Date(NOW.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+        return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()} 19:00:00`;
+    };
+    const plays = (composer, n, from) => Array.from({ length: n }, (_, i) =>
+        `${on(from - i)},${composer},w${i},V1,Alice,Bob,Carol,,Home,`);
+    // Six clear favourites, and a Debussy played once -- so it is in the
+    // picker and not on a chip.
+    const before = [
+        'Timestamp,Composer,Work Title,Which Part,Player 1,Player 2,Player 3,Others?,Location,Comments',
+        ...plays('Haydn', 5, 20), ...plays('Mozart', 4, 20), ...plays('Beethoven', 4, 20),
+        ...plays('Brahms', 3, 20), ...plays('Bartok', 3, 20), ...plays('Schubert', 3, 20),
+        ...plays('Debussy', 1, 20),
+    ].join('\n');
+    // The sitting was all Debussy: it overtakes Schubert, so one composer
+    // joins the chips and one drops off them.
+    const after = [before, ...plays('Debussy', 5, 10)].join('\n');
+
+    await page.clock.install({ time: NOW });
+    let body = before;
+    await page.route('https://docs.google.com/**', route => route.fulfill({
+        contentType: 'text/csv',
+        body,
+    }));
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`/?data=${encodeURIComponent(SHEET_URL)}&form=${encodeURIComponent(PREFILL)}`);
+    await expect(page.locator('#update')).toContainText(/Data updated/, { timeout: 15000 });
+    await page.evaluate(() => { window.location.hash = '#log'; });
+    await page.click('#logProposalAccept');
+    await expect(page.locator('#logForm')).toBeVisible();
+
+    const chips = () => page.$$eval('#logComposerChips .log-chip-btn',
+        ns => ns.map(n => n.textContent).filter(t => t !== 'More...'));
+    const options = () => page.$$eval('#logComposer option',
+        ns => ns.map(n => n.textContent).filter(t => t !== 'Composer...' && t !== 'Other...'));
+
+    await page.click('#logComposerChips .log-chip-btn--more');
+    const wasOnChips = await chips();
+    expect(wasOnChips).toContain('Schubert');
+    expect(await options()).toContain('Debussy');
+
+    // The revalidate lands while the picker is open.
+    body = after;
+    await page.clock.runFor('06:00');
+    await expect(page.locator('#update')).toContainText(/Data updated/, { timeout: 15000 });
+
+    // ...and then a pick off that picker rebuilds the chips. Rebuilding only
+    // those recomputes the set on one side of a complement.
+    await page.selectOption('#logComposer', 'Dvorak');
+    const nowOnChips = await chips();
+    const nowOffered = await options();
+    expect(nowOnChips).toContain('Debussy');            // promoted by the new rows
+    expect(nowOffered.filter(o => nowOnChips.includes(o))).toEqual([]);
+    // And the one it pushed off the chips is offered rather than stranded:
+    // without the picker it would be reachable only by typing it into Other.
+    expect(nowOffered).toContain('Schubert');
+    expect(wasOnChips.filter(c => !nowOnChips.includes(c) && !nowOffered.includes(c))).toEqual([]);
+
+    // The rebuild must not knock the select off the option just chosen, nor
+    // off Other..., whose free-text box is open and focused behind it.
+    await expect(page.locator('#logComposer')).toHaveValue('Dvorak');
+    await page.selectOption('#logComposer', ' other');
+    await expect(page.locator('#logComposer')).toHaveValue(' other');
+    await expect(page.locator('#logComposerOther')).toBeFocused();
+    await page.fill('#logComposerOther', 'Borodin');
+    await expect(page.locator('#logComposerOther')).toHaveValue('Borodin');
+});
+
 test.describe('log form', () => {
     // Capture Forms submissions instead of sending them. The route is
     // anchored to the /forms/ path so it can't swallow the sheet stub above.
@@ -338,11 +415,14 @@ test.describe('log form', () => {
     test('offers every catalog composer and suggests that composer works', async ({ page }) => {
         await page.click('#logComposerChips .log-chip-btn--more');
         const options = await page.locator('#logComposer option').allTextContents();
+        const chips = await page.locator('#logComposerChips .log-chip-btn').allTextContents();
         // The Google Form's own radio lists seven; the catalog knows far more,
-        // and all of them have to be reachable.
-        expect(options.length).toBeGreaterThan(10);
-        expect(options).toContain('Haydn');
-        expect(options).toContain('Debussy');   // lives only inside the MISC tab
+        // and all of them have to be reachable. Reachable is chips OR picker:
+        // the two are complements, so neither alone is the offer.
+        const offered = [...chips, ...options];
+        expect(offered.length).toBeGreaterThan(10);
+        expect(offered).toContain('Haydn');     // a chip, since the fixture plays it
+        expect(offered).toContain('Debussy');   // lives only inside the MISC tab
         expect(options.at(-1)).toBe('Other...');
 
         await pickComposer(page, 'Haydn');
@@ -684,6 +764,50 @@ test.describe('log form', () => {
         // She is still offered, though, since she was in the sitting.
         await expect(page.locator('#logOthersHere .log-chip-btn').filter({ hasText: 'Erin Fry' }))
             .toBeVisible();
+    });
+
+    test('revealing the catalog picker does not blow up the phone layout', async ({ page }) => {
+        // The picker is the one control that is placed in the form's second
+        // grid column and is hidden at rest. A hidden element is not a grid
+        // item, so on a phone -- where the form is ONE column -- the damage
+        // only appeared once "More..." was tapped: the placement minted an
+        // implicit second column, the auto-placed column collapsed to 0px, and
+        // every label, input and note in the form was crushed into it. The
+        // composer being typed was in a 22px box, so the letters went nowhere
+        // visible; so did the work title. Nothing above the CSS could see it,
+        // which is why it is pinned here.
+        await page.setViewportSize({ width: 390, height: 900 });
+        await page.click('#logComposerChips .log-chip-btn--more');
+        await page.selectOption('#logComposer', ' other');
+        await expect(page.locator('#logComposerOther')).toBeVisible();
+
+        const columns = await page.$eval('#logForm', el =>
+            getComputedStyle(el).gridTemplateColumns.split(' ').length);
+        expect(columns).toBe(1);
+        // What that costs the user, measured rather than inferred: the box you
+        // type a composer into is as wide as every other field, not a stub.
+        const width = el => page.locator(el).evaluate(n => n.getBoundingClientRect().width);
+        const title = await width('#logTitle');
+        expect(title).toBeGreaterThan(300);
+        expect(await width('#logComposerOther')).toBe(title);
+    });
+
+    test('the catalog picker offers what the chips do not', async ({ page }) => {
+        // Both views are built from frequentComposers(), so a composer on a
+        // chip listed again in the picker is dead space at the top of a phone
+        // screen -- re-offering the tap already on offer, one scroll further
+        // down.
+        await page.click('#logComposerChips .log-chip-btn--more');
+        const chips = await page.$$eval('#logComposerChips .log-chip-btn',
+            ns => ns.map(n => n.textContent).filter(t => t !== 'More...'));
+        const options = await page.$$eval('#logComposer option', ns => ns.map(n => n.textContent));
+        expect(chips).toContain('Haydn');
+        expect(options.length).toBeGreaterThan(3);
+        expect(options.filter(o => chips.includes(o))).toEqual([]);
+        // The escape to a composer the catalog has never heard of survives the
+        // filtering, and so does the empty prompt.
+        expect(options.at(0)).toBe('Composer...');
+        expect(options.at(-1)).toBe('Other...');
     });
 
     test('an Other composer survives a reload too', async ({ page }) => {

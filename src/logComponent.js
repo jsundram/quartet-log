@@ -321,16 +321,6 @@ export class LogComponent {
     buildComposerPicker() {
         this.works = composerWorkIndex();
         const select = d3.select('#logComposer');
-        select.selectAll('option').remove();
-        select.append('option').attr('value', '').text('Composer...');
-        select.selectAll('option.log-composer-option')
-            .data(Object.keys(this.works).sort())
-            .join('option')
-            .attr('class', 'log-composer-option')
-            .attr('value', d => d)
-            .text(d => d);
-        select.append('option').attr('value', OTHER_COMPOSER).text('Other...');
-
         select.on('change', () => {
             const value = select.property('value');
             const isOther = value === OTHER_COMPOSER;
@@ -342,7 +332,18 @@ export class LogComponent {
             }
             this.clearMissing();
             this.touch();
+            // Both views, always together. A background revalidate clears the
+            // frequentComposers memo without re-rendering either (setData
+            // deliberately touches nothing the user might be typing into), so
+            // rebuilding only the chips here recomputes the set on one side of
+            // a complement: a composer the new data promotes to a chip is left
+            // in the picker too — the duplication this pair exists to remove —
+            // and one demoted off the chips is in neither, reachable only
+            // through Other... The fix belongs on this seam and not in
+            // redrawFromData, which would rewrite the option list under a
+            // picker the user has open.
             this.renderComposerChips();
+            this.renderComposerOptions();
             this.renderWorkOptions();
         });
         d3.select('#logComposerOther').on('input', (e) => {
@@ -350,6 +351,26 @@ export class LogComponent {
             this.touch();
             this.renderWorkOptions();
         });
+    }
+
+    // The picker holds what the chips DON'T: listing the same six composers
+    // twice spent the top of a phone screen re-offering the taps already on
+    // offer, and the chip is the faster one. Built here rather than at mount
+    // because the chip row is derived from the log and moves with it — one
+    // pass, one frequentComposers() memo, so the two views cannot come to
+    // disagree about which composers the chips are showing. The chosen
+    // composer is kept in the list even when it has a chip, so the select has
+    // something to display instead of falling blank next to its own selection.
+    renderComposerOptions() {
+        const onChips = new Set(this.frequentComposers());
+        const rest = Object.keys(this.works).sort()
+            .filter(d => !onChips.has(d) || d === this.entry.composer);
+        d3.select('#logComposer').selectAll('option')
+            .data(['', ...rest, OTHER_COMPOSER], d => d)
+            .join('option')
+            .attr('value', d => d)
+            .text(d => (d === '' ? 'Composer...' : d === OTHER_COMPOSER ? 'Other...' : d))
+            .order();
     }
 
     // Work suggestions follow the chosen composer. A datalist suggests without
@@ -566,6 +587,8 @@ export class LogComponent {
         // the select has to show that rather than silently falling back to its
         // blank option while the name sits visible underneath it.
         const listed = this.entry.composer in this.works;
+        // Options first: the value below can only select one that exists.
+        this.renderComposerOptions();
         d3.select('#logComposer')
             .property('hidden', !showPicker)
             .property('value', listed ? this.entry.composer : (this.entry.composer ? OTHER_COMPOSER : ''));
