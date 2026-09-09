@@ -247,6 +247,83 @@ test('the setup box takes a setup link, and still only proposes its form', async
     await expect(page.locator('#logFormId')).toContainText('M-E2E');
 });
 
+// The chips and the picker are complements, and the set they are cut from is
+// derived from the log -- so a background revalidate is the one thing that can
+// move it under a form someone is filling in. setData deliberately re-renders
+// neither (it never touches what the user might be typing into), which leaves
+// the two views to be rebuilt together on the seams that do render. Nothing
+// smaller than a real revalidate can show this, hence the fake clock: the
+// poll is gated on staleness, so time has to actually pass.
+test('the picker stays the chips\' complement across a background revalidate', async ({ page }) => {
+    const NOW = new Date('2026-06-01T12:00:00Z');
+    const on = (daysAgo) => {
+        const d = new Date(NOW.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+        return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()} 19:00:00`;
+    };
+    const plays = (composer, n, from) => Array.from({ length: n }, (_, i) =>
+        `${on(from - i)},${composer},w${i},V1,Alice,Bob,Carol,,Home,`);
+    // Six clear favourites, and a Debussy played once -- so it is in the
+    // picker and not on a chip.
+    const before = [
+        'Timestamp,Composer,Work Title,Which Part,Player 1,Player 2,Player 3,Others?,Location,Comments',
+        ...plays('Haydn', 5, 20), ...plays('Mozart', 4, 20), ...plays('Beethoven', 4, 20),
+        ...plays('Brahms', 3, 20), ...plays('Bartok', 3, 20), ...plays('Schubert', 3, 20),
+        ...plays('Debussy', 1, 20),
+    ].join('\n');
+    // The sitting was all Debussy: it overtakes Schubert, so one composer
+    // joins the chips and one drops off them.
+    const after = [before, ...plays('Debussy', 5, 10)].join('\n');
+
+    await page.clock.install({ time: NOW });
+    let body = before;
+    await page.route('https://docs.google.com/**', route => route.fulfill({
+        contentType: 'text/csv',
+        body,
+    }));
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`/?data=${encodeURIComponent(SHEET_URL)}&form=${encodeURIComponent(PREFILL)}`);
+    await expect(page.locator('#update')).toContainText(/Data updated/, { timeout: 15000 });
+    await page.evaluate(() => { window.location.hash = '#log'; });
+    await page.click('#logProposalAccept');
+    await expect(page.locator('#logForm')).toBeVisible();
+
+    const chips = () => page.$$eval('#logComposerChips .log-chip-btn',
+        ns => ns.map(n => n.textContent).filter(t => t !== 'More...'));
+    const options = () => page.$$eval('#logComposer option',
+        ns => ns.map(n => n.textContent).filter(t => t !== 'Composer...' && t !== 'Other...'));
+
+    await page.click('#logComposerChips .log-chip-btn--more');
+    const wasOnChips = await chips();
+    expect(wasOnChips).toContain('Schubert');
+    expect(await options()).toContain('Debussy');
+
+    // The revalidate lands while the picker is open.
+    body = after;
+    await page.clock.runFor('06:00');
+    await expect(page.locator('#update')).toContainText(/Data updated/, { timeout: 15000 });
+
+    // ...and then a pick off that picker rebuilds the chips. Rebuilding only
+    // those recomputes the set on one side of a complement.
+    await page.selectOption('#logComposer', 'Dvorak');
+    const nowOnChips = await chips();
+    const nowOffered = await options();
+    expect(nowOnChips).toContain('Debussy');            // promoted by the new rows
+    expect(nowOffered.filter(o => nowOnChips.includes(o))).toEqual([]);
+    // And the one it pushed off the chips is offered rather than stranded:
+    // without the picker it would be reachable only by typing it into Other.
+    expect(nowOffered).toContain('Schubert');
+    expect(wasOnChips.filter(c => !nowOnChips.includes(c) && !nowOffered.includes(c))).toEqual([]);
+
+    // The rebuild must not knock the select off the option just chosen, nor
+    // off Other..., whose free-text box is open and focused behind it.
+    await expect(page.locator('#logComposer')).toHaveValue('Dvorak');
+    await page.selectOption('#logComposer', ' other');
+    await expect(page.locator('#logComposer')).toHaveValue(' other');
+    await expect(page.locator('#logComposerOther')).toBeFocused();
+    await page.fill('#logComposerOther', 'Borodin');
+    await expect(page.locator('#logComposerOther')).toHaveValue('Borodin');
+});
+
 test.describe('log form', () => {
     // Capture Forms submissions instead of sending them. The route is
     // anchored to the /forms/ path so it can't swallow the sheet stub above.

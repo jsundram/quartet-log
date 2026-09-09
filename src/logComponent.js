@@ -332,7 +332,18 @@ export class LogComponent {
             }
             this.clearMissing();
             this.touch();
+            // Both views, always together. A background revalidate clears the
+            // frequentComposers memo without re-rendering either (setData
+            // deliberately touches nothing the user might be typing into), so
+            // rebuilding only the chips here recomputes the set on one side of
+            // a complement: a composer the new data promotes to a chip is left
+            // in the picker too — the duplication this pair exists to remove —
+            // and one demoted off the chips is in neither, reachable only
+            // through Other... The fix belongs on this seam and not in
+            // redrawFromData, which would rewrite the option list under a
+            // picker the user has open.
             this.renderComposerChips();
+            this.renderComposerOptions();
             this.renderWorkOptions();
         });
         d3.select('#logComposerOther').on('input', (e) => {
