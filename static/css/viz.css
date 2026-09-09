@@ -1564,15 +1564,17 @@ body.network-fullscreen-open {
     opacity: 1;
 }
 
-/* Extra controls in an already-occupied field column. One class rather than a
-   list of ids, because the phone override below has to name the same set and
-   the two lists drifted: #logComposer was in this one and not in that one, so
-   revealing the catalog picker placed it in a column the single-column phone
-   grid does not have. That mints an implicit second column, the auto-placed
-   column collapses to 0px, and every label, input and note in the form is
-   crushed into it — the whole view, not just the control that was added. */
+/* Extra controls in an already-occupied field column: the value column, in
+   whichever grid is in force — a negative line counts back from the explicit
+   grid's end, so it can never mint an implicit one. Column 2 under the desktop
+   `max-content minmax(0, 1fr)`, column 1 under the phone's single track, and
+   no second declaration to keep in step with this one. A literal `2` needed
+   that phone override, and when the override's list of ids drifted from this
+   rule's — #logComposer was here and not there — revealing the catalog picker
+   minted the implicit second column, collapsing the auto-placed column to 0px
+   and crushing every label, input and note in the form into it. */
 .log-field-extra {
-    grid-column: 2;
+    grid-column: -2;
 }
 
 /* Others?: a row per person, each the same name-plus-part pair as a seat. */
@@ -1915,11 +1917,5 @@ body.network-fullscreen-open {
         justify-self: start;
         margin-top: 8px;
         font-size: 13px;
-    }
-
-    /* Single column now, so the second-column placement above would mint a
-       phantom one. */
-    .log-field-extra {
-        grid-column: 1;
     }
 }
