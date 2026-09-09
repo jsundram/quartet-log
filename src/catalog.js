@@ -47,12 +47,14 @@ const COMPOSER_URL_PATTERNS = {
     'Schubert': d => `schubert-d-${d.work.catalog}/`,
     'Schumann': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
     'Shostakovich': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
-    'Smetana': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
     'Tchaikovsky': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
-    'Verdi': d => `${d.composer.toLowerCase()}-quartet/`,
-    // Borodin is deliberately ABSENT: the catalog carries his quartet
-    // (MISC) but quartetroulette.com has no page for it. No pattern means
-    // no link — see generateQuartetRouletteUrl.
+    // Borodin, Smetana and Verdi are deliberately ABSENT: the catalog
+    // carries their quartets (MISC) but quartetroulette.com has no page for
+    // any of them, under this naming or any other. Smetana and Verdi did
+    // have patterns, and every tooltip built from them was a 404 nobody saw
+    // until the link was clicked. No pattern means no link — see
+    // generateQuartetRouletteUrl. Add one back if the site gains a page.
+
     // Quiet loadWorkCatalog's missing-pattern warning. Was the number 1,
     // which satisfied the truthiness check there but would have CRASHED
     // generateQuartetRouletteUrl (`(1)?.(d)` throws — optional chaining only

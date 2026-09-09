@@ -5,6 +5,7 @@
 // other test files keep seeing the not-loaded (permissive) behavior.
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
     installCatalog,
     isMultiComposerTab,
@@ -109,4 +110,31 @@ test('composerWorkIndex flattens the multi-composer tabs back into composers', (
 
 test('composerWorkIndex throws before the catalog loads', () => {
     assert.throws(() => composerWorkIndex(), /not loaded/);
+});
+
+// Against the SHIPPED catalog, not a fixture: whether a MISC composer gets a
+// link is a claim about quartetroulette.com's coverage, and the only place
+// that claim can be wrong is the real pair of files. Smetana and Verdi each
+// had a URL pattern whose every link 404'd — the site has no page for them
+// under that naming or any other — and nothing failed, because a 404 is
+// invisible until someone clicks. Borodin was never covered either.
+test('MISC composers the site does not cover render unlinked', () => {
+    const works = JSON.parse(
+        readFileSync(new URL('../static/data/all_works.json', import.meta.url), 'utf8'));
+    installCatalog(works);
+    // Only the composer decides whether a link is offered; the work fields
+    // shape the path, so a stand-in title is enough to ask the question.
+    const linked = c => generateQuartetRouletteUrl(
+        { composer: c, work: { title: works.MISC.find(o => o[c])[c][0] } }) !== null;
+
+    const uncovered = ['Borodin', 'Smetana', 'Verdi'];
+    for (const c of uncovered) {
+        assert.equal(linked(c), false, `${c} has no page on quartetroulette.com`);
+    }
+    // Everyone else in MISC is covered and must keep their link.
+    const rest = works.MISC.flatMap(Object.keys).filter(c => !uncovered.includes(c));
+    assert.ok(rest.length > 0, 'MISC should still carry covered composers');
+    for (const c of rest) {
+        assert.equal(linked(c), true, `${c} should link to quartetroulette.com`);
+    }
 });
