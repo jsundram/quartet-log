@@ -1,5 +1,6 @@
 // @ts-check
 import * as d3 from "d3";
+import { parseWork } from "./dataProcessor.js";
 
 /** @typedef {import('./dataProcessor.js').Row} Row */
 /** @typedef {import('./dataProcessor.js').Work} Work */
@@ -233,9 +234,24 @@ export function getComposerForWork(tabName, workTitle) {
 
 // What the work-row label should SHOW. Data stays keyed by the full
 // prefixed title; this only affects the rendered text. In a multi-composer
-// tab, a composer with exactly one work displays as just the composer —
+// tab, a composer with exactly one work MAY display as just the composer —
 // "Tchaikovsky-Souvenir" reads as "Tchaikovsky" and the full title lives in
 // the tooltip. Composers with several works keep the prefixed form.
+//
+// The collapse is worth it only when the title earns no space of its own.
+// "Quartet" is the clear case — prefixing it says nothing "Debussy" didn't
+// — and a prose title long enough to fill the row ("Capriccio sextet") is
+// the same trade seen from the other side. A CATALOGUE NUMBER is not: the
+// 2 in "Borodin-2" is the piece's name, and dropping it leaves the row
+// unable to say which quartet it is the day a second one is logged.
+//
+// parseWork draws that line already — it is what turns a title cell into
+// the catalog/number the whole app keys works by — so ask it rather than
+// minting a second, quietly different idea of what looks like a number. It
+// also reads the dense-ID forms ("D956" -> 956) that a naive all-digits
+// test would call prose. Its miss is NaN, never null: `JSON.stringify` of
+// the parse prints "catalog": null and reading that is how this shipped
+// backwards once, collapsing nothing at all.
 /**
  * @param {string} tabName
  * @param {string} workTitle
@@ -246,7 +262,8 @@ export function getDisplayLabel(tabName, workTitle) {
     const composer = getComposerForWork(tabName, workTitle);
     const entry = /** @type {Record<string, string[]>[]} */ (loadedCatalog()[tabName]);
     const works = entry.find(obj => Object.keys(obj)[0] === composer)?.[composer];
-    return works?.length === 1 ? composer : workTitle;
+    if (works?.length !== 1) return workTitle;
+    return Number.isNaN(parseWork(works[0]).catalog) ? composer : workTitle;
 }
 
 /**

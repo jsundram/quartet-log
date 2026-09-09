@@ -63,12 +63,31 @@ test('tab helpers: composers, prefixed works, and round-tripping', () => {
 
 test('getDisplayLabel: single-work composers show as just the composer', () => {
     installCatalog(FIXTURE);
+    // A prose title earns no space of its own: prefixing "Souvenir" or
+    // "Quartet" says nothing the composer didn't.
     assert.equal(getDisplayLabel('5+', 'Tchaikovsky-Souvenir'), 'Tchaikovsky');
     assert.equal(getDisplayLabel('MISC', 'Debussy-Quartet'), 'Debussy');
     // Multiple works keep the prefixed form; single-composer tabs untouched.
     assert.equal(getDisplayLabel('5+', 'Mozart-K515'), 'Mozart-K515');
     assert.equal(getDisplayLabel('MISC', 'Britten-1'), 'Britten-1');
     assert.equal(getDisplayLabel('Haydn', '20#2'), '20#2');
+});
+
+// The exception to the collapse: a catalogue number IS the piece's name, so
+// a lone numbered work keeps it. Both forms count — a bare "2" and a dense
+// id like "D956" — because parseWork reads both, and the row has to be able
+// to say WHICH quartet it is the day a second one is logged.
+test('getDisplayLabel keeps a lone work\'s catalogue number', () => {
+    installCatalog({
+        MISC: [
+            { Borodin: ['2'] },        // bare number
+            { Schubert: ['D956'] },    // dense id, not all digits
+            { Strauss: ['Capriccio sextet'] },  // prose, and long
+        ],
+    });
+    assert.equal(getDisplayLabel('MISC', 'Borodin-2'), 'Borodin-2');
+    assert.equal(getDisplayLabel('MISC', 'Schubert-D956'), 'Schubert-D956');
+    assert.equal(getDisplayLabel('MISC', 'Strauss-Capriccio sextet'), 'Strauss');
 });
 
 test('generateQuartetRouletteUrl links quartets, suppresses the rest', () => {
