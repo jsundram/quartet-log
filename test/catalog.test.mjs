@@ -29,6 +29,8 @@ const FIXTURE = {
     MISC: [
         { Debussy: ['Quartet'] },
         { Britten: ['1', '2'] },
+        // In the catalog, absent from quartetroulette.com: no URL pattern.
+        { Borodin: ['2'] },
     ],
 };
 
@@ -81,6 +83,9 @@ test('generateQuartetRouletteUrl links quartets, suppresses the rest', () => {
     assert.equal(generateQuartetRouletteUrl(row('Mozart', 'K515')), null);
     assert.equal(generateQuartetRouletteUrl(row('Tchaikovsky', 'Souvenir')), null);
     assert.equal(generateQuartetRouletteUrl(row('Strauss', 'Capriccio sextet')), null);
+    // A MISC composer the site doesn't cover: null, not a link to its
+    // homepage, which is what the old `|| ''` path fallback produced.
+    assert.equal(generateQuartetRouletteUrl(row('Borodin', '2', 2)), null);
     // Catalog not loaded: permissive (link built) so tests elsewhere and
     // pre-load callers keep the old behavior.
     installCatalog(null);
@@ -93,7 +98,7 @@ test('composerWorkIndex flattens the multi-composer tabs back into composers', (
     // Every composer, whatever tab carried it — the log form offers all of
     // them, not just the ones with a tab of their own.
     assert.deepEqual(Object.keys(index).sort(),
-        ['Britten', 'Debussy', 'Haydn', 'Mozart', 'Tchaikovsky']);
+        ['Borodin', 'Britten', 'Debussy', 'Haydn', 'Mozart', 'Tchaikovsky']);
     // Titles are UNPREFIXED: "Debussy-Quartet" is a tab-scoped display key,
     // while the sheet cell holds the bare title.
     assert.deepEqual(index.Debussy, ['Quartet']);

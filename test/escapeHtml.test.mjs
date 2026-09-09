@@ -30,7 +30,11 @@ test("escapeHtml", async (t) => {
 
 test("buildWorkTooltipHtml renders hostile sheet values inert", () => {
     const d = {
-        composer: "Misc",
+        // A composer quartetroulette.com covers, so the header is genuinely
+        // linked — the <h4><a href=" assertion below is about structural
+        // markup surviving the escaping, and a composer with no URL pattern
+        // now renders unlinked (see generateQuartetRouletteUrl).
+        composer: "Debussy",
         work: { title: XSS },
         timestamp: new Date(2024, 2, 3),
         location: XSS,

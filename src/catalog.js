@@ -50,6 +50,9 @@ const COMPOSER_URL_PATTERNS = {
     'Smetana': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
     'Tchaikovsky': d => `${d.composer.toLowerCase()}-${d.work.catalog}/`,
     'Verdi': d => `${d.composer.toLowerCase()}-quartet/`,
+    // Borodin is deliberately ABSENT: the catalog carries his quartet
+    // (MISC) but quartetroulette.com has no page for it. No pattern means
+    // no link — see generateQuartetRouletteUrl.
     // Quiet loadWorkCatalog's missing-pattern warning. Was the number 1,
     // which satisfied the truthiness check there but would have CRASHED
     // generateQuartetRouletteUrl (`(1)?.(d)` throws — optional chaining only
@@ -81,8 +84,13 @@ function hasQuartetRoulettePage(d) {
  */
 export function generateQuartetRouletteUrl(d) {
         if (!hasQuartetRoulettePage(d)) return null;
-        const base = 'https://quartetroulette.com/';
-        return base + (COMPOSER_URL_PATTERNS[d.composer]?.(d) || '');
+        const path = COMPOSER_URL_PATTERNS[d.composer]?.(d);
+        // A catalogued composer with no pattern is one the site doesn't
+        // cover (Borodin) — the old `|| ''` fallback linked every one of
+        // their works to the site's HOMEPAGE, which reads as a working link
+        // and isn't. No pattern, no page: the tooltip renders unlinked.
+        if (path == null) return null;
+        return 'https://quartetroulette.com/' + path;
 }
 
 // Asset version for all_works.json, baked in at build time via esbuild
