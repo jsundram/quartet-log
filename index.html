@@ -204,8 +204,8 @@
             <div class="log-field">
                 <label for="logComposer">Composer</label>
                 <div id="logComposerChips" class="log-chips" role="radiogroup" aria-label="Composer"></div>
-                <select id="logComposer" hidden></select>
-                <input id="logComposerOther" type="text" placeholder="Composer name" autocapitalize="words" autocorrect="off" spellcheck="false" hidden>
+                <select id="logComposer" class="log-field-extra" hidden></select>
+                <input id="logComposerOther" class="log-field-extra" type="text" placeholder="Composer name" aria-label="Composer name" autocapitalize="words" autocorrect="off" spellcheck="false" hidden>
             </div>
             <!-- autocorrect off on every name field: iOS helpfully "fixes"
                  surnames, and a mangled name in the sheet is the failure this

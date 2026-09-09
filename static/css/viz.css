@@ -1564,10 +1564,14 @@ body.network-fullscreen-open {
     opacity: 1;
 }
 
-/* Extra controls in an already-occupied field column. */
-#logComposer,
-#logComposerOther,
-#logOthersRepeat {
+/* Extra controls in an already-occupied field column. One class rather than a
+   list of ids, because the phone override below has to name the same set and
+   the two lists drifted: #logComposer was in this one and not in that one, so
+   revealing the catalog picker placed it in a column the single-column phone
+   grid does not have. That mints an implicit second column, the auto-placed
+   column collapses to 0px, and every label, input and note in the form is
+   crushed into it — the whole view, not just the control that was added. */
+.log-field-extra {
     grid-column: 2;
 }
 
@@ -1913,10 +1917,9 @@ body.network-fullscreen-open {
         font-size: 13px;
     }
 
-    /* Single column now, so the second-element placements above would mint a
+    /* Single column now, so the second-column placement above would mint a
        phantom one. */
-    #logComposerOther,
-    #logOthersRepeat {
+    .log-field-extra {
         grid-column: 1;
     }
 }

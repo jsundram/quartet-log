@@ -338,11 +338,14 @@ test.describe('log form', () => {
     test('offers every catalog composer and suggests that composer works', async ({ page }) => {
         await page.click('#logComposerChips .log-chip-btn--more');
         const options = await page.locator('#logComposer option').allTextContents();
+        const chips = await page.locator('#logComposerChips .log-chip-btn').allTextContents();
         // The Google Form's own radio lists seven; the catalog knows far more,
-        // and all of them have to be reachable.
-        expect(options.length).toBeGreaterThan(10);
-        expect(options).toContain('Haydn');
-        expect(options).toContain('Debussy');   // lives only inside the MISC tab
+        // and all of them have to be reachable. Reachable is chips OR picker:
+        // the two are complements, so neither alone is the offer.
+        const offered = [...chips, ...options];
+        expect(offered.length).toBeGreaterThan(10);
+        expect(offered).toContain('Haydn');     // a chip, since the fixture plays it
+        expect(offered).toContain('Debussy');   // lives only inside the MISC tab
         expect(options.at(-1)).toBe('Other...');
 
         await pickComposer(page, 'Haydn');
@@ -684,6 +687,50 @@ test.describe('log form', () => {
         // She is still offered, though, since she was in the sitting.
         await expect(page.locator('#logOthersHere .log-chip-btn').filter({ hasText: 'Erin Fry' }))
             .toBeVisible();
+    });
+
+    test('revealing the catalog picker does not blow up the phone layout', async ({ page }) => {
+        // The picker is the one control that is placed in the form's second
+        // grid column and is hidden at rest. A hidden element is not a grid
+        // item, so on a phone -- where the form is ONE column -- the damage
+        // only appeared once "More..." was tapped: the placement minted an
+        // implicit second column, the auto-placed column collapsed to 0px, and
+        // every label, input and note in the form was crushed into it. The
+        // composer being typed was in a 22px box, so the letters went nowhere
+        // visible; so did the work title. Nothing above the CSS could see it,
+        // which is why it is pinned here.
+        await page.setViewportSize({ width: 390, height: 900 });
+        await page.click('#logComposerChips .log-chip-btn--more');
+        await page.selectOption('#logComposer', ' other');
+        await expect(page.locator('#logComposerOther')).toBeVisible();
+
+        const columns = await page.$eval('#logForm', el =>
+            getComputedStyle(el).gridTemplateColumns.split(' ').length);
+        expect(columns).toBe(1);
+        // What that costs the user, measured rather than inferred: the box you
+        // type a composer into is as wide as every other field, not a stub.
+        const width = el => page.locator(el).evaluate(n => n.getBoundingClientRect().width);
+        const title = await width('#logTitle');
+        expect(title).toBeGreaterThan(300);
+        expect(await width('#logComposerOther')).toBe(title);
+    });
+
+    test('the catalog picker offers what the chips do not', async ({ page }) => {
+        // Both views are built from frequentComposers(), so a composer on a
+        // chip listed again in the picker is dead space at the top of a phone
+        // screen -- re-offering the tap already on offer, one scroll further
+        // down.
+        await page.click('#logComposerChips .log-chip-btn--more');
+        const chips = await page.$$eval('#logComposerChips .log-chip-btn',
+            ns => ns.map(n => n.textContent).filter(t => t !== 'More...'));
+        const options = await page.$$eval('#logComposer option', ns => ns.map(n => n.textContent));
+        expect(chips).toContain('Haydn');
+        expect(options.length).toBeGreaterThan(3);
+        expect(options.filter(o => chips.includes(o))).toEqual([]);
+        // The escape to a composer the catalog has never heard of survives the
+        // filtering, and so does the empty prompt.
+        expect(options.at(0)).toBe('Composer...');
+        expect(options.at(-1)).toBe('Other...');
     });
 
     test('an Other composer survives a reload too', async ({ page }) => {
