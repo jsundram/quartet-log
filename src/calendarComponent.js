@@ -1,6 +1,6 @@
 import * as d3 from "d3";
 import { getBegin, CALENDAR_CONFIG, getCssColor } from './config.js';
-import { computeAggregateStats, recentRows } from './dataProcessor.js';
+import { computeAggregateStats, recentRows, RECENT_WINDOW_DAYS } from './dataProcessor.js';
 import { isCurrentlyDark } from './themeManager.js';
 import { escapeHtml } from './escapeHtml.js';
 import { tooltip } from './tooltip.js';
@@ -206,7 +206,7 @@ export class CalendarComponent {
             tickFormat: i => (i == 10) ? "10+" : d3.format("d")(i)
         });
 
-        this.renderRecentStats(top, data, 365);
+        this.renderRecentStats(top, data, RECENT_WINDOW_DAYS);
 
         // Create calendar SVG
         const svg = container.append("svg")

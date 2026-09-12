@@ -355,16 +355,6 @@ function workPartKey(d) {
     return key && d.part ? `${key}|${d.part}` : null;
 }
 
-// Aggregate stats over an arbitrary slice of piece rows. Used by the calendar
-// header ("Last 365 days"), the dashboard KPI tiles, and the ALL tab. The
-// streak is scoped to whatever slice is passed in — a run is only counted
-// within the window/filter these rows represent.
-/**
- * @param {Row[]} rows
- * @returns {{ pieces: number, uniquePieces: number, uniqueParts: number,
- *             uniquePeople: number, daysPlayed: number, maxStreak: number,
- *             maxStreakInfo: { count: number, start: Date|null } }}
- */
 // The window the calendar's header, and the log form's confirmation tiles,
 // both report over. A lifetime total is barely moved by one evening — "1,002
 // +3" says nothing about tonight — so the counts a sitting is measured against
@@ -375,9 +365,7 @@ export const RECENT_WINDOW_DAYS = 365;
  * The rows inside that window, ending at `now`.
  *
  * The upper bound is not redundant: a mistyped year in the sheet puts a row in
- * the future, and it would otherwise be counted in every window forever. The
- * confirmation screen passes the moment the piece was LOGGED rather than the
- * clock, so a panel left open goes on reporting the window it was built for.
+ * the future, and it would otherwise be counted in every window forever.
  *
  * @param {Row[]} rows
  * @param {number} [days]
@@ -393,6 +381,16 @@ export function recentRows(rows, days = RECENT_WINDOW_DAYS, now = new Date()) {
     });
 }
 
+// Aggregate stats over an arbitrary slice of piece rows. Used by the calendar
+// header ("Last 365 days"), the dashboard KPI tiles, and the ALL tab. The
+// streak is scoped to whatever slice is passed in — a run is only counted
+// within the window/filter these rows represent.
+/**
+ * @param {Row[]} rows
+ * @returns {{ pieces: number, uniquePieces: number, uniqueParts: number,
+ *             uniquePeople: number, daysPlayed: number, maxStreak: number,
+ *             maxStreakInfo: { count: number, start: Date|null } }}
+ */
 export function computeAggregateStats(rows) {
     const works = new Set();
     const parts = new Set();

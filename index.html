@@ -328,10 +328,11 @@
                 <div id="logDoneList"></div>
             </div>
 
-            <!-- The dashboard's own tiles. A lifetime total alone says nothing
-                 about the piece just logged, so each carries what this sitting
-                 added to it: "Unique 322 +1" is the log telling you that you
-                 played something tonight you had never played before. -->
+            <!-- The dashboard's own tiles, counting the last 365 days rather
+                 than the whole log: a lifetime total is barely moved by one
+                 evening, so each carries what this sitting added to a span a
+                 sitting can change. "Unique +1" is the log telling you that
+                 you played something you had not played in a year. -->
             <div class="log-done-block">
                 <p class="log-done-sub">Your last 365 days, counting this sitting</p>
                 <div id="logDoneTiles" class="stat-tiles log-done-tiles"></div>
