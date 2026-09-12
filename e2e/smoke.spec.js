@@ -623,6 +623,34 @@ test.describe('log form', () => {
         await expect(page.locator('.log-done-row')).toHaveCount(2);
     });
 
+    test('a partial movement is marked incomplete but still says it was sent', async ({ page }) => {
+        // processData drops a ":" title, so the app's own copy of the sheet
+        // will never hold it. Reported as "not landed" its dot sat hollow
+        // forever under a note promising it would fill in shortly; the dot now
+        // answers whether it got off the device, and the italic says why that
+        // is a different question from the one on every other row.
+        await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#1: I');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1: I');
+
+        const row = page.locator('.log-done-row').first();
+        await expect(row).toHaveClass(/log-done-row--partial/);
+        await expect(row.locator('.log-done-piece')).toHaveCSS('font-style', 'italic');
+        await expect(row.locator('.log-done-dot')).toHaveClass(/log-done-dot--landed/);
+        await expect(row.locator('.log-done-dot')).toHaveAttribute('aria-label', /Sent to your sheet/);
+        // Said out loud as well, since the sitting shows a piece the tiles do
+        // not count.
+        await expect(page.locator('#logDoneWarn')).toContainText('partial movement');
+        // And the tiles do not count it: the row is there, Pieces is not +1.
+        await expect(page.locator('#logDoneTiles .stat-tile').first()
+            .locator('.stat-tile-delta')).toHaveText('+0');
+        // Nothing is left settling, so the note must not promise a dot fills in.
+        await expect(page.locator('#logDoneNote')).not.toContainText('hollow dot');
+    });
+
     test('a link cannot redirect a configured device without being asked', async ({ page }) => {
         // Someone sends you a link; one click and everything you log goes to
         // their spreadsheet while the form still says "Logged" and your own

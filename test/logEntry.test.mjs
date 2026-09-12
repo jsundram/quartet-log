@@ -407,7 +407,7 @@ const submission = (h, over = {}) => ({
 
 test('sessionPieces marks which side of the lag each piece is on', () => {
     const rows = [row({ timestamp: hoursAgo(2), work: { title: '20#2' } })];
-    const pieces = sessionPieces(rows, [submission(1, { title: '76#3' })], NOW);
+    const pieces = sessionPieces(rows, [submission(1, { title: '76#3' })], [], NOW);
     assert.deepEqual(pieces.map(p => [p.title, p.landed]), [['20#2', true], ['76#3', false]]);
     // The people come along either way: the tiles count them.
     assert.deepEqual(pieces[1].people, ['Alice Hart', 'Bob Bek', 'Carol Diaz']);
@@ -415,7 +415,7 @@ test('sessionPieces marks which side of the lag each piece is on', () => {
 
 test('sessionPieces drops a submission the app has already fetched', () => {
     const rows = [row({ timestamp: hoursAgo(1), work: { title: '76#3' } })];
-    const pieces = sessionPieces(rows, [submission(1)], NOW);
+    const pieces = sessionPieces(rows, [submission(1)], [], NOW);
     assert.deepEqual(pieces.map(p => [p.title, p.landed]), [['76#3', true]]);
 });
 
@@ -423,17 +423,17 @@ test('sessionPieces pairs one for one, so a piece played twice shows twice', () 
     // Pairing by identity alone would hide the second reading behind the
     // first one's row and under-count the evening.
     const rows = [row({ timestamp: hoursAgo(2), work: { title: '76#3' } })];
-    const pieces = sessionPieces(rows, [submission(2), submission(1)], NOW);
+    const pieces = sessionPieces(rows, [submission(2), submission(1)], [], NOW);
     assert.deepEqual(pieces.map(p => p.landed), [true, false]);
 });
 
 test('sessionPieces re-windows the merged list', () => {
     // A submission the sheet never took, from this morning: outside the
     // window, so it is not part of tonight however long it is remembered.
-    const pieces = sessionPieces([], [submission(9), submission(0.5)], NOW);
+    const pieces = sessionPieces([], [submission(9), submission(0.5)], [], NOW);
     assert.equal(pieces.length, 1);
     assert.equal(pieces[0].landed, false);
-    assert.deepEqual(sessionPieces([], [], NOW), []);
+    assert.deepEqual(sessionPieces([], [], [], NOW), []);
 });
 
 test('sessionPieces lets a submission bridge back to an earlier fetched row', () => {
@@ -445,18 +445,18 @@ test('sessionPieces lets a submission bridge back to an earlier fetched row', ()
     const rows = [row({ timestamp: hoursAgo(6), work: { title: '20#1' } })];
     const pieces = sessionPieces(rows, [
         submission(2.5, { title: '76#1' }), submission(0, { title: '76#2' }),
-    ], NOW);
+    ], [], NOW);
     assert.deepEqual(pieces.map(p => [p.title, p.landed]),
         [['20#1', true], ['76#1', false], ['76#2', false]]);
     // Still bounded: with nothing to bridge the gap, the 14:00 row is its own
     // sitting and tonight is the submission alone.
-    assert.deepEqual(sessionPieces(rows, [submission(0, { title: '76#2' })], NOW)
+    assert.deepEqual(sessionPieces(rows, [submission(0, { title: '76#2' })], [], NOW)
         .map(p => p.title), ['76#2']);
 });
 
 test('sessionPieces folds VA1 to VA, as processRow does on the way in', () => {
     // Otherwise one seat reads as two different parts either side of the lag.
-    const [piece] = sessionPieces([], [submission(1, { part: 'VA1' })], NOW);
+    const [piece] = sessionPieces([], [submission(1, { part: 'VA1' })], [], NOW);
     assert.equal(piece.part, 'VA');
 });
 
@@ -468,7 +468,7 @@ test('countNew scores a sitting against a log that does not contain it', () => {
     const pieces = sessionPieces([], [
         submission(2, { title: '76#3', part: 'V2' }),   // known work, new part
         submission(1, { title: '33#1', part: 'V1' }),   // new work and part
-    ], NOW);
+    ], [], NOW);
     assert.deepEqual(countNew(pieces, base),
         { pieces: 2, uniquePieces: 1, uniqueParts: 2, uniquePeople: 0 });
 });
@@ -479,18 +479,68 @@ test('countNew does not call a carried first name a new person', () => {
     // stranger — and the alias table that would settle it is deliberately
     // out of reach here.
     const base = [row({ player1: 'Alice Hart', player2: 'Bob Bek', player3: 'Carol Diaz' })];
-    const same = sessionPieces([], [submission(1, { player1: 'Alice' })], NOW);
+    const same = sessionPieces([], [submission(1, { player1: 'Alice' })], [], NOW);
     assert.equal(countNew(same, base).uniquePeople, 0);
     // A name that merely starts the same is a different person, not a
     // shorthand — the word boundary is what says so.
-    const other = sessionPieces([], [submission(1, { player1: 'Ali' })], NOW);
+    const other = sessionPieces([], [submission(1, { player1: 'Ali' })], [], NOW);
     assert.equal(countNew(other, base).uniquePeople, 1);
-    const guest = sessionPieces([], [submission(1, { others: 'Dana Ellis (p)' })], NOW);
+    const guest = sessionPieces([], [submission(1, { others: 'Dana Ellis (p)' })], [], NOW);
     assert.equal(countNew(guest, base).uniquePeople, 1);
 });
 
 test('countNew ignores an untitled work, as computeAggregateStats does', () => {
-    const pieces = sessionPieces([], [submission(1, { title: '' })], NOW);
+    const pieces = sessionPieces([], [submission(1, { title: '' })], [], NOW);
     assert.deepEqual(countNew(pieces, []),
         { pieces: 1, uniquePieces: 0, uniqueParts: 0, uniquePeople: 3 });
+});
+
+test('a partial movement says whether it was sent, since it can never land', () => {
+    // processData drops a ":" title, so the app's copy of the sheet will never
+    // hold one however long anyone waits. Left as "not landed" its dot sat
+    // hollow forever under a note promising it would fill in shortly.
+    const sub = submission(1, { title: '76#1: I' });
+    const [sent] = sessionPieces([], [sub], [], NOW);
+    assert.equal(sent.partial, true);
+    assert.equal(sent.landed, false);
+    assert.equal(sent.queued, false);
+
+    // Still in the outbox: that is the one state where a movement has not got
+    // anywhere, and the only state its dot can honestly report as unfinished.
+    const [held] = sessionPieces([], [sub], [{ entry: sub.entry }], NOW);
+    assert.equal(held.queued, true);
+
+    // A whole piece is never marked partial, either side of the lag.
+    const [whole] = sessionPieces([], [submission(1)], [], NOW);
+    assert.equal(whole.partial, false);
+    assert.equal(sessionPieces([row({ timestamp: hoursAgo(1) })], [], [], NOW)[0].partial, false);
+});
+
+test('the outbox is matched newest first, since flush sends oldest first', () => {
+    // Two readings of one piece, one already gone: the copy still waiting is
+    // the later one, so marking the earlier would put the hollow dot on the
+    // row that is safely in the sheet.
+    const twice = [submission(2, { title: '76#1' }), submission(1, { title: '76#1' })];
+    const pieces = sessionPieces([], twice, [{ entry: twice[0].entry }], NOW);
+    assert.deepEqual(pieces.map(p => p.queued), [false, true]);
+});
+
+test('countNew leaves partial movements out, as computeAggregateStats does', () => {
+    // Counting one would leave the confirmation's tiles permanently a piece
+    // ahead of the dashboard they are borrowed from.
+    const pieces = sessionPieces([], [
+        submission(2, { title: '76#1' }),
+        submission(1, { title: '76#2: I' }),
+    ], [], NOW);
+    assert.deepEqual(countNew(pieces, []),
+        { pieces: 1, uniquePieces: 1, uniqueParts: 1, uniquePeople: 3 });
+    // It is still in the sitting, though — you played it and you logged it.
+    assert.equal(pieces.length, 2);
+});
+
+test('warnings reads the same partial-movement rule parseWork does', () => {
+    assert.deepEqual(warnings(blankEntry({ title: '76#1' })), []);
+    const [note] = warnings(blankEntry({ title: '76#1: I' }));
+    assert.match(note, /partial movement/);
+    assert.match(note, /counts/);
 });

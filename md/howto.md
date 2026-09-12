@@ -149,6 +149,11 @@ a dot — filled once the app's own copy holds that row, hollow while it is stil
 on its way. The totals underneath count the whole sitting either way, including
 the pieces whose dot is still hollow.
 
+A partial movement — anything with a `:` in the title, like `59#1: I` — is the
+one exception, and it shows in *italic*. The sheet keeps it, but this app leaves
+it out of its charts and its totals, so its dot can never fill in that way; on
+that row it means simply that the entry was sent.
+
 If you have no signal the summary says so instead: the piece is held on the
 device and sent automatically, in the order you logged them, when you are back
 on a network.

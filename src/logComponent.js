@@ -82,6 +82,20 @@ const DONE_TILES = 4;
 const timeOfDay = (/** @type {number|Date} */ at) =>
     new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
+// The dot, per row. A whole piece fills in when the app's own copy of the
+// sheet holds it; a partial movement never gets there — processData drops it —
+// so for one of those the dot answers the only question still open, which is
+// whether it left this device. The italic on the row is what says the two are
+// not the same claim, so one mark can mean the nearest true thing in each case
+// instead of sitting hollow forever under a note promising it will fill in.
+const dotState = (/** @type {import('./logEntry.js').Piece} */ p) => {
+    if (p.queued) return { filled: false, label: 'Waiting for a network' };
+    if (p.partial) return { filled: true, label: 'Sent to your sheet; this app leaves movements out of its charts' };
+    return p.landed
+        ? { filled: true, label: 'Showing in your charts' }
+        : { filled: false, label: 'Not in your charts yet' };
+};
+
 // Enough of a form id to tell two apart without printing the whole thing.
 const shortId = (/** @type {string} */ id) => `...${id.slice(-6)}`;
 
@@ -944,6 +958,7 @@ export class LogComponent {
         d3.select('#logDoneWhere').text([entry.location, timeOfDay(at)].filter(Boolean).join(' \u00b7 '));
 
         const { pieces, tiles } = this.doneStats();
+        const dots = new Map(pieces.map(p => [p, dotState(p)]));
         // Newest first: the piece just logged is the one being confirmed, and
         // scanning down is scanning back through the evening.
         const list = [...pieces].reverse();
@@ -964,14 +979,17 @@ export class LogComponent {
                 return row;
             })
             .call(row => {
-                // The newest row is the subject; the rest are context.
-                row.attr('class', (d, i) => `log-done-row${i ? ' log-done-row--past' : ''}`);
+                // The newest row is the subject; the rest are context. Italic
+                // says this one is a movement rather than a whole piece — the
+                // sheet keeps it, these charts and the tiles below do not.
+                row.attr('class', (d, i) => `log-done-row${i ? ' log-done-row--past' : ''}`
+                    + (d.partial ? ' log-done-row--partial' : ''));
                 // Shape as well as colour — a tick inside the filled one, an
                 // empty ring otherwise — plus the label a reader hears.
                 row.select('.log-done-dot')
-                    .attr('class', d => `log-done-dot log-done-dot--${d.landed ? 'landed' : 'waiting'}`)
-                    .attr('title', d => (d.landed ? 'Showing in your charts' : 'Not in your charts yet'))
-                    .attr('aria-label', d => (d.landed ? 'Showing in your charts' : 'Not in your charts yet'));
+                    .attr('class', d => `log-done-dot log-done-dot--${dots.get(d).filled ? 'landed' : 'waiting'}`)
+                    .attr('title', d => dots.get(d).label)
+                    .attr('aria-label', d => dots.get(d).label);
                 row.select('.log-done-when').text(d => timeOfDay(d.timestamp));
                 row.select('.log-done-piece').html(null)
                     .text(d => `${d.composer} ${d.title}`.trim())
@@ -1003,13 +1021,17 @@ export class LogComponent {
             { maxWidth: '320px' });
 
         d3.select('#logDoneWarn').text(warn.join(' ')).property('hidden', !warn.length);
+        const settling = pieces.some(p => !dots.get(p).filled && !p.queued);
         d3.select('#logDoneNote').text(waiting
             ? `${waiting} ${waiting === 1 ? 'piece is' : 'pieces are'} held on this device, `
               + 'waiting for a connection. They are sent automatically, in the order you logged '
               + 'them, and reach your sheet then.'
-            : 'It is in your Google Sheet already \u2014 this page writes through your form. The '
-              + 'calendar and charts here read a published copy of that sheet, which Google '
-              + 'refreshes every few minutes, so the hollow dot fills in shortly.');
+            : 'It is in your Google Sheet already \u2014 this page writes through your form.'
+              + (settling
+                  ? ' The calendar and charts here read a published copy of that sheet, which '
+                    + 'Google refreshes every few minutes, so the hollow dot fills in shortly.'
+                  : ' The calendar and charts here read a published copy of that sheet, which '
+                    + 'Google refreshes every few minutes.'));
     }
 
     /**
@@ -1029,7 +1051,7 @@ export class LogComponent {
         if (this.done && !this.done.remembered) {
             submissions.push({ at: this.done.at, entry: this.done.entry });
         }
-        const pieces = sessionPieces(this.rows, submissions);
+        const pieces = sessionPieces(this.rows, submissions, store.pending());
         const agg = computeAggregateStats(this.rows);
         const unpublished = countNew(pieces.filter(p => !p.landed), this.rows);
         const start = pieces[0]?.timestamp;

@@ -2058,6 +2058,14 @@ body.network-fullscreen-open {
     color: var(--color-text-secondary);
 }
 
+/* A movement rather than a whole piece. The sheet keeps it and this app drops
+   it, so it is in the sitting but not in the charts or the tiles below —
+   italic is what says the dot beside it is answering a different question
+   ("did it get sent") from the one on every other row. */
+.log-done-row--partial .log-done-piece {
+    font-style: italic;
+}
+
 .log-done-part {
     color: var(--color-text-tertiary);
 }

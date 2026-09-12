@@ -9,7 +9,7 @@
 import { withInstrument } from './csvFormat.js';
 import {
     SLOT_TO_PART, stripParens, instrumentFromSlot, splitOutsideParens,
-    SESSION_WINDOW_HOURS, peopleKeysFor, refersToPrevEntry,
+    SESSION_WINDOW_HOURS, peopleKeysFor, refersToPrevEntry, parseWork,
 } from './dataProcessor.js';
 
 /** @typedef {import('./dataProcessor.js').Row} Row */
@@ -128,8 +128,9 @@ export function warnings(entry) {
     // reaches the sheet and then vanishes from every view in this app. That is
     // correct behaviour and a genuine surprise; say so rather than let the
     // piece look unlogged.
-    if (entry.title.includes(':')) {
-        out.push('A “:” marks a partial movement — the sheet keeps it, this app hides it.');
+    if (parseWork(entry.title).incomplete) {
+        out.push('A “:” marks a partial movement — the sheet keeps it, but this app leaves it '
+            + 'out of its charts and its counts.');
     }
     return out;
 }
@@ -505,6 +506,9 @@ export function sessionPeople(rows, now = new Date()) {
  * @property {string} part
  * @property {string[]} people - everyone on the row, seats and Others? alike
  * @property {boolean} landed - is it in the app's copy of the sheet yet
+ * @property {boolean} partial - a movement rather than a whole piece, so the
+ *   app's copy will never hold it however long anyone waits
+ * @property {boolean} queued - still in the outbox, not yet sent
  */
 
 // VA1 is a spelling of VA, folded by processRow on the way in. A local
@@ -531,10 +535,13 @@ const workKey = (/** @type {string} */ composer, /** @type {string} */ title) =>
  *
  * @param {Row[]} rows the app's own rows, chronological
  * @param {{ at: number, entry: Entry }[]} submissions store.recentAll(), oldest first
+ * @param {{ entry: Entry }[]} [queued] store.pending(), oldest first — what has
+ *   not left the device. A partial movement is never in `rows`, so this is the
+ *   only thing that can say whether it got anywhere.
  * @param {Date} [now]
  * @returns {Piece[]}
  */
-export function sessionPieces(rows, submissions, now = new Date()) {
+export function sessionPieces(rows, submissions, queued = [], now = new Date()) {
     // Window the two sources TOGETHER, on timestamps alone. The chain can run
     // back THROUGH a submission the sheet has not taken yet: log a piece
     // offline at 17:30 and the fetched row from 14:00 is more than a window
@@ -566,6 +573,8 @@ export function sessionPieces(rows, submissions, now = new Date()) {
                 part: m.row.part ?? '',
                 people: peopleKeysFor(m.row),
                 landed: true,
+                partial: parseWork(m.row.work?.title ?? '').incomplete,
+                queued: false,
             });
         } else if (m.sub) {
             sent.push(m.sub);
@@ -596,7 +605,25 @@ export function sessionPieces(rows, submissions, now = new Date()) {
                 ...parseOthersRows(entry.others).map(r => r.name).filter(Boolean),
             ],
             landed: false,
+            partial: parseWork(entry.title).incomplete,
+            queued: false,
         });
+    }
+    // Which of those are still in the outbox. Counted rather than matched by
+    // identity, for the same reason the pairing above is: two readings of one
+    // piece in an evening share a key. Consumed NEWEST first, because flush
+    // sends oldest first — with one of two copies gone, the one still waiting
+    // is the later one.
+    /** @type {Map<string, number>} */
+    const inOutbox = new Map();
+    for (const q of queued) {
+        const k = `${q.entry.composer}|${q.entry.title}`;
+        inOutbox.set(k, (inOutbox.get(k) ?? 0) + 1);
+    }
+    for (let i = waiting.length - 1; i >= 0; i--) {
+        const k = `${waiting[i].composer}|${waiting[i].title}`;
+        const n = inOutbox.get(k) ?? 0;
+        if (n > 0) { inOutbox.set(k, n - 1); waiting[i].queued = true; }
     }
     return [...landed, ...waiting].sort((a, b) => +a.timestamp - +b.timestamp);
 }
@@ -618,8 +645,9 @@ function knownPerson(/** @type {string} */ name, /** @type {Set<string>} */ know
  * that do not contain them.
  *
  * The same shape `computeAggregateStats` reports, and keyed the same way
- * (untitled works count for nothing, a part counts per work), so the number
- * under a tile and the number on it are answering one question. Used twice:
+ * (untitled works count for nothing, a part counts per work, a partial
+ * movement counts for nothing at all because `processData` drops it), so the
+ * number under a tile and the number on it are answering one question. Used twice:
  * for what a sitting added to the totals, and for what the submissions the
  * sheet has not published yet would add if it had.
  *
@@ -640,8 +668,13 @@ export function countNew(pieces, baseRows) {
         works.add(wk);
         if (d.part) parts.add(`${wk}|${d.part}`);
     }
-    const out = { pieces: pieces.length, uniquePieces: 0, uniqueParts: 0, uniquePeople: 0 };
+    const out = { pieces: 0, uniquePieces: 0, uniqueParts: 0, uniquePeople: 0 };
     for (const p of pieces) {
+        // A movement reaches the sheet and is then dropped from every view in
+        // this app. Counting it here would leave the tiles permanently one
+        // ahead of the dashboard they are borrowed from.
+        if (p.partial) continue;
+        out.pieces++;
         const wk = workKey(p.composer, p.title);
         if (wk) {
             if (!works.has(wk)) { works.add(wk); out.uniquePieces++; }
