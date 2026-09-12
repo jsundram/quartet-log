@@ -1237,6 +1237,14 @@ test.describe('log form', () => {
         // The claim has to be true: nothing persisted, so flush had nothing to
         // send and the submit is the only thing that could have sent it.
         expect(bodies.map(b => new URLSearchParams(b).get(TITLE_ID))).toEqual(['76#1']);
+        // ...and the sitting on the panel has to hold the piece the panel is
+        // confirming. The sitting is built from the remembered submissions,
+        // which is the one record this browser also refused to write, so
+        // without the receipt standing in for it the screen greeted a
+        // successful submit with "0 pieces this sitting" and an empty list.
+        await expect(page.locator('#logDoneSitting')).toContainText('First piece');
+        await expect(page.locator('.log-done-row')).toHaveCount(1);
+        await expect(page.locator('.log-done-row .log-done-piece')).toContainText('Haydn 76#1');
     });
 
     test('an unstorable piece that cannot be sent is never reported as logged', async ({ page }) => {

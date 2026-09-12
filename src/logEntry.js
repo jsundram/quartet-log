@@ -524,9 +524,10 @@ const workKey = (/** @type {string} */ composer, /** @type {string} */ title) =>
  *
  * A submission is paired off against a fetched row by composer and title, one
  * for one: pairing by identity alone would hide the second reading of a piece
- * played twice in an evening behind the first one's row. The merged list is
- * then re-windowed, so a submission from this morning that the sheet never
- * took is not dragged into tonight.
+ * played twice in an evening behind the first one's row. Only the pieces the
+ * window keeps are paired, so a submission from this morning that the sheet
+ * never took is neither dragged into tonight nor allowed to claim one of
+ * tonight's rows.
  *
  * @param {Row[]} rows the app's own rows, chronological
  * @param {{ at: number, entry: Entry }[]} submissions store.recentAll(), oldest first
@@ -534,17 +535,42 @@ const workKey = (/** @type {string} */ composer, /** @type {string} */ title) =>
  * @returns {Piece[]}
  */
 export function sessionPieces(rows, submissions, now = new Date()) {
+    // Window the two sources TOGETHER, on timestamps alone. The chain can run
+    // back THROUGH a submission the sheet has not taken yet: log a piece
+    // offline at 17:30 and the fetched row from 14:00 is more than a window
+    // away from 20:00, but not from the piece bridging them. Windowing the
+    // fetched rows on their own first dropped exactly those rows — the same
+    // sitting, reported short. Every row becomes a mark, but only the marks
+    // the chain keeps are read for their people and their work, which is the
+    // part that costs anything.
+    /** @type {{ timestamp: Date|null, row: Row|null, sub: { at: number, entry: Entry }|null }[]} */
+    const marks = [
+        ...rows.map(d => ({ timestamp: d.timestamp, row: d, sub: null })),
+        ...submissions.map(s => ({ timestamp: new Date(s.at), row: null, sub: s })),
+        // A row whose timestamp never parsed sorts to the front, where the
+        // walk below stops at it exactly as it always did.
+    ].sort((a, b) => (a.timestamp?.getTime() ?? 0) - (b.timestamp?.getTime() ?? 0));
+
     /** @type {Piece[]} */
-    const landed = sessionRows(rows, now).map(d => ({
-        // sessionRows stops at the first row without one, so every row it
-        // returns has a timestamp — which tsc cannot see through the loop.
-        timestamp: /** @type {Date} */ (d.timestamp),
-        composer: d.composer,
-        title: d.work?.title ?? '',
-        part: d.part ?? '',
-        people: peopleKeysFor(d),
-        landed: true,
-    }));
+    const landed = [];
+    /** @type {{ at: number, entry: Entry }[]} */
+    const sent = [];
+    for (const m of sessionRows(marks, now)) {
+        if (m.row) {
+            landed.push({
+                // sessionRows stops at the first mark without a timestamp, so
+                // everything it returns has one — which tsc cannot see.
+                timestamp: /** @type {Date} */ (m.timestamp),
+                composer: m.row.composer,
+                title: m.row.work?.title ?? '',
+                part: m.row.part ?? '',
+                people: peopleKeysFor(m.row),
+                landed: true,
+            });
+        } else if (m.sub) {
+            sent.push(m.sub);
+        }
+    }
     // How many fetched rows each (composer, title) has this sitting. Each one
     // accounts for exactly one submission; the rest are still on their way.
     /** @type {Map<string, number>} */
@@ -555,7 +581,7 @@ export function sessionPieces(rows, submissions, now = new Date()) {
     }
     /** @type {Piece[]} */
     const waiting = [];
-    for (const { at, entry } of submissions) {
+    for (const { at, entry } of sent) {
         const k = `${entry.composer}|${entry.title}`;
         const seen = accounted.get(k) ?? 0;
         if (seen > 0) { accounted.set(k, seen - 1); continue; }
@@ -572,8 +598,7 @@ export function sessionPieces(rows, submissions, now = new Date()) {
             landed: false,
         });
     }
-    const merged = [...landed, ...waiting].sort((a, b) => +a.timestamp - +b.timestamp);
-    return sessionRows(merged, now);
+    return [...landed, ...waiting].sort((a, b) => +a.timestamp - +b.timestamp);
 }
 
 // Does the log already know this person under this name? Exact match, or the

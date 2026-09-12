@@ -314,7 +314,12 @@
                     <path d="M5 13l4 4L19 7"></path>
                 </svg>
             </span>
-            <h2 id="logDoneWhat" class="log-done-what"></h2>
+            <!-- Announced, not just shown: the submit response is opaque and
+                 this panel is the only acknowledgement there is, so it has to
+                 reach a reader who cannot see the form disappear. renderMode
+                 unhides the panel before renderDone fills it, so the text
+                 lands as a change inside a live region. -->
+            <h2 id="logDoneWhat" class="log-done-what" aria-live="polite" aria-atomic="true"></h2>
             <p id="logDoneWho" class="log-done-who"></p>
             <p id="logDoneWhere" class="log-done-where"></p>
 

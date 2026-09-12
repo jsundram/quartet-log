@@ -922,8 +922,18 @@ export class LogComponent {
      * reader rather than only on the next visit.
      */
     renderDone() {
-        const { entry, at, seats, others, waiting, warn } = this.done;
-        d3.select('#logDoneWhat').text(`${entry.composer} ${entry.title}`.trim());
+        const { entry, at, seats, others, warn } = this.done;
+        // The queue as it stands, not as it stood at submit time: `online`
+        // fires while this screen is up and drains it, and the note would go
+        // on claiming the piece was held on the device after it had gone.
+        const waiting = store.pending().length;
+        // Written only when it changes: this is a live region, and
+        // redrawFromData repaints it on every revalidate — setting the same
+        // text back still replaces the node, which would re-announce the piece
+        // every five minutes to the one reader who cannot dismiss it.
+        const what = `${entry.composer} ${entry.title}`.trim();
+        const heading = d3.select('#logDoneWhat');
+        if (heading.text() !== what) heading.text(what);
         // Who was on what, as the row records it: the user's own part is
         // implicit in the sheet (no slot holds it), so it is named first.
         d3.select('#logDoneWho').text([
@@ -1013,7 +1023,13 @@ export class LogComponent {
      * means a work that was new tonight rather than one logged twice.
      */
     doneStats() {
-        const pieces = sessionPieces(this.rows, store.recentAll());
+        const submissions = store.recentAll();
+        // setRecent said no, so this piece is in neither half of the sitting.
+        // It is still a piece of it, and the receipt is the only record left.
+        if (this.done && !this.done.remembered) {
+            submissions.push({ at: this.done.at, entry: this.done.entry });
+        }
+        const pieces = sessionPieces(this.rows, submissions);
         const agg = computeAggregateStats(this.rows);
         const unpublished = countNew(pieces.filter(p => !p.landed), this.rows);
         const start = pieces[0]?.timestamp;
@@ -1041,6 +1057,8 @@ export class LogComponent {
         if (!this.config || !store.pending().length) return;
         const { sent, remaining } = await store.flush(e => postEntry(e, this.config));
         this.renderPending();
+        // The confirmation's note counts the queue, so it moves when this does.
+        if (this.done) this.renderDone();
         // A queue that is still draining is the other state worth explaining:
         // what is left, why the order matters, and that nothing is lost.
         if (sent) {
@@ -1081,7 +1099,7 @@ export class LogComponent {
         // previous row.
         const queued = store.enqueue(entry);
         const button = d3.select('#logSubmit').property('disabled', true);
-        const { remaining } = await store.flush(e => postEntry(e, this.config));
+        await store.flush(e => postEntry(e, this.config));
         // A browser that won't write localStorage (private-mode Safari, a full
         // quota) drops the entry on the floor: flush re-reads storage, finds
         // nothing, and reports a clean run for a piece that never left the
@@ -1104,7 +1122,11 @@ export class LogComponent {
             return;
         }
 
-        store.setRecent(resolved);
+        // Whether the sitting record took it. A browser refusing localStorage
+        // drops it silently, and doneStats builds the whole sitting from that
+        // record — so without this the confirmation would greet a successful
+        // submit with "0 pieces this sitting" and an empty list.
+        const remembered = store.setRecent(resolved);
         // The sitting just changed: the memoised carry and session sources
         // below feed seedOthers and refresh, and a stale one would start the
         // next piece from the row before this one.
@@ -1121,7 +1143,7 @@ export class LogComponent {
                 part: chosen[i] ?? implied[i],
             })).filter(p => p.name && p.name !== '-'),
             others: parseOthersRows(resolved.others),
-            waiting: remaining,
+            remembered,
             // The only warning there is says the sheet will keep this row and
             // this app will hide it — so it belongs on the screen that is
             // otherwise about to show a sitting the piece is missing from.

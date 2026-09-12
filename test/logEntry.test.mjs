@@ -436,6 +436,24 @@ test('sessionPieces re-windows the merged list', () => {
     assert.deepEqual(sessionPieces([], [], NOW), []);
 });
 
+test('sessionPieces lets a submission bridge back to an earlier fetched row', () => {
+    // One source at a time is not the sitting: log a piece offline at 17:30
+    // and the 14:00 row the sheet already has is more than a window away from
+    // 20:00, but not from the piece between them. fillForward would chain all
+    // three, so windowing the fetched rows on their own first reported the
+    // evening short by its first piece.
+    const rows = [row({ timestamp: hoursAgo(6), work: { title: '20#1' } })];
+    const pieces = sessionPieces(rows, [
+        submission(2.5, { title: '76#1' }), submission(0, { title: '76#2' }),
+    ], NOW);
+    assert.deepEqual(pieces.map(p => [p.title, p.landed]),
+        [['20#1', true], ['76#1', false], ['76#2', false]]);
+    // Still bounded: with nothing to bridge the gap, the 14:00 row is its own
+    // sitting and tonight is the submission alone.
+    assert.deepEqual(sessionPieces(rows, [submission(0, { title: '76#2' })], NOW)
+        .map(p => p.title), ['76#2']);
+});
+
 test('sessionPieces folds VA1 to VA, as processRow does on the way in', () => {
     // Otherwise one seat reads as two different parts either side of the lag.
     const [piece] = sessionPieces([], [submission(1, { part: 'VA1' })], NOW);
