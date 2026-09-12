@@ -59,7 +59,13 @@ const SLOT_CLASS = /** @type {const} */ (['upper', 'upper', 'cello']);
 // nothing about which violin seat, so it buckets as OTHER rather than guess.
 const CELLO_INSTRUMENT = /^(?:vc|vlc|cello|violoncello|c)(?![a-z])/;
 const VIOLA_INSTRUMENT = /^(?:vla|viola|va)(?![a-z])/;
-const VIOLIN_INSTRUMENT = /^(?:v[12]|violin|vn|vln)(?![a-z])/;
+// v3/v4 are here because the log form writes them: an octet's third and
+// fourth violins are Others? entries with a part of their own. They bucket
+// as OTHER in partFromInstrument, which is a separate question -- this
+// pattern only answers "is this parenthetical an instrument at all", and
+// answering no would let a (v3) on a player slot read as a note and be
+// dropped the next time that seat is written.
+const VIOLIN_INSTRUMENT = /^(?:v[1-4]|violin|vn|vln)(?![a-z])/;
 // Everything else the log has actually named, plus the obvious neighbours.
 // Part-wise these all bucket as OTHER, so this list never has to be right
 // about WHICH instrument — only about instrument-or-not, which is what
