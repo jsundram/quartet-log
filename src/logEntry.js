@@ -486,10 +486,20 @@ function seatName(typed, carried) {
  * @param {string[]} a.carried the cell each seat would ditto, annotation included
  * @param {(string|null)[]} a.chosen the part selected per seat
  * @param {(string|null)[]} a.implied the part each seat implies
- * @returns {{ cells: string[], order: number[] }}
+ * @returns {{ cells: string[], order: number[], parts: (string|null)[] }}
+ *   `parts` is null per seat only when the row's own part has no seat table
+ *   (`impliedSlotParts` answers all-null) — a stale draft, not a live control.
  */
 export function seatPlan({ typed, carried, chosen, implied }) {
     const order = seatOrder({ typed, carried, chosen, implied });
+    // What the person written into each seat is playing — the same
+    // `chosen[from] ?? implied[i]` the cell below is built from, published
+    // rather than re-derived. The confirmation screen names the line-up it
+    // recorded, and deriving it per seat from `chosen[i]` would read a
+    // reordering backwards: after a swap the names have moved and each is on
+    // the part its NEW seat implies, which is the whole reason nothing is
+    // annotated.
+    const parts = order.map((from, i) => chosen[from] ?? implied[i]);
     const cells = order.map((from, i) => {
         // A seat that keeps its own name keeps its own CASE exactly: a typed
         // "-" (nobody here) and a dittoed one are different cells, and
@@ -506,7 +516,7 @@ export function seatPlan({ typed, carried, chosen, implied }) {
             implied: implied[i],
         });
     });
-    return { cells, order };
+    return { cells, order, parts };
 }
 
 /**

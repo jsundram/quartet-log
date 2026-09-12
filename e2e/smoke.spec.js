@@ -827,10 +827,15 @@ test.describe('log form', () => {
         await page.fill('#logPlayer3', '-');
 
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         const body = new URLSearchParams(bodies.at(-1));
         expect(body.get(PLAYER1_ID)).toBe('Erin');
         expect(body.get(PLAYER2_ID)).toBe('Bob');
+        // The confirmation names the line-up it RECORDED, so it reads the
+        // moved names: pairing each with the part its own dropdown was set to
+        // would print the swap backwards, against the row the sheet holds.
+        await expect(page.locator('#logDoneWho')).toContainText('Erin V1');
+        await expect(page.locator('#logDoneWho')).toContainText('Bob V2');
         // A trio: the empty chair is written out, since a blank would ditto
         // the cellist above.
         expect(body.get(PLAYER3_ID)).toBe('-');
@@ -862,7 +867,7 @@ test.describe('log form', () => {
         await expect(page.locator('#logSlotPart3')).toHaveValue('VC2');
 
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         const body = new URLSearchParams(bodies.at(-1));
         // So it dittos, rather than writing out a bare "Frank" and demoting the
         // second cellist to the cellist.
@@ -912,7 +917,7 @@ test.describe('log form', () => {
         await row.locator('input').fill('Frank Gomez');
         await row.locator('select').selectOption('CL');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Frank Gomez (cl)');
         // The next piece of the sitting carries them, and the dropdown shows
         // the option rather than the raw code as passthrough text.
@@ -941,7 +946,7 @@ test.describe('log form', () => {
         await expect(page.locator('#logSlotPart2')).toHaveValue('V2');
 
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         const body = new URLSearchParams(bodies.at(-1));
         expect(body.get(PLAYER1_ID)).toBe('Grace (v2)');
         // Dave dittos, still a violinist. Handing the vacated (p) over would
@@ -998,7 +1003,7 @@ test.describe('log form', () => {
         await page.fill('#logTitle', '76#6');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         // Round-tripped, not rewritten into the nearest thing on the list.
         expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Heidi (vc)');
     });

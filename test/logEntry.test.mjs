@@ -341,6 +341,28 @@ function seats(over = {}) {
     return plan(over).cells;
 }
 
+test('the plan says which part each written seat is on, not which it was set to', () => {
+    // The confirmation screen names the line-up it recorded, and it is the
+    // third reader of this plan. After a swap the NAMES have moved, so each is
+    // on the part its new seat implies — pairing name i with the part seat i
+    // was set to prints the swap backwards, which is the same mistake the
+    // placeholders had to avoid.
+    const swapped = plan({ typed: ['Dana Ellis', 'Erin Fry', ''], chosen: ['V2', 'V1', 'VC'] });
+    assert.deepEqual(swapped.cells, ['Erin Fry', 'Dana Ellis', '']);
+    assert.deepEqual(swapped.parts, ['V1', 'V2', 'VC']);
+
+    // A part with no seat to move to is annotated, and the part reported is
+    // the one annotated rather than the seat's own.
+    const annotated = plan({ typed: ['Dana Ellis', 'Erin Fry', 'Carol Diaz'],
+        chosen: ['V1', 'VA2', 'VC'] });
+    assert.deepEqual(annotated.parts, ['V1', 'VA2', 'VC']);
+
+    // Nothing chosen yet — every render before the Part row is tapped.
+    assert.deepEqual(plan({ chosen: [null, null, null] }).parts, ['V1', 'V2', 'VC']);
+    assert.deepEqual(plan({ chosen: [null, null, null], implied: [null, null, null] }).parts,
+        [null, null, null]);
+});
+
 test('two violinists swapping are written in seat order, not annotated', () => {
     // The shape that was reported: a row reading "Dana Ellis (v2), Erin Fry
     // (v1)" where the sheet's own way to say it is "Erin Fry, Dana Ellis".

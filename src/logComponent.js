@@ -1027,7 +1027,10 @@ export class LogComponent {
         // implicit in the sheet (no slot holds it), so it is named first.
         d3.select('#logDoneWho').text([
             `You ${entry.part}`,
-            ...seats.map(p => `${p.name} ${p.part}`),
+            // A seat whose part is unknown — a stale draft carrying a part
+            // with no seat table — is named without one rather than beside
+            // the word "null".
+            ...seats.map(p => (p.part ? `${p.name} ${p.part}` : p.name)),
             ...others.map(o => (o.instrument ? `${o.name} ${o.instrument}` : o.name)),
         ].join(' \u00b7 '));
         d3.select('#logDoneWhere').text([entry.location, timeOfDay(at)].filter(Boolean).join(' \u00b7 '));
@@ -1196,7 +1199,7 @@ export class LogComponent {
         // (which is the retyping this whole control replaces), and parts that
         // merely reorder the seats move the names instead of annotating them.
         const carried = this.carried();
-        const { cells } = this.seats();
+        const { cells, parts } = this.seats();
         const entry = { ...this.entry };
         SEATS.forEach((field, i) => { entry[field] = cells[i]; });
         // Resolve the blanks against what they ditto BEFORE advancing, so the
@@ -1243,15 +1246,18 @@ export class LogComponent {
         // next piece from the row before this one.
         this.invalidateSources();
         // The receipt, as sent. Taken here rather than re-derived when it is
-        // drawn: `chosen` and `implied` describe the controls that were on
-        // screen for THIS piece, and one line below they start describing the
-        // next one.
+        // drawn: `seatPlan` describes the controls that were on screen for
+        // THIS piece, and one line below they start describing the next one.
+        // The parts come from the plan for the same reason the cells do — a
+        // swap moves the names, so each is on the part its NEW seat implies,
+        // and pairing name i with the part seat i was SET to would print the
+        // swap backwards.
         this.done = {
             entry: resolved,
             at: Date.now(),
             seats: SEATS.map((field, i) => ({
                 name: (stripParens(resolved[field]) ?? '').trim(),
-                part: chosen[i] ?? implied[i],
+                part: parts[i],
             })).filter(p => p.name && p.name !== '-'),
             others: parseOthersRows(resolved.others),
             remembered,
