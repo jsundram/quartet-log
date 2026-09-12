@@ -187,6 +187,11 @@ and an Others? entry get the same instrument dropdown — so you can put people
 wherever the ensemble actually puts them, and say what they played without
 remembering the `(p)` syntax.
 
+That dropdown also handles the ordinary case of two people swapping seats. Set
+one of them to the part the other is on and the form swaps the pair, then
+writes the names in seat order — the columns still mean what your own part
+implies, so nothing is annotated and nothing has to be retyped.
+
 ## 6. What repeats itself, and what doesn't
 
 You don't have to retype the same four names for every piece. Leave a player

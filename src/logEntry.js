@@ -305,6 +305,187 @@ export function slotCell({ typed, carried = '', chosen, implied }) {
     return desired === carried.trim() ? '' : desired;
 }
 
+// Every seat keeps its own name — the ordinary case, and what every guard in
+// seatOrder falls back to. A factory rather than a shared constant: seatPlan
+// hands the order out to its caller, and one shared array returned from four of
+// the five paths would be a module-level value any caller could sort in place.
+const seatsAsTyped = () => [0, 1, 2];
+
+/**
+ * Which seat each cell's name comes from.
+ *
+ * A reordering of the parts the seats already imply is not an annotation, it is
+ * a reordering: see seatPlan.
+ * @param {{ typed: string[], carried: string[], chosen: (string|null)[], implied: (string|null)[] }} a
+ * @returns {number[]} order[i] = the seat that seat i's name comes from
+ */
+function seatOrder({ typed, carried, chosen, implied }) {
+    // Nothing to reorder against: a part this app has no seat table for, or
+    // none picked yet — which is every render before the Part row is tapped.
+    if (implied.some(p => !p) || chosen.some(p => !p)) return seatsAsTyped();
+    // Who is on each seat's own part: holder[i] is the seat set to implied[i],
+    // or -1 when no seat is — that part is out of band (a second viola, a
+    // pianist in a string seat), or two seats claim one part and leave a third
+    // unclaimed.
+    const holder = implied.map(p => chosen.indexOf(/** @type {string} */ (p)));
+    // Only a CYCLE of that map can be reordered, and the swap is decided PER
+    // cycle rather than over the whole row: one seat on a part of its own
+    // (`Carol Diaz (vc2)`, carried forward from the row above with no user
+    // action at all) must not quietly turn the two violinists' swap back into
+    // the annotated shape this exists to stop.
+    //
+    // `holder` is a partial permutation — the implied parts are distinct, so no
+    // two seats read the same source — so its components are cycles and open
+    // paths. The seat at the head of a path keeps its own name, nobody being on
+    // its part, and would then ALSO hand that name to the seat reading from it:
+    // one person written into two cells. Three seats admit at most one
+    // non-trivial cycle (a second would need a fourth seat), which is why one
+    // all-or-nothing name check below covers it.
+    const moving = seatsAsTyped().filter(i => holder[i] !== i && onCycle(holder, i));
+    // A seat that moves needs a name to move: it takes the other seat's field,
+    // or what that seat dittos. An empty one would leave a blank cell — which
+    // is a ditto mark and not an empty chair, so the row above's player would
+    // reappear, in a part they did not play. Annotate instead; that at least
+    // says something true.
+    if (!moving.every(i => seatName(typed[holder[i]], carried[holder[i]]))) return seatsAsTyped();
+    const order = seatsAsTyped();
+    for (const i of moving) order[i] = holder[i];
+    return order;
+}
+
+/**
+ * Whether seat `i` sits on a cycle of the partial permutation `holder`, i.e.
+ * following "who is on my part" from it comes back to it.
+ *
+ * The step bound is the loop's own termination guarantee and nothing more: a
+ * walk that reached a cycle NOT containing `i` would spin, and that needs a
+ * node with two edges into it, which `holder` cannot have (it reads distinct
+ * implied parts, so no two seats resolve to the same source). Unreachable, and
+ * kept rather than trusting a caller's invariant to bound a loop.
+ * @param {number[]} holder @param {number} i @returns {boolean}
+ */
+function onCycle(holder, i) {
+    let at = holder[i];
+    for (let step = 0; at >= 0 && step < holder.length; step++) {
+        if (at === i) return true;
+        at = holder[at];
+    }
+    return false;
+}
+
+/**
+ * The name a seat holds: what was typed, else what it dittos.
+ * @param {string|null|undefined} typed @param {string|null|undefined} carried
+ * @returns {string}
+ */
+function seatName(typed, carried) {
+    return (typed ?? '').trim() || (stripParens(carried ?? '') ?? '').trim();
+}
+
+/**
+ * The three seat cells to submit, and where each name came from.
+ *
+ * The seats are POSITIONAL, so when the parts chosen across them are the parts
+ * the seats already imply in a different ORDER, the sheet's own way of saying
+ * so is to move the names — "Bob Bek, Alice Hart", not "Alice Hart (v2), Bob
+ * Bek (v1)". Annotating a plain swap writes a row every reader then has to undo:
+ * slotPartsFor does recover the parts, so the charts stay right, but the
+ * columns now contradict SLOT_TO_PART, anyone reading the spreadsheet sees the
+ * second violin in the first chair, and the annotation dittos forward onto
+ * every later row that leaves the seat blank. The annotation is for a part the
+ * three seats cannot express — VA2, a pianist — not for a rearrangement of the
+ * three they can.
+ *
+ * A carried row that already holds such a swap is normalised the same way,
+ * which is how a row the old behaviour wrote (or one typed into the Google
+ * Form) stops propagating: the parts are unchanged, the names move to the
+ * seats that imply them, and the annotations go away.
+ *
+ * Returns the cells AND the order they came from, because the two callers need
+ * different halves of one answer: `submit` sends the cells, while the
+ * placeholders have to know which seats were reseated — a moved name shown
+ * against the part its old seat claimed says the swap backwards.
+ *
+ * @param {object} a
+ * @param {string[]} a.typed what is in each name field
+ * @param {string[]} a.carried the cell each seat would ditto, annotation included
+ * @param {(string|null)[]} a.chosen the part selected per seat
+ * @param {(string|null)[]} a.implied the part each seat implies
+ * @returns {{ cells: string[], order: number[] }}
+ */
+export function seatPlan({ typed, carried, chosen, implied }) {
+    const order = seatOrder({ typed, carried, chosen, implied });
+    const cells = order.map((from, i) => {
+        // A seat that keeps its own name keeps its own CASE exactly: a typed
+        // "-" (nobody here) and a dittoed one are different cells, and
+        // resolving it early would write the "-" out where a blank would do.
+        // A seat taking another's name is materialising it either way.
+        //
+        // The part travels with the name, and for a seat that took one that
+        // part is implied[i] by construction — order[i] is the seat whose part
+        // IS implied[i] — so a reordering annotates nothing, which is the point.
+        return slotCell({
+            typed: from === i ? typed[i] : seatName(typed[from], carried[from]),
+            carried: carried[i],
+            chosen: chosen[from],
+            implied: implied[i],
+        });
+    });
+    return { cells, order };
+}
+
+/**
+ * The seat parts after one seat is set to `key`.
+ *
+ * Three seats hold three different parts, so a part taken from another seat
+ * hands that seat the one this one gave up: changing a single dropdown says
+ * "these two swapped", which is the thing that happens. Left alone, the sheet
+ * gets a row with two second violins and no first — and seatPlan can only
+ * annotate it, because a duplicate is not a reordering of anything.
+ *
+ * That hand-back is a trade, so it needs TWO chairs: the part given up and the
+ * part taken both have to be ones the three seats hold. A part that is a
+ * person's rather than a chair's — `P`, `VA2`, `VC2`, a code this list cannot
+ * express — is nobody's to trade, and handing it either direction records an
+ * instrument someone never played, with their name field untouched:
+ *
+ *   - give one away: move the pianist's seat to V2, and the seat already on V2
+ *     is written `(p)`.
+ *   - take one: move a seat onto the second violist's `VA2`, and SHE is written
+ *     `(v1)` — the same bug mirrored, and the one this guard first missed.
+ *
+ * `VC2` is worse than wrong data, since `classOf` reads it as the cello class
+ * and a bare first name there can normalize to a different person entirely.
+ * Either way the other seat keeps its part and seatPlan annotates the duplicate
+ * claim, which is what the annotation is for.
+ *
+ * A part no other seat holds displaces nothing; that seat is simply on it now.
+ * Neither does one that two other seats hold: from an already-duplicated state
+ * (a legacy row can carry one in) there is no single partner to trade with, and
+ * picking the first would move a third person nobody spoke about.
+ *
+ * @param {object} a
+ * @param {(string|null)[]} a.chosen the part each seat is on
+ * @param {(string|null)[]} a.implied the part each seat implies
+ * @param {number} a.seat the seat being changed
+ * @param {string} a.key the part it is being set to
+ * @returns {(string|null)[]}
+ */
+export function setSlotPart({ chosen, implied, seat, key }) {
+    const next = [...chosen];
+    next[seat] = key;
+    const vacated = chosen[seat];
+    const clashes = chosen.filter((p, j) => j !== seat && p === key);
+    const partner = chosen.findIndex((p, j) => j !== seat && p === key);
+    // Before the Part row is tapped no seat is on anything: the partner goes
+    // back to holding nothing, which slotParts reads as "whatever the seat
+    // implies" — the right answer either way.
+    const trade = clashes.length === 1
+        && (!vacated || (implied.includes(vacated) && implied.includes(key)));
+    if (trade) next[partner] = vacated;
+    return next;
+}
+
 /**
  * The part each slot should show before the user touches anything: whatever
  * the carried cell says, falling back to the seat's own implication. Reading

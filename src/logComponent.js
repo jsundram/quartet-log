@@ -9,7 +9,7 @@ import * as store from './logStore.js';
 import {
     blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
-    impliedSlotParts, defaultSlotParts, slotCell, SLOT_PARTS, PART_CHOICES,
+    impliedSlotParts, defaultSlotParts, seatPlan, setSlotPart, SLOT_PARTS, PART_CHOICES,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, canonicalOthersCell,
     sessionPeople, sessionRows, slotPartKey,
@@ -413,6 +413,10 @@ export class LogComponent {
                     });
                 this.clearMissing();
                 this.renderSlotParts();
+                // Own part is what the seats mean, so it changes which cells
+                // the placeholders are promising — an annotation that is now
+                // redundant, or one that is now needed.
+                this.renderPlaceholders();
             });
     }
 
@@ -421,12 +425,37 @@ export class LogComponent {
             d3.select(sel).on('input', (e) => {
                 this.entry[field] = e.target.value;
                 this.clearMissing();
+                // A name typed in one seat decides whether the seats can
+                // swap at all — a seat with no name has none to hand over — so
+                // it changes what a DIFFERENT seat's placeholder promises.
+                if (SEATS.includes(field)) this.renderPlaceholders();
                 this.touch();
             });
         }
         SEATS.forEach((_, i) => {
             d3.select(`#logSlotPart${i + 1}`).on('change', (e) => {
-                this.slotPartOverrides[i] = e.target.value;
+                // Taking a part another seat holds hands that seat this one's,
+                // so one dropdown says "these two swapped" — hence the whole
+                // array, and hence re-rendering the others to show it.
+                const next = setSlotPart({
+                    chosen: this.slotParts(),
+                    implied: impliedSlotParts(this.entry.part),
+                    seat: i,
+                    key: e.target.value,
+                });
+                // Only the seats that actually DEPART from the carried row are
+                // held here. Pinning all three would freeze the untouched ones
+                // against the row they track, and a carried annotation is the
+                // thing that gets lost: touch one dropdown, let a revalidate
+                // land a `Frank (vc2)` seat (or restore this draft into a new
+                // sitting), and that seat is written out as a bare `Frank` —
+                // a second cellist recorded as the cellist.
+                const defaults = defaultSlotParts(this.carried(), this.entry.part);
+                this.slotPartOverrides = next.map((p, j) => (p === defaults[j] ? null : p));
+                this.renderSlotParts();
+                // The parts decide which seat each name lands in, so the
+                // promise the placeholders make changes with them.
+                this.renderPlaceholders();
                 this.touch();
             });
         });
@@ -446,6 +475,19 @@ export class LogComponent {
     slotParts() {
         const defaults = defaultSlotParts(this.carried(), this.entry.part);
         return defaults.map((d, i) => this.slotPartOverrides[i] ?? d);
+    }
+
+    // What the three seats will actually submit, names resolved and parts
+    // written, plus where each name came from. One answer for both callers: the
+    // row on submit, and the placeholders that promise what that row will hold.
+    seats() {
+        const carried = this.carried();
+        return seatPlan({
+            typed: SEATS.map(f => this.entry[f]),
+            carried: SEATS.map(f => carried[f]),
+            chosen: this.slotParts(),
+            implied: impliedSlotParts(this.entry.part),
+        });
     }
 
     renderSlotParts() {
@@ -602,8 +644,26 @@ export class LogComponent {
     // (howto section 6).
     renderPlaceholders() {
         const carried = this.carried();
+        // A seat previews the CELL it will write, not blindly the name above
+        // it: a part picked on a blank seat materialises that name, annotated,
+        // and a placeholder still showing the bare carried name would promise
+        // a cell the row will not hold. The cell is blank exactly when it
+        // dittos, and then the carried cell IS what the row will hold.
+        //
+        // A RESEATED seat is the exception, and it matters: the pair on screen
+        // — this name field, the dropdown beside it — has to be a true
+        // statement about who played what, and the positional encoding is this
+        // form's business rather than the logger's. Previewing the moved name
+        // against the part this seat claimed states the swap backwards ("Dave,
+        // V2" while Dave is being written into the V1 column), so a moved seat
+        // goes on showing the name it carries, which is the person the
+        // dropdown beside it is speaking about.
+        const { cells, order } = this.seats();
         for (const field of CARRIED_INPUTS) {
-            d3.select(TEXT_INPUTS[field]).attr('placeholder', carried[field] || 'nobody yet');
+            const i = SEATS.indexOf(field);
+            const preview = i >= 0 && order[i] === i;
+            const shown = preview ? (cells[i] || carried[field]) : carried[field];
+            d3.select(TEXT_INPUTS[field]).attr('placeholder', shown || 'nobody yet');
         }
     }
 
@@ -856,19 +916,14 @@ export class LogComponent {
             this.markMissing(missing);
             return;
         }
+        // Names and parts are two controls; the sheet has one cell per seat. A
+        // part changed on a blank seat materialises the carried name here
+        // (which is the retyping this whole control replaces), and parts that
+        // merely reorder the seats move the names instead of annotating them.
         const carried = this.carried();
-        const implied = impliedSlotParts(this.entry.part);
-        const chosen = this.slotParts();
-        // Names and parts are two controls; the sheet has one cell. A part
-        // changed on a blank seat materialises the carried name here, which is
-        // the retyping this whole control replaces.
+        const { cells } = this.seats();
         const entry = { ...this.entry };
-        SEATS.forEach((field, i) => {
-            entry[field] = slotCell({
-                typed: this.entry[field], carried: carried[field],
-                chosen: chosen[i], implied: implied[i],
-            });
-        });
+        SEATS.forEach((field, i) => { entry[field] = cells[i]; });
         // Resolve the blanks against what they ditto BEFORE advancing, so the
         // next piece of this session carries forward from what this row will
         // hold rather than from the row above it.
