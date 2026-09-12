@@ -205,39 +205,106 @@ export function nextInSession(entry) {
 // --- Slot parts -------------------------------------------------------------
 //
 // The three player slots are positional: which part each holds is implied by
-// your own part (SLOT_TO_PART). That works until two people swap, or a quintet
-// puts a second viola or cello on the stand — and then the only way to say so
-// was to retype names into different columns.
+// your own part (SLOT_TO_PART). That works until two people swap — and then
+// the only way to say so was to retype names into different columns.
 //
 // The form instead offers a part per slot. The names stay put and carry
-// forward as ever; the part is written as the SAME "(code)" annotation the
-// sheet has always used, so nothing about the data at rest changes shape.
-// Only the codes the app can actually read back are offered: partFromInstrument
-// buckets into V1/V2/VA/VC/OTHER, folding va1|va2 to VA and vc1|vc2 to VC. The
-// numbered forms are still worth offering, because the SHEET keeps the
-// distinction even where the charts group it — that is the point of writing
-// them for a quintet.
+// forward as ever; a part the seat does not imply is written as the SAME
+// "(code)" annotation the sheet has always used, so nothing about the data at
+// rest changes shape.
+//
+// The two dropdowns offer different sets, because the columns and Others? hold
+// different things (howto section 5). The three columns ARE the quartet's
+// parts, decided by your own part, so a column offers only those three and a
+// swap is a reordering rather than a tag. Everyone past the four goes in
+// Others? with a tag, so that list is the parts a column never holds: a second
+// violin an octet pushes out of the columns, v3 and v4, va1 when you are the
+// second viola, va2, vc2, and the winds and keyboard the rep actually uses.
+// No v1 (yours, or Player 1's) and no vc (Player 3 always holds vc1).
 
 /** @typedef {{ key: string, label: string, code: string }} SlotPart */
 
+// Every part either list can hold. The lists below are views of it, and
+// BY_KEY has to cover the union: slotCell turns a key back into the code it
+// writes without caring which dropdown the key came from.
 /** @type {SlotPart[]} */
-export const SLOT_PARTS = [
+const PARTS = [
     { key: 'V1', label: 'V1', code: 'v1' },
     { key: 'V2', label: 'V2', code: 'v2' },
+    { key: 'V3', label: 'V3', code: 'v3' },
+    { key: 'V4', label: 'V4', code: 'v4' },
     { key: 'VA', label: 'VA', code: 'va' },
+    { key: 'VA1', label: 'VA1', code: 'va1' },
     { key: 'VA2', label: 'VA2', code: 'va2' },
     { key: 'VC', label: 'VC', code: 'vc' },
     { key: 'VC2', label: 'VC2', code: 'vc2' },
     { key: 'P', label: 'Piano', code: 'p' },
+    { key: 'CL', label: 'Clarinet', code: 'cl' },
+    { key: 'FL', label: 'Flute', code: 'fl' },
 ];
 
-const BY_KEY = new Map(SLOT_PARTS.map(p => [p.key, p]));
+const BY_KEY = new Map(PARTS.map(p => [p.key, p]));
+
+/** @param {string[]} keys @returns {SlotPart[]} */
+const pick = (...keys) => keys.map(k => /** @type {SlotPart} */ (BY_KEY.get(k)));
+
+/** @type {SlotPart[]} */
+export const OTHERS_PARTS = pick('V2', 'V3', 'V4', 'VA1', 'VA2', 'VC2', 'P', 'CL', 'FL');
+
+// Which parts the three columns hold before you have said what you play. Every
+// row of the seat table is a subset of these four, and a dropdown with nothing
+// in it is worse than one offering a part you will re-decide the moment you tap
+// the Part row — which re-renders these.
+const COLUMN_PARTS = pick('V1', 'V2', 'VA', 'VC');
 
 /**
- * Which option an existing annotation corresponds to, or null when the sheet
- * carries something this list cannot express (`(cl)`, `(hn)`). Null matters:
+ * What one column dropdown offers: the three parts your columns hold.
+ * @param {string} part your own part
+ * @returns {SlotPart[]}
+ */
+export function columnParts(part) {
+    const implied = impliedSlotParts(part);
+    // A fresh array on every path, for the reason seatsAsTyped is a factory:
+    // this is handed to a caller, and one module-level array returned from the
+    // bail path is a value any caller could sort or splice in place.
+    return implied.some(p => !p)
+        ? [...COLUMN_PARTS]
+        : implied.map(k => /** @type {SlotPart} */ (BY_KEY.get(/** @type {string} */ (k))));
+}
+
+/**
+ * The code an option key writes into the cell. A key neither list knows is a
+ * raw annotation being passed through, and passes through here too.
+ * @param {string|null|undefined} key
+ * @returns {string|null|undefined}
+ */
+export function partCode(key) {
+    return BY_KEY.get(/** @type {string} */ (key))?.code ?? key;
+}
+
+/**
+ * The label an option key shows. The counterpart to partCode, and needed for
+ * the same reason: a key a dropdown offers as a passthrough is still a key the
+ * catalog may know, and "Piano" reads better than "P" on the one carried from
+ * a row this list no longer offers.
+ * @param {string} key
+ * @returns {string}
+ */
+export function partLabel(key) {
+    return BY_KEY.get(key)?.label ?? key;
+}
+
+/**
+ * Which part in the union an existing annotation is, or null when the sheet
+ * carries something no option can express (`(hn)`, `(klavier)`). Null matters:
  * re-serialising an annotation we cannot represent would silently rewrite it,
- * so the caller offers the raw code as its own option instead.
+ * so the caller offers the raw code as its own option instead — and so does a
+ * key the caller's OWN list does not offer, since the two lists are subsets.
+ *
+ * `va1` is its own key rather than folding into VA, because Others? offers it:
+ * that is how you log the first violist when you are the second. `vc1` has no
+ * key for the mirror reason — Player 3 always holds it, so it is never an
+ * extra — and keeps folding into VC.
  * @param {string|null|undefined} annotation
  * @returns {string|null}
  */
@@ -246,11 +313,16 @@ export function slotPartKey(annotation) {
     if (!s) return null;
     if (/^vc2|^vlc2/.test(s)) return 'VC2';
     if (/^(?:vc|vlc|cello|violoncello|c)(?![a-z])/.test(s)) return 'VC';
+    if (/^va1|^vla1/.test(s)) return 'VA1';
     if (/^va2|^vla2/.test(s)) return 'VA2';
     if (/^(?:vla|viola|va)(?![a-z])/.test(s)) return 'VA';
     if (/^v1/.test(s)) return 'V1';
     if (/^v2/.test(s)) return 'V2';
+    if (/^v3/.test(s)) return 'V3';
+    if (/^v4/.test(s)) return 'V4';
     if (/^(?:p|pf|pno|piano)(?![a-z])/.test(s)) return 'P';
+    if (/^(?:cl|clar|clarinet)(?![a-z])/.test(s)) return 'CL';
+    if (/^(?:fl|flute)(?![a-z])/.test(s)) return 'FL';
     return null;
 }
 
@@ -298,7 +370,7 @@ export function slotCell({ typed, carried = '', chosen, implied }) {
     if (!name || name === '-') return written;
 
     const annotate = chosen && chosen !== implied;
-    const code = BY_KEY.get(/** @type {string} */ (chosen))?.code ?? chosen;
+    const code = partCode(chosen);
     const desired = annotate ? `${name} (${code})` : name;
     // Identical to the row above: leave it blank and let fillForward ditto,
     // which is how every row in this sheet has always been written.

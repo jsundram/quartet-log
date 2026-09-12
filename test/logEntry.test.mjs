@@ -8,7 +8,7 @@ import {
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts, canonicalOthersCell,
     seatPlan, setSlotPart,
-    PART_CHOICES,
+    PART_CHOICES, columnParts, OTHERS_PARTS, partCode, partLabel,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
     sessionRows, sessionPeople,
 } from '../src/logEntry.js';
@@ -216,15 +216,15 @@ test('a typed name takes the chosen part, and an empty seat stays empty', () => 
 });
 
 test('an annotation the options cannot express passes through unrewritten', () => {
-    // The sheet carries instruments this list does not offer. Re-serialising
-    // one into the nearest option would silently rewrite the record.
-    assert.equal(slotPartKey('cl'), null);
+    // The sheet carries instruments neither list offers. Re-serialising one
+    // into the nearest option would silently rewrite the record.
+    assert.equal(slotPartKey('hn'), null);
     assert.equal(
-        slotCell({ typed: '', carried: 'Erin Fry (cl)', chosen: 'cl', implied: 'V2' }),
+        slotCell({ typed: '', carried: 'Erin Fry (hn)', chosen: 'hn', implied: 'V2' }),
         '');
     assert.equal(
-        slotCell({ typed: 'Erin Fry', carried: '', chosen: 'cl', implied: 'V2' }),
-        'Erin Fry (cl)');
+        slotCell({ typed: 'Erin Fry', carried: '', chosen: 'hn', implied: 'V2' }),
+        'Erin Fry (hn)');
 });
 
 test('slotPartKey folds the codes the app folds, and keeps the ones it does not', () => {
@@ -240,6 +240,70 @@ test('slotPartKey folds the codes the app folds, and keeps the ones it does not'
     assert.equal(slotPartKey('v1'), 'V1');
     assert.equal(slotPartKey('piano'), 'P');
     assert.equal(slotPartKey(''), null);
+    // va1 is an Others? option -- the first violist, logged by the second --
+    // so it is its own key rather than folding into VA.
+    assert.equal(slotPartKey('va1'), 'VA1');
+    assert.equal(slotPartKey('vla1'), 'VA1');
+    // vc1 is nobody's extra: Player 3 always holds it, so it keeps folding.
+    assert.equal(slotPartKey('vc1'), 'VC');
+    // Octet violins and the wind rep, which used to come back as null and be
+    // offered as raw passthrough text instead of matching their own option.
+    assert.equal(slotPartKey('v3'), 'V3');
+    assert.equal(slotPartKey('v4'), 'V4');
+    assert.equal(slotPartKey('cl'), 'CL');
+    assert.equal(slotPartKey('clarinet'), 'CL');
+    assert.equal(slotPartKey('fl'), 'FL');
+    assert.equal(slotPartKey('flute'), 'FL');
+    // The (?![a-z]) guards still hold: "c" is cello, "cl" is not.
+    assert.equal(slotPartKey('c'), 'VC');
+});
+
+test('a column offers the three parts its columns hold, and nothing else', () => {
+    // The three columns ARE the quartet's parts, decided by your own part, so
+    // VA2 / VC2 / Piano are not on offer: everyone past the four is an Others?
+    // entry with a tag (howto section 5).
+    const keys = part => columnParts(part).map(p => p.key);
+    assert.deepEqual(keys('V1'), ['V2', 'VA', 'VC']);
+    assert.deepEqual(keys('V2'), ['V1', 'VA', 'VC']);
+    assert.deepEqual(keys('VA'), ['V1', 'V2', 'VC']);
+    assert.deepEqual(keys('VA1'), ['V1', 'V2', 'VC']);
+    assert.deepEqual(keys('VA2'), ['V1', 'V2', 'VC']);
+    // Before you have said what you play the seats imply nothing, and an empty
+    // dropdown is worse than the four parts a column can ever hold.
+    assert.deepEqual(keys(''), ['V1', 'V2', 'VA', 'VC']);
+});
+
+test('Others? offers the parts a column never holds', () => {
+    // No v1 (yours, or Player 1's) and no vc (Player 3 always holds vc1). v2
+    // is here because an octet pushes the second violin out of the columns.
+    assert.deepEqual(OTHERS_PARTS.map(p => p.key),
+        ['V2', 'V3', 'V4', 'VA1', 'VA2', 'VC2', 'P', 'CL', 'FL']);
+    assert.deepEqual(OTHERS_PARTS.map(p => p.code),
+        ['v2', 'v3', 'v4', 'va1', 'va2', 'vc2', 'p', 'cl', 'fl']);
+    // Every key either list offers writes a code, whichever list it came from:
+    // slotCell reads them through one table.
+    for (const p of [...OTHERS_PARTS, ...columnParts('V1'), ...columnParts('V2')]) {
+        assert.equal(partCode(p.key), p.code);
+    }
+    // And a raw annotation neither list knows passes through as itself.
+    assert.equal(partCode('klavier'), 'klavier');
+    // partLabel is the counterpart, and covers the union too: a column offers
+    // a carried `(p)` as a passthrough and should still call it Piano.
+    assert.equal(partLabel('P'), 'Piano');
+    assert.equal(partLabel('VA2'), 'VA2');
+    assert.equal(partLabel('klavier'), 'klavier');
+});
+
+test('columnParts hands out a fresh array, never the module constant', () => {
+    // seatsAsTyped is a factory for this reason: a returned array is a value
+    // the caller may sort or splice, and the bail path used to hand back the
+    // module-level list itself.
+    const a = columnParts('');
+    a.length = 0;
+    assert.equal(columnParts('').length, 4);
+    const b = columnParts('V1');
+    b.length = 0;
+    assert.equal(columnParts('V1').length, 3);
 });
 
 test('defaultSlotParts keeps a role across a session, like a name', () => {
@@ -254,8 +318,8 @@ test('defaultSlotParts keeps a role across a session, like a name', () => {
     // With nothing annotated, the seats mean what the layout says.
     assert.deepEqual(defaultSlotParts(carriedForward(row()), 'VA'), ['V1', 'V2', 'VC']);
     // An unrepresentable annotation comes back as itself, not as a guess.
-    const odd = carriedForward(row({ playerInstruments: [null, 'cl', null] }));
-    assert.deepEqual(defaultSlotParts(odd, 'VA'), ['V1', 'cl', 'VC']);
+    const odd = carriedForward(row({ playerInstruments: [null, 'hn', null] }));
+    assert.deepEqual(defaultSlotParts(odd, 'VA'), ['V1', 'hn', 'VC']);
 });
 
 // --- Reseating ---------------------------------------------------------------
