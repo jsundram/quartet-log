@@ -35,6 +35,14 @@
     --color-text-dark:      #000;            /* text on bright/colored bg (absolute) */
     --color-text-emphasis:  #000;            /* one shade past primary; flips with mode */
     --color-text-error:     #E63946;
+    /* Success, as text and as a filled mark. Split from --color-accent-selected
+       because that value is ~3.6:1 on the dark surface and misses the 4.5:1
+       floor for body text; dark steps it up to --color-accent (~6.9:1). The
+       -contrast token is what goes ON the filled mark, -pending the ring of
+       one not yet confirmed. */
+    --color-text-success:     var(--color-accent-selected);
+    --color-success-contrast: #fff;
+    --color-success-pending:  #6ba06f;
 
     /* Borders */
     --color-border-subtle:         var(--gray-3); /* faint dividers */
@@ -113,6 +121,10 @@
         --color-text-emphasis: #fff;
         --color-shadow-subtle: rgba(0, 0, 0, 0.5);
         --color-shadow-light:  rgba(0, 0, 0, 0.4);
+
+        --color-text-success:     var(--color-accent);
+        --color-success-contrast: var(--gray-1);
+        --color-success-pending:  #3d6f42;
     }
 
     :root:not([data-theme]) #tabs button {
@@ -140,6 +152,10 @@
     --color-text-emphasis: #fff;
     --color-shadow-subtle: rgba(0, 0, 0, 0.5);
     --color-shadow-light:  rgba(0, 0, 0, 0.4);
+
+    --color-text-success:     var(--color-accent);
+    --color-success-contrast: var(--gray-1);
+    --color-success-pending:  #3d6f42;
 }
 
 :root[data-theme="dark"] #tabs button {
@@ -891,6 +907,18 @@ body.calendar-fullscreen-open {
     font: 600 22px sans-serif;
     color: var(--color-text-primary);
     line-height: 1.2;
+}
+
+/* Tonight's contribution to the tile above it, on the confirmation screen.
+   The dashboard's tile with one more line, rather than a second tile: a
+   lifetime total on its own says nothing about the piece just logged. */
+.stat-tile-delta {
+    font: 600 11px sans-serif;
+    color: var(--color-text-success);
+}
+
+.stat-tile-delta--flat {
+    color: var(--color-text-tertiary);
 }
 
 /* Mobile (mirrors MOBILE_BREAKPOINT in dashboardComponent.js): all six
@@ -1776,7 +1804,7 @@ body.network-fullscreen-open {
     color: var(--color-text-secondary);
 }
 
-.log-status.ok { color: var(--color-accent-selected); }
+.log-status.ok { color: var(--color-text-success); }
 .log-status.error { color: var(--color-text-error); }
 
 /* Connect-your-form panel, shown in place of the fields until this device
@@ -1864,6 +1892,300 @@ body.network-fullscreen-open {
 
 .log-connected a {
     color: var(--color-accent);
+}
+
+/* The line under the button and its (i). They share a row so the sentence can
+   stay short enough for a phone: the states that need more than a sentence put
+   the rest behind the button instead of into the line. */
+.log-status-line {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.log-status-line .log-status {
+    flex: 1;
+    min-width: 0;
+}
+
+/* 44px of tap target around a 16px glyph, pulled back into the line's own
+   leading so the affordance costs no height. */
+.log-info {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: -13px -13px -13px 0;
+    padding: 0;
+    color: var(--color-text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.log-info svg {
+    width: 16px;
+    height: 16px;
+}
+
+.log-info:hover {
+    color: var(--color-text-primary);
+}
+
+/* display outranks the UA's [hidden] rule, as with .log-form. */
+.log-info[hidden] {
+    display: none;
+}
+
+/* Expands in place, below the line. Not a floating tooltip: there is no
+   positioning to get wrong at any width, and it is reachable by keyboard. */
+.log-status-help {
+    grid-column: 1 / -1;
+    margin: 6px 0 0;
+    padding: 11px 13px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-secondary);
+    border-radius: 7px;
+}
+
+/* =========================================================================
+   The confirmation screen (#logDone)
+
+   A centred column the same width as the form it replaces, top-aligned where
+   the form was, and FLOWING — nothing is pinned to the viewport, so one
+   layout serves a phone and a desktop. Pinning the actions to the bottom is
+   right at 390px and wrong at 1440, where it stretches the panel and strands
+   them at the foot of the window.
+   ========================================================================= */
+.log-done {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 0 16px 24px;
+    box-sizing: border-box;
+}
+
+.log-done[hidden] {
+    display: none;
+}
+
+.log-done-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    margin-top: 30px;
+    color: var(--color-success-contrast);
+    background: var(--color-text-success);
+    border-radius: 50%;
+}
+
+.log-done-mark svg {
+    width: 28px;
+    height: 28px;
+}
+
+.log-done-what {
+    margin: 13px 0 0;
+    font-size: 27px;
+    font-weight: normal;
+    line-height: 1.15;
+    text-align: center;
+}
+
+.log-done-who {
+    margin: 5px 0 0;
+    font-size: 15px;
+    line-height: 1.45;
+    color: var(--color-text-secondary);
+    text-align: center;
+}
+
+.log-done-where {
+    margin: 5px 0 0;
+    font-size: 14px;
+    color: var(--color-text-tertiary);
+    text-align: center;
+}
+
+.log-done-block {
+    width: 100%;
+    margin-top: 22px;
+    padding-top: 14px;
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+.log-done-sub {
+    margin: 0 0 6px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+}
+
+.log-done-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 4px 0;
+    font-size: 14px;
+}
+
+.log-done-when {
+    flex-shrink: 0;
+    width: 50px;
+    font-size: 13px;
+    color: var(--color-text-tertiary);
+}
+
+.log-done-piece {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.log-done-row--past .log-done-piece {
+    color: var(--color-text-secondary);
+}
+
+/* A movement rather than a whole piece. The sheet keeps it and this app drops
+   it, so it is in the sitting but not in the charts or the tiles below —
+   italic is what says the dot beside it is answering a different question
+   ("did it get sent") from the one on every other row. */
+.log-done-row--partial .log-done-piece {
+    font-style: italic;
+}
+
+.log-done-part {
+    color: var(--color-text-tertiary);
+}
+
+/* Filled once the app's own copy of the sheet holds the row, hollow until
+   then. Watching one fill in is what teaches the delay; a sentence about
+   published copies never has. Both carry a text label for the same reason the
+   part colours do — a state is never colour and shape alone. */
+.log-done-dot {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    box-sizing: border-box;
+}
+
+.log-done-dot--landed {
+    color: var(--color-success-contrast);
+    background: var(--color-text-success);
+}
+
+.log-done-dot--waiting {
+    border: 2px solid var(--color-success-pending);
+}
+
+/* An empty ring: the tick is what says the app's own copy holds the row. */
+.log-done-dot--waiting svg {
+    display: none;
+}
+
+.log-done-dot svg {
+    width: 9px;
+    height: 9px;
+}
+
+/* The dashboard tiles are content-sized and left-bunched, which is right in a
+   full-width header and wrong in a 560px column; four of them share it evenly
+   here. The phone rule already says flex: 1 1 0, so this is the same shape at
+   both widths rather than a second layout. */
+.log-done-tiles {
+    width: 100%;
+}
+
+.log-done-tiles .stat-tile {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* The one warning there is: a partial movement, which the sheet keeps and
+   this app hides — so it is said on the screen whose sitting list and tiles
+   are about to leave the piece out. */
+.log-done-warn {
+    width: 100%;
+    margin: 18px 0 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+}
+
+.log-done-warn[hidden] {
+    display: none;
+}
+
+/* Long labels by default, the app's short forms where the tile row is tight
+   — the same swap the calendar's stats row makes, done in CSS so no width is
+   read in JS and no resize listener is needed. Both halves live here rather
+   than in the dashboard's mobile block far above: same specificity, and the
+   later rule wins, so an override up there would lose to this one. The
+   breakpoint matches the .stat-tile mobile rule it shares a row with. */
+.log-done-tiles .stat-tile-label--short {
+    display: none;
+}
+
+@media only screen and (max-width: 599px) {
+    .log-done-tiles .stat-tile-label--long {
+        display: none;
+    }
+
+    .log-done-tiles .stat-tile-label--short {
+        display: inline;
+    }
+}
+
+.log-done-note {
+    width: 100%;
+    margin: 18px 0 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text-tertiary);
+}
+
+.log-done-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    width: 100%;
+    margin-top: 22px;
+}
+
+.log-done-actions .log-submit {
+    margin-top: 0;
+}
+
+.log-done-secondary {
+    padding: 13px;
+    font: inherit;
+    font-size: 15px;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border-standard);
+    border-radius: 6px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.log-done-secondary:hover {
+    background: var(--color-bg-hover);
 }
 
 /* Queued entries. Visible and discardable on purpose: an invisible outbox is

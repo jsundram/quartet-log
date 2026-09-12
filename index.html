@@ -280,12 +280,72 @@
             <datalist id="logLocations"></datalist>
 
             <button type="submit" id="logSubmit" class="log-submit">Log it</button>
-            <p id="logStatus" class="log-status" role="status" aria-live="polite"></p>
+            <!-- The line and its (i) share a row: the sentence has to stay
+                 short enough for a phone, and the states that need more than
+                 a sentence (nothing sent yet, nothing held either) put the
+                 rest behind the button rather than into the line. -->
+            <div class="log-status-line">
+                <p id="logStatus" class="log-status" role="status" aria-live="polite"></p>
+                <button type="button" id="logStatusInfo" class="log-info" hidden
+                        aria-expanded="false" aria-controls="logStatusHelp" aria-label="What does this mean?">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9"></circle><path d="M12 11.5v5"></path><path d="M12 7.5h.01" stroke-width="2.6"></path>
+                    </svg>
+                </button>
+            </div>
+            <p id="logStatusHelp" class="log-status-help" hidden></p>
             <!-- The id is a plain span; the <code> and the link inside it are
                  rendered, because the tail is only a useful answer to "am I
                  writing to my own sheet" if you can open the form and look. -->
             <p class="log-connected">Writing to form <span id="logFormId"></span>. <a href="#" id="logChangeForm">Change</a></p>
         </form>
+
+        <!-- What the form has never been able to say. The submission response
+             is opaque and the carried names render as placeholders, so the
+             form one second after a submit looked byte-for-byte like the form
+             one second before it: nothing moved, and the only acknowledgement
+             was a line below the button, under the thumb that had just tapped
+             it. This replaces the form outright — there is one thing on
+             screen and it is the answer — and it has room to say where the
+             row actually went, which a footnote did not. -->
+        <div id="logDone" class="log-done" hidden>
+            <span class="log-done-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 13l4 4L19 7"></path>
+                </svg>
+            </span>
+            <!-- Announced, not just shown: the submit response is opaque and
+                 this panel is the only acknowledgement there is, so it has to
+                 reach a reader who cannot see the form disappear. renderMode
+                 unhides the panel before renderDone fills it, so the text
+                 lands as a change inside a live region. -->
+            <h2 id="logDoneWhat" class="log-done-what" aria-live="polite" aria-atomic="true"></h2>
+            <p id="logDoneWho" class="log-done-who"></p>
+            <p id="logDoneWhere" class="log-done-where"></p>
+
+            <div class="log-done-block">
+                <p id="logDoneSitting" class="log-done-sub"></p>
+                <div id="logDoneList"></div>
+            </div>
+
+            <!-- The dashboard's own tiles. A lifetime total alone says nothing
+                 about the piece just logged, so each carries what this sitting
+                 added to it: "Unique 322 +1" is the log telling you that you
+                 played something tonight you had never played before. -->
+            <div class="log-done-block">
+                <p class="log-done-sub">Your log, counting this sitting</p>
+                <div id="logDoneTiles" class="stat-tiles log-done-tiles"></div>
+            </div>
+
+            <p id="logDoneWarn" class="log-done-warn" hidden></p>
+            <p id="logDoneNote" class="log-done-note"></p>
+
+            <div class="log-done-actions">
+                <button type="button" id="logDoneNext" class="log-submit">Log the next piece</button>
+                <button type="button" id="logDoneCharts" class="log-done-secondary">See the charts</button>
+            </div>
+        </div>
+
         <div id="logPending" class="log-pending" hidden></div>
     </div>
 

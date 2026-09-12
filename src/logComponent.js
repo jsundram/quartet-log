@@ -4,7 +4,9 @@ import {
     postEntry, readPrefilledLink, getFormConfig, setFormConfig, clearFormConfig,
     formViewUrl,
 } from './formConfig.js';
-import { stripParens } from './dataProcessor.js';
+import { stripParens, computeAggregateStats } from './dataProcessor.js';
+import { buildAggregateStatDefs } from './statDefs.js';
+import { tooltip } from './tooltip.js';
 import * as store from './logStore.js';
 import {
     blankEntry, carriedForward, resolveCarry, missingFields,
@@ -13,7 +15,8 @@ import {
     columnParts, OTHERS_PARTS, partCode, partLabel,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, canonicalOthersCell,
-    sessionPeople, sessionRows, slotPartKey,
+    sessionPeople, sessionRows, slotPartKey, sessionPieces, countNew,
+    PARTIAL_MOVEMENT_NOTE,
 } from './logEntry.js';
 
 // The entry field each text input owns. `part` is absent: it's a segmented
@@ -56,6 +59,44 @@ const SETUP_ERROR = {
 // Sentinel for the chip that opens the full catalog. Leading space so no
 // composer name can collide with it.
 const MORE_COMPOSERS = ' more';
+
+// What the status line cannot say in a sentence. The line has to fit a phone,
+// and both of these states provoke the same question — is my piece lost? — so
+// the answer goes behind the (i) rather than being cut down until it stops
+// answering. The normal case has no entry here: it gets the confirmation
+// screen, which has room to say it in full.
+const STATUS_HELP = {
+    queued: 'Without a connection the piece cannot reach your form yet, so it is held on this '
+        + 'device and sent as soon as you are back online. They go out in the order you logged '
+        + 'them, which matters: a seat left blank means "same as the row above". Keep logging — '
+        + 'they queue up, and the list below shows what is waiting.',
+    lost: 'This browser is refusing to store anything — usually private browsing, or a device '
+        + 'with no room left — so there is no queue holding the piece and no later attempt '
+        + 'coming. It is still filled in above, so nothing has to be typed twice: try again once '
+        + 'you have a connection, or fill in your Google Form directly.',
+};
+
+// The tiles that move during a sitting. buildAggregateStatDefs also carries
+// Days played and Max streak, which cannot change between two pieces of the
+// same evening and would be four characters of noise on every confirmation.
+const DONE_TILES = 4;
+
+const timeOfDay = (/** @type {number|Date} */ at) =>
+    new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+// The dot, per row. A whole piece fills in when the app's own copy of the
+// sheet holds it; a partial movement never gets there — processData drops it —
+// so for one of those the dot answers the only question still open, which is
+// whether it left this device. The italic on the row is what says the two are
+// not the same claim, so one mark can mean the nearest true thing in each case
+// instead of sitting hollow forever under a note promising it will fill in.
+const dotState = (/** @type {import('./logEntry.js').Piece} */ p) => {
+    if (p.queued) return { filled: false, label: 'Waiting for a network' };
+    if (p.partial) return { filled: true, label: 'Sent to your sheet; this app leaves movements out of its charts' };
+    return p.landed
+        ? { filled: true, label: 'Showing in your charts' }
+        : { filled: false, label: 'Not in your charts yet' };
+};
 
 // Enough of a form id to tell two apart without printing the whole thing.
 const shortId = (/** @type {string} */ id) => `...${id.slice(-6)}`;
@@ -137,6 +178,8 @@ export class LogComponent {
         this._otherId = 0;
         // A ?form= link that would replace this.config, awaiting a decision.
         this.proposed = null;
+        // The piece just logged, while its confirmation is on screen.
+        this.done = null;
         this.mounted = false;
         this.invalidateSources();
     }
@@ -172,6 +215,27 @@ export class LogComponent {
         if (!this.mounted) {
             this.mounted = true;
             d3.select('#logForm').on('submit', (e) => { e.preventDefault(); this.submit(); });
+            // Back to the fields. The next piece was prepared at submit time,
+            // so composer, part and the seats have all carried and the work
+            // title is the only thing left to type — hence the cursor.
+            d3.select('#logDoneNext').on('click', () => {
+                this.done = null;
+                this.renderMode();
+                d3.select('#logTitle').node()?.focus();
+            });
+            d3.select('#logDoneCharts').on('click', () => {
+                this.done = null;
+                this.renderMode();
+                window.location.hash = '#main';
+            });
+            // In place, below the line: no positioning to get wrong at any
+            // width, and reachable by keyboard.
+            d3.select('#logStatusInfo').on('click', () => {
+                const panel = d3.select('#logStatusHelp');
+                const show = panel.property('hidden');
+                panel.property('hidden', !show);
+                d3.select('#logStatusInfo').attr('aria-expanded', String(show));
+            });
             // Coming back from a dead zone is the moment the queue can drain.
             window.addEventListener('online', () => this.flushQueue());
             // Belt and braces on the draft. Every handler calls touch(), but
@@ -260,22 +324,37 @@ export class LogComponent {
             });
     }
 
-    // Exactly one of: the pending-proposal prompt, the form, the setup panel.
-    // A proposal outranks both, so where entries go can't be changed — or
-    // logged against — until it has been answered.
+    // Exactly one of: the pending-proposal prompt, the confirmation screen,
+    // the form, the setup panel. A proposal outranks everything, so where
+    // entries go can't be changed — or logged against — until it has been
+    // answered; the confirmation outranks the form because it IS the form's
+    // answer, and scrolling past it is how the old status line was missed.
     renderMode() {
         const deciding = !!this.proposed;
+        const confirming = !deciding && !!this.done && !!this.config;
         d3.select('#logProposal').property('hidden', !deciding);
         if (deciding) this.renderProposal();
-        d3.select('#logForm').property('hidden', deciding || !this.config);
+        // Read before the write: the heading is a live region, and whether
+        // this repaint is a NEW submission or the five-minute revalidate
+        // landing on a panel already open is the difference between an
+        // acknowledgement and a reader being told the same thing all evening.
+        const entering = confirming && d3.select('#logDone').property('hidden');
+        d3.select('#logDone').property('hidden', !confirming);
+        if (confirming) this.renderDone(entering);
+        d3.select('#logForm').property('hidden', deciding || confirming || !this.config);
         d3.select('#logSetup').property('hidden', deciding || !!this.config);
         setLinkedText(d3.select('#logFormId'), this.config ? [{ formId: this.config.formId }] : []);
         this.renderPending();
     }
 
-    // The view just became visible: retry anything queued.
+    // The view just became visible: retry anything queued, and put the form
+    // back. Arriving at #log to find last night's receipt instead of the
+    // fields would be its own small betrayal; within one visit the
+    // confirmation stays until it is dismissed.
     notifyShown() {
-        if (this.mounted) this.flushQueue();
+        if (!this.mounted) return;
+        if (this.done) { this.done = null; this.renderMode(); }
+        this.flushQueue();
     }
 
     hasForm() {
@@ -526,6 +605,11 @@ export class LogComponent {
         this.renderPlaceholders();
         this.renderSlotParts();
         this.renderSessionPeople();
+        // The confirmation is made of data too, and the one thing it says that
+        // nothing else can — this row is in your sheet but not yet in these
+        // charts — is only true until the next revalidate proves otherwise.
+        // That is the whole point of the dot: it fills in while you watch.
+        if (this.done) this.renderDone();
     }
 
     // Both sources below are derived from `this.rows` and from localStorage,
@@ -767,6 +851,7 @@ export class LogComponent {
      */
     discard() {
         this.discarded = true;
+        this.done = null;
         clearFormConfig();
         store.clearAll();
     }
@@ -906,8 +991,184 @@ export class LogComponent {
             .text(d => `${d.entry.composer} ${d.entry.title} - ${ago(Date.now() - d.at)}`);
     }
 
-    status(text, kind = '') {
+    /**
+     * The line under the button, and whether it has more to say.
+     * @param {string} text @param {string} [kind] @param {string} [help]
+     *   a STATUS_HELP key; the (i) and its panel are hidden without one.
+     */
+    status(text, kind = '', help = '') {
         d3.select('#logStatus').text(text).attr('class', `log-status ${kind}`);
+        // Collapsed on every new message: the open panel belongs to the state
+        // that was on screen when it was opened, not to whatever replaced it.
+        d3.select('#logStatusInfo')
+            .property('hidden', !STATUS_HELP[help])
+            .attr('aria-expanded', 'false');
+        d3.select('#logStatusHelp').text(STATUS_HELP[help] ?? '').property('hidden', true);
+    }
+
+    /**
+     * The confirmation screen, from the receipt taken at submit time plus the
+     * data as it stands now — which is what lets a dot fill in under the
+     * reader rather than only on the next visit.
+     */
+    renderDone(entering = false) {
+        const { entry, at, seats, others, warn } = this.done;
+        // The queue as it stands, not as it stood at submit time: `online`
+        // fires while this screen is up and drains it, and the note would go
+        // on claiming the piece was held on the device after it had gone.
+        const waiting = store.pending().length;
+        // Written on the way in, not when the text differs. Both stop the
+        // five-minute revalidate re-announcing a panel someone is reading, but
+        // comparing the text also swallowed the second reading of one piece in
+        // an evening — the submission that most needs saying, since nothing
+        // else on the screen would have changed either.
+        if (entering) d3.select('#logDoneWhat').text(`${entry.composer} ${entry.title}`.trim());
+        // Who was on what, as the row records it: the user's own part is
+        // implicit in the sheet (no slot holds it), so it is named first.
+        d3.select('#logDoneWho').text([
+            `You ${entry.part}`,
+            // A seat whose part is unknown — a stale draft carrying a part
+            // with no seat table — is named without one rather than beside
+            // the word "null".
+            ...seats.map(p => (p.part ? `${p.name} ${p.part}` : p.name)),
+            ...others.map(o => (o.instrument ? `${o.name} ${o.instrument}` : o.name)),
+        ].join(' \u00b7 '));
+        d3.select('#logDoneWhere').text([entry.location, timeOfDay(at)].filter(Boolean).join(' \u00b7 '));
+
+        const { pieces, tiles } = this.doneStats(new Date(at));
+        const dots = new Map(pieces.map(p => [p, dotState(p)]));
+        // Newest first: the piece just logged is the one being confirmed, and
+        // scanning down is scanning back through the evening.
+        const list = [...pieces].reverse();
+        d3.select('#logDoneSitting').text(list.length === 1
+            ? 'First piece this sitting'
+            : `${list.length} pieces this sitting`);
+        d3.select('#logDoneList').selectAll('.log-done-row')
+            .data(list, d => `${+d.timestamp}|${d.composer}|${d.title}|${d.part}`)
+            .join(enter => {
+                const row = enter.append('div');
+                // App-authored constant markup, no data in it.
+                // role=img so the label below is exposed: a bare span is
+                // `generic`, which prohibits an accessible name, so the one
+                // signal that is otherwise shape and colour reached nobody
+                // reading by ear.
+                row.append('span').attr('class', 'log-done-dot').attr('role', 'img')
+                    .html('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+                    + ' stroke-width="4" stroke-linecap="round" stroke-linejoin="round">'
+                    + '<path d="M5 13l4 4L19 7"></path></svg>');
+                row.append('span').attr('class', 'log-done-when');
+                row.append('span').attr('class', 'log-done-piece');
+                return row;
+            })
+            .call(row => {
+                // The newest row is the subject; the rest are context. Italic
+                // says this one is a movement rather than a whole piece — the
+                // sheet keeps it, these charts and the tiles below do not.
+                row.attr('class', (d, i) => `log-done-row${i ? ' log-done-row--past' : ''}`
+                    + (d.partial ? ' log-done-row--partial' : ''));
+                // Shape as well as colour — a tick inside the filled one, an
+                // empty ring otherwise — plus the label a reader hears.
+                row.select('.log-done-dot')
+                    .attr('class', d => `log-done-dot log-done-dot--${dots.get(d).filled ? 'landed' : 'waiting'}`)
+                    .attr('title', d => dots.get(d).label)
+                    .attr('aria-label', d => dots.get(d).label);
+                row.select('.log-done-when').text(d => timeOfDay(d.timestamp));
+                row.select('.log-done-piece').html(null)
+                    .text(d => `${d.composer} ${d.title}`.trim())
+                    .append('span').attr('class', 'log-done-part').text(d => ` \u00b7 ${d.part}`);
+            });
+
+        const cells = d3.select('#logDoneTiles').selectAll('.stat-tile')
+            .data(tiles, d => d.label)
+            .join(enter => {
+                const cell = enter.append('div').attr('class', 'stat-tile');
+                const label = cell.append('span').attr('class', 'stat-tile-label');
+                // Both labels, one shown per width by CSS — the same swap the
+                // calendar's stats row makes, and no width read in JS.
+                label.append('span').attr('class', 'stat-tile-label--long');
+                label.append('span').attr('class', 'stat-tile-label--short');
+                cell.append('span').attr('class', 'stat-tile-value');
+                cell.append('span').attr('class', 'stat-tile-delta');
+                return cell;
+            });
+        cells.select('.stat-tile-label--long').text(d => d.label);
+        cells.select('.stat-tile-label--short').text(d => d.short);
+        cells.select('.stat-tile-value').text(d => d.value);
+        cells.select('.stat-tile-delta')
+            .attr('class', d => `stat-tile-delta${d.delta ? '' : ' stat-tile-delta--flat'}`)
+            .text(d => `+${d.delta}`);
+        // The same explainer the dashboard and the ALL tab hang on these
+        // tiles; "Unique parts" is not self-evident anywhere it appears.
+        tooltip.attach(cells, (event, d) => `<h4>${d.title}</h4><p>${d.desc}</p>`,
+            { maxWidth: '320px' });
+
+        // Keyed to the SITTING, not to the piece just submitted: log a
+        // movement and then a whole piece and the italic row stays, the tiles
+        // stay a piece behind the count above them, and the sentence that
+        // explains both would have gone with the submission that raised it.
+        // A Set because warnings() raises the same sentence for a movement
+        // submitted just now, and one line should not say it twice.
+        const notes = new Set(warn);
+        if (pieces.some(p => p.partial)) notes.add(PARTIAL_MOVEMENT_NOTE);
+        d3.select('#logDoneWarn').text([...notes].join(' ')).property('hidden', !notes.size);
+        const settling = pieces.some(p => !dots.get(p).filled && !p.queued);
+        d3.select('#logDoneNote').text(waiting
+            ? `${waiting} ${waiting === 1 ? 'piece is' : 'pieces are'} held on this device, `
+              + 'waiting for a connection. They are sent automatically, in the order you logged '
+              + 'them, and reach your sheet then.'
+            : 'It is in your Google Sheet already \u2014 this page writes through your form.'
+              + (settling
+                  ? ' The calendar and charts here read a published copy of that sheet, which '
+                    + 'Google refreshes every few minutes, so the hollow dot fills in shortly.'
+                  : ' The calendar and charts here read a published copy of that sheet, which '
+                    + 'Google refreshes every few minutes.'));
+    }
+
+    /**
+     * The sitting, and what it has done to the log's totals.
+     *
+     * Two measurements, not one. The TOTAL has to count the submissions the
+     * published sheet has not caught up with, or the tiles would sit under a
+     * confirmation quietly disagreeing with it for the next few minutes —
+     * which is the confusion this screen exists to end. The DELTA is measured
+     * against the log as it stood before the sitting began, so "Unique +1"
+     * means a work that was new tonight rather than one logged twice.
+     */
+    doneStats(at = new Date()) {
+        const submissions = store.recentAll();
+        // setRecent said no, so this piece is in neither half of the sitting.
+        // It is still a piece of it, and the receipt is the only record left.
+        if (this.done && !this.done.remembered) {
+            submissions.push({ at: this.done.at, entry: this.done.entry });
+        }
+        // Windowed from the moment the piece was logged, not from now. This
+        // panel describes the sitting that piece belonged to, and it can sit on
+        // screen for hours — a phone put face down, a PWA resumed the next
+        // morning — with redrawFromData repainting it on the next revalidate.
+        // Windowed against `now`, a confirmation older than SESSION_WINDOW_HOURS
+        // repainted as a green tick and a piece name over "0 pieces this
+        // sitting", an empty list and +0 on every tile.
+        const pieces = sessionPieces(this.rows, submissions, store.pending(), at);
+        const agg = computeAggregateStats(this.rows);
+        const unpublished = countNew(pieces.filter(p => !p.landed), this.rows);
+        const start = pieces[0]?.timestamp;
+        const before = start ? this.rows.filter(d => d.timestamp < start) : this.rows;
+        const added = countNew(pieces, before);
+        const totals = {
+            ...agg,
+            pieces: agg.pieces + unpublished.pieces,
+            uniquePieces: agg.uniquePieces + unpublished.uniquePieces,
+            uniqueParts: agg.uniqueParts + unpublished.uniqueParts,
+            uniquePeople: agg.uniquePeople + unpublished.uniquePeople,
+        };
+        // The shared defs carry the label, the short label and the tooltip
+        // copy, so these tiles cannot drift from the dashboard's.
+        const defs = buildAggregateStatDefs(totals, 'in your whole log');
+        const deltas = [added.pieces, added.uniquePieces, added.uniqueParts, added.uniquePeople];
+        return {
+            pieces,
+            tiles: defs.slice(0, DONE_TILES).map((d, i) => ({ ...d, delta: deltas[i] })),
+        };
     }
 
     async flushQueue() {
@@ -915,7 +1176,14 @@ export class LogComponent {
         if (!this.config || !store.pending().length) return;
         const { sent, remaining } = await store.flush(e => postEntry(e, this.config));
         this.renderPending();
-        if (sent) this.status(remaining ? `Sent ${sent}; ${remaining} still waiting.` : `Sent ${sent}.`, 'ok');
+        // The confirmation's note counts the queue, so it moves when this does.
+        if (this.done) this.renderDone();
+        // A queue that is still draining is the other state worth explaining:
+        // what is left, why the order matters, and that nothing is lost.
+        if (sent) {
+            this.status(remaining ? `Sent ${sent}; ${remaining} still waiting.` : `Sent ${sent}.`,
+                'ok', remaining ? 'queued' : '');
+        }
     }
 
     async submit() {
@@ -931,7 +1199,7 @@ export class LogComponent {
         // (which is the retyping this whole control replaces), and parts that
         // merely reorder the seats move the names instead of annotating them.
         const carried = this.carried();
-        const { cells } = this.seats();
+        const { cells, parts } = this.seats();
         const entry = { ...this.entry };
         SEATS.forEach((field, i) => { entry[field] = cells[i]; });
         // Resolve the blanks against what they ditto BEFORE advancing, so the
@@ -945,7 +1213,7 @@ export class LogComponent {
         // previous row.
         const queued = store.enqueue(entry);
         const button = d3.select('#logSubmit').property('disabled', true);
-        const { remaining } = await store.flush(e => postEntry(e, this.config));
+        await store.flush(e => postEntry(e, this.config));
         // A browser that won't write localStorage (private-mode Safari, a full
         // quota) drops the entry on the floor: flush re-reads storage, finds
         // nothing, and reports a clean run for a piece that never left the
@@ -960,16 +1228,44 @@ export class LogComponent {
         }
         button.property('disabled', false);
         if (lost) {
-            this.status(`Couldn't send ${entry.composer} ${entry.title}, and this browser won't let the app hold it for later. `
-                + 'The piece is still here — try again once you have a connection.', 'error');
+            // No confirmation screen for this one: the piece is still in the
+            // fields above, which is where it has to be picked up from, and
+            // replacing the form would take it off the screen.
+            this.status(`Couldn't send ${entry.composer} ${entry.title}, and this browser won't `
+                + 'let the app keep it for later.', 'error', 'lost');
             return;
         }
 
-        store.setRecent(resolved);
+        // Whether the sitting record took it. A browser refusing localStorage
+        // drops it silently, and doneStats builds the whole sitting from that
+        // record — so without this the confirmation would greet a successful
+        // submit with "0 pieces this sitting" and an empty list.
+        const remembered = store.setRecent(resolved);
         // The sitting just changed: the memoised carry and session sources
         // below feed seedOthers and refresh, and a stale one would start the
         // next piece from the row before this one.
         this.invalidateSources();
+        // The receipt, as sent. Taken here rather than re-derived when it is
+        // drawn: `seatPlan` describes the controls that were on screen for
+        // THIS piece, and one line below they start describing the next one.
+        // The parts come from the plan for the same reason the cells do — a
+        // swap moves the names, so each is on the part its NEW seat implies,
+        // and pairing name i with the part seat i was SET to would print the
+        // swap backwards.
+        this.done = {
+            entry: resolved,
+            at: Date.now(),
+            seats: SEATS.map((field, i) => ({
+                name: (stripParens(resolved[field]) ?? '').trim(),
+                part: parts[i],
+            })).filter(p => p.name && p.name !== '-'),
+            others: parseOthersRows(resolved.others),
+            remembered,
+            // The only warning there is says the sheet will keep this row and
+            // this app will hide it — so it belongs on the screen that is
+            // otherwise about to show a sitting the piece is missing from.
+            warn: warnings(entry),
+        };
         this.entry = nextInSession(entry);
         // The parts the row just set become the next row's defaults, via the
         // carried cell — an override kept here would shadow them.
@@ -977,18 +1273,13 @@ export class LogComponent {
         store.clearDraft();
         this.seedOthers();
         this.refresh();
-        // Straight to the next piece: composer, part and the seats all carry,
-        // so the work title is the only thing left to type.
-        d3.select('#logTitle').node()?.focus();
+        // The next piece is already prepared behind the confirmation, so the
+        // cursor goes to the way back to it rather than into a hidden field.
+        d3.select('#logDoneNext').node()?.focus();
 
-        // Name what went in. The response is opaque, so this line is the only
-        // acknowledgement a submit ever gets, and "Logged." alone cannot be
-        // told apart from the previous piece's "Logged."
-        const what = `${entry.composer} ${entry.title}`;
-        const notes = warnings(entry).join(' ');
-        this.status(remaining
-            ? `${what} saved. ${remaining} waiting for a network. ${notes}`.trim()
-            : `Logged ${what}. It reaches the app within a few minutes. ${notes}`.trim(),
-        remaining ? '' : 'ok');
+        // The line under the button is behind the confirmation now, and every
+        // message it would carry is on there instead. Clear it so the next
+        // piece does not open under the last one's.
+        this.status('');
     }
 }

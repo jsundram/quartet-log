@@ -9,7 +9,7 @@
 import { withInstrument } from './csvFormat.js';
 import {
     SLOT_TO_PART, stripParens, instrumentFromSlot, splitOutsideParens,
-    SESSION_WINDOW_HOURS,
+    SESSION_WINDOW_HOURS, peopleKeysFor, refersToPrevEntry, parseWork,
 } from './dataProcessor.js';
 
 /** @typedef {import('./dataProcessor.js').Row} Row */
@@ -118,6 +118,11 @@ export function missingFields(entry) {
     return REQUIRED_FIELDS.filter(f => !entry[f].trim());
 }
 
+// Exported because the confirmation screen raises it for any italic row in the
+// SITTING, not only for the piece just submitted — one sentence, two callers.
+export const PARTIAL_MOVEMENT_NOTE = 'A “:” marks a partial movement — the sheet keeps it, '
+    + 'but this app leaves it out of its charts and its counts.';
+
 /**
  * Non-blocking things worth saying out loud before the row is written.
  * @param {Entry} entry @returns {string[]}
@@ -128,9 +133,7 @@ export function warnings(entry) {
     // reaches the sheet and then vanishes from every view in this app. That is
     // correct behaviour and a genuine surprise; say so rather than let the
     // piece look unlogged.
-    if (entry.title.includes(':')) {
-        out.push('A “:” marks a partial movement — the sheet keeps it, this app hides it.');
-    }
+    if (parseWork(entry.title).incomplete) out.push(PARTIAL_MOVEMENT_NOTE);
     return out;
 }
 
@@ -483,10 +486,20 @@ function seatName(typed, carried) {
  * @param {string[]} a.carried the cell each seat would ditto, annotation included
  * @param {(string|null)[]} a.chosen the part selected per seat
  * @param {(string|null)[]} a.implied the part each seat implies
- * @returns {{ cells: string[], order: number[] }}
+ * @returns {{ cells: string[], order: number[], parts: (string|null)[] }}
+ *   `parts` is null per seat only when the row's own part has no seat table
+ *   (`impliedSlotParts` answers all-null) — a stale draft, not a live control.
  */
 export function seatPlan({ typed, carried, chosen, implied }) {
     const order = seatOrder({ typed, carried, chosen, implied });
+    // What the person written into each seat is playing — the same
+    // `chosen[from] ?? implied[i]` the cell below is built from, published
+    // rather than re-derived. The confirmation screen names the line-up it
+    // recorded, and deriving it per seat from `chosen[i]` would read a
+    // reordering backwards: after a swap the names have moved and each is on
+    // the part its NEW seat implies, which is the whole reason nothing is
+    // annotated.
+    const parts = order.map((from, i) => chosen[from] ?? implied[i]);
     const cells = order.map((from, i) => {
         // A seat that keeps its own name keeps its own CASE exactly: a typed
         // "-" (nobody here) and a dittoed one are different cells, and
@@ -503,7 +516,7 @@ export function seatPlan({ typed, carried, chosen, implied }) {
             implied: implied[i],
         });
     });
-    return { cells, order };
+    return { cells, order, parts };
 }
 
 /**
@@ -694,14 +707,18 @@ export function mergeOthersCell(rows, freeform) {
  * newest while each gap stays inside the window, the same chain fillForward
  * follows. Empty once the last row is older than the window, because then
  * there is no session to be in.
- * @param {Row[]} rows chronological, as prepareRows leaves them
+ * Generic in the row shape because it reads nothing but `timestamp`: the same
+ * loop windows the fetched rows and the merged piece list the confirmation
+ * screen builds, rather than that list getting a second copy of this walk.
+ * @template {{ timestamp: Date|null }} T
+ * @param {T[]} rows chronological, as prepareRows leaves them
  * @param {Date} [now]
  * @param {number} [windowHours]
- * @returns {Row[]}
+ * @returns {T[]}
  */
 export function sessionRows(rows, now = new Date(), windowHours = SESSION_WINDOW_HOURS) {
     const span = windowHours * 3600_000;
-    /** @type {Row[]} */
+    /** @type {T[]} */
     const out = [];
     let edge = now.getTime();
     for (let i = rows.length - 1; i >= 0; i--) {
@@ -743,4 +760,205 @@ export function sessionPeople(rows, now = new Date()) {
         }
     }
     return [...seen].reverse().map(([name, instrument]) => ({ name, instrument }));
+}
+
+/**
+ * A piece of the current sitting, from either side of the lag.
+ * @typedef {Object} Piece
+ * @property {Date} timestamp
+ * @property {string} composer
+ * @property {string} title
+ * @property {string} part
+ * @property {string[]} people - everyone on the row, seats and Others? alike
+ * @property {boolean} landed - is it in the app's copy of the sheet yet
+ * @property {boolean} partial - a movement rather than a whole piece, so the
+ *   app's copy will never hold it however long anyone waits
+ * @property {boolean} queued - still in the outbox, not yet sent
+ */
+
+// VA1 is a spelling of VA, folded by processRow on the way in. A local
+// submission has not been through processRow, so fold it here or the same
+// seat reads as two different parts either side of the lag.
+const foldPart = (/** @type {string} */ part) => (part.trim() === 'VA1' ? 'VA' : part.trim());
+
+const workKey = (/** @type {string} */ composer, /** @type {string} */ title) =>
+    (title ? `${composer}|${title}` : null);
+
+// How a piece is recognised as "the same one" across the three records that
+// hold it. Trimmed, because they do not agree on whitespace: the outbox holds
+// the entry as TYPED (blanks left blank, so the sheet's own fillForward dittos
+// them) while the sitting record holds `resolveCarry`'s output, which trims
+// every field. A title typed with a trailing space matched neither the queue
+// nor itself, and a piece still on the device was painted as sent.
+const pieceKey = (/** @type {string} */ composer, /** @type {string} */ title) =>
+    `${(composer ?? '').trim()}|${(title ?? '').trim()}`;
+
+/**
+ * The pieces logged in the sitting so far: the rows the app already has, plus
+ * the submissions this device made that the published sheet has not caught up
+ * with. One list, oldest first, each piece saying which side of the lag it is
+ * on — which is the whole point, since "it is saved but not showing yet" is
+ * the thing the form has never been able to say.
+ *
+ * A submission is paired off against a fetched row by composer and title, one
+ * for one: pairing by identity alone would hide the second reading of a piece
+ * played twice in an evening behind the first one's row. Only the pieces the
+ * window keeps are paired, so a submission from this morning that the sheet
+ * never took is neither dragged into tonight nor allowed to claim one of
+ * tonight's rows.
+ *
+ * @param {Row[]} rows the app's own rows, chronological
+ * @param {{ at: number, entry: Entry }[]} submissions store.recentAll(), oldest first
+ * @param {{ entry: Entry }[]} [queued] store.pending(), oldest first — what has
+ *   not left the device. A partial movement is never in `rows`, so this is the
+ *   only thing that can say whether it got anywhere.
+ * @param {Date} [now]
+ * @returns {Piece[]}
+ */
+export function sessionPieces(rows, submissions, queued = [], now = new Date()) {
+    // Window the two sources TOGETHER, on timestamps alone. The chain can run
+    // back THROUGH a submission the sheet has not taken yet: log a piece
+    // offline at 17:30 and the fetched row from 14:00 is more than a window
+    // away from 20:00, but not from the piece bridging them. Windowing the
+    // fetched rows on their own first dropped exactly those rows — the same
+    // sitting, reported short. Every row becomes a mark, but only the marks
+    // the chain keeps are read for their people and their work, which is the
+    // part that costs anything.
+    /** @type {{ timestamp: Date|null, row: Row|null, sub: { at: number, entry: Entry }|null }[]} */
+    const marks = [
+        ...rows.map(d => ({ timestamp: d.timestamp, row: d, sub: null })),
+        ...submissions.map(s => ({ timestamp: new Date(s.at), row: null, sub: s })),
+        // A row whose timestamp never parsed sorts to the front, where the
+        // walk below stops at it exactly as it always did.
+    ].sort((a, b) => (a.timestamp?.getTime() ?? 0) - (b.timestamp?.getTime() ?? 0));
+
+    /** @type {Piece[]} */
+    const landed = [];
+    /** @type {{ at: number, entry: Entry }[]} */
+    const sent = [];
+    for (const m of sessionRows(marks, now)) {
+        if (m.row) {
+            landed.push({
+                // sessionRows stops at the first mark without a timestamp, so
+                // everything it returns has one — which tsc cannot see.
+                timestamp: /** @type {Date} */ (m.timestamp),
+                composer: m.row.composer,
+                title: m.row.work?.title ?? '',
+                part: m.row.part ?? '',
+                people: peopleKeysFor(m.row),
+                landed: true,
+                partial: parseWork(m.row.work?.title ?? '').incomplete,
+                queued: false,
+            });
+        } else if (m.sub) {
+            sent.push(m.sub);
+        }
+    }
+    // How many fetched rows each (composer, title) has this sitting. Each one
+    // accounts for exactly one submission; the rest are still on their way.
+    /** @type {Map<string, number>} */
+    const accounted = new Map();
+    for (const p of landed) {
+        const k = pieceKey(p.composer, p.title);
+        accounted.set(k, (accounted.get(k) ?? 0) + 1);
+    }
+    /** @type {Piece[]} */
+    const waiting = [];
+    for (const { at, entry } of sent) {
+        const k = pieceKey(entry.composer, entry.title);
+        const seen = accounted.get(k) ?? 0;
+        if (seen > 0) { accounted.set(k, seen - 1); continue; }
+        waiting.push({
+            timestamp: new Date(at),
+            composer: entry.composer,
+            title: entry.title,
+            part: foldPart(entry.part),
+            people: [
+                ...[entry.player1, entry.player2, entry.player3]
+                    .map(n => (stripParens(n) ?? '').trim()).filter(n => n && n !== '-'),
+                ...parseOthersRows(entry.others).map(r => r.name).filter(Boolean),
+            ],
+            landed: false,
+            partial: parseWork(entry.title).incomplete,
+            queued: false,
+        });
+    }
+    // Which of those are still in the outbox. Counted rather than matched by
+    // identity, for the same reason the pairing above is: two readings of one
+    // piece in an evening share a key. Consumed NEWEST first, because flush
+    // sends oldest first — with one of two copies gone, the one still waiting
+    // is the later one.
+    /** @type {Map<string, number>} */
+    const inOutbox = new Map();
+    for (const q of queued) {
+        const k = pieceKey(q.entry.composer, q.entry.title);
+        inOutbox.set(k, (inOutbox.get(k) ?? 0) + 1);
+    }
+    for (let i = waiting.length - 1; i >= 0; i--) {
+        const k = pieceKey(waiting[i].composer, waiting[i].title);
+        const n = inOutbox.get(k) ?? 0;
+        if (n > 0) { inOutbox.set(k, n - 1); waiting[i].queued = true; }
+    }
+    return [...landed, ...waiting].sort((a, b) => +a.timestamp - +b.timestamp);
+}
+
+// Does the log already know this person under this name? Exact match, or the
+// name is a word-boundary prefix of one it holds — the same test fillForward
+// uses to decide that "Alice" written under "Alice Hart" is the same person.
+// It is what keeps a carried-forward first name out of the new-people count
+// without this module reaching for the alias table, which is deliberately not
+// available outside the two wiring points that own it.
+function knownPerson(/** @type {string} */ name, /** @type {Set<string>} */ known) {
+    if (known.has(name)) return true;
+    for (const n of known) if (refersToPrevEntry(name, n)) return true;
+    return false;
+}
+
+/**
+ * What these pieces add to the log's aggregate counts, measured against rows
+ * that do not contain them.
+ *
+ * The same shape `computeAggregateStats` reports, and keyed the same way
+ * (untitled works count for nothing, a part counts per work, a partial
+ * movement counts for nothing at all because `processData` drops it), so the
+ * number under a tile and the number on it are answering one question. Used twice:
+ * for what a sitting added to the totals, and for what the submissions the
+ * sheet has not published yet would add if it had.
+ *
+ * @param {Piece[]} pieces
+ * @param {Row[]} baseRows the log without them
+ * @returns {{ pieces: number, uniquePieces: number, uniqueParts: number, uniquePeople: number }}
+ */
+export function countNew(pieces, baseRows) {
+    const works = new Set();
+    const parts = new Set();
+    // A Set, not a list: knownPerson scans it once per candidate, and the
+    // regulars appear on hundreds of rows.
+    const people = new Set();
+    for (const d of baseRows) {
+        for (const name of peopleKeysFor(d)) people.add(name);
+        const wk = workKey(d.composer, d.work?.title ?? '');
+        if (!wk) continue;
+        works.add(wk);
+        if (d.part) parts.add(`${wk}|${d.part}`);
+    }
+    const out = { pieces: 0, uniquePieces: 0, uniqueParts: 0, uniquePeople: 0 };
+    for (const p of pieces) {
+        // A movement reaches the sheet and is then dropped from every view in
+        // this app. Counting it here would leave the tiles permanently one
+        // ahead of the dashboard they are borrowed from.
+        if (p.partial) continue;
+        out.pieces++;
+        const wk = workKey(p.composer, p.title);
+        if (wk) {
+            if (!works.has(wk)) { works.add(wk); out.uniquePieces++; }
+            if (p.part && !parts.has(`${wk}|${p.part}`)) { parts.add(`${wk}|${p.part}`); out.uniqueParts++; }
+        }
+        for (const name of p.people) {
+            if (knownPerson(name, people)) continue;
+            people.add(name);
+            out.uniquePeople++;
+        }
+    }
+    return out;
 }

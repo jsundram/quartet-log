@@ -284,6 +284,29 @@ test('forgetRecent drops the copy of a submission whose queued entry was discard
     assert.equal(recent(null).entry.title, 'K421');
 });
 
+test('forgetRecent matches the outbox entry against the trimmed record it saved', () => {
+    // The x hands back the entry as it sits in the OUTBOX, which submit()
+    // enqueued as typed, while the sitting record holds resolveCarry's output
+    // — and that trims every field. Compared with === a title typed with a
+    // trailing space missed: the outbox emptied and the phantom stayed,
+    // steering carry-forward for twelve hours against a row the sheet will
+    // never hold, with nothing able to retire it.
+    const typed = blankEntry({ composer: 'Haydn', title: '76#1: I ', player1: 'Alice Hart' });
+    setRecent(blankEntry({ ...typed, title: typed.title.trim() }));
+    forgetRecent(typed);
+    assert.deepEqual(recentAll(), []);
+});
+
+test('an absent column still never matches an empty field', () => {
+    // Trimming compares the text of two records; it must not also turn "this
+    // row has no composer at all" into a match for an entry whose composer is
+    // blank, which would retire a local copy against a row that says nothing.
+    setRecent(blankEntry({ composer: '', title: '76#1' }));
+    assert.ok(recent({ work: { title: '76#1' } }), 'a row with no composer must not retire it');
+    // The same two records, with the column present, do match.
+    assert.equal(recent({ composer: '', work: { title: ' 76#1 ' } }), null);
+});
+
 test('a draft survives a reload, and a submit retires it', () => {
     // An installed PWA is evicted from memory whenever the phone decides to.
     assert.equal(readDraft(), null);
