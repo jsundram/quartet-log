@@ -1,6 +1,6 @@
 import * as d3 from "d3";
 import { getBegin, CALENDAR_CONFIG, getCssColor } from './config.js';
-import { computeAggregateStats } from './dataProcessor.js';
+import { computeAggregateStats, recentRows } from './dataProcessor.js';
 import { isCurrentlyDark } from './themeManager.js';
 import { escapeHtml } from './escapeHtml.js';
 import { tooltip } from './tooltip.js';
@@ -749,10 +749,7 @@ export class CalendarComponent {
     }
 
     renderRecentStats(parent, data, days) {
-        const now = new Date();
-        const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-        const recent = data.filter(d => d.timestamp >= cutoff && d.timestamp <= now);
-        const agg = computeAggregateStats(recent);
+        const agg = computeAggregateStats(recentRows(data, days));
         // Full labels on desktop, dashboard-style short labels on mobile (the
         // two are toggled by a CSS media query, mirroring the dashboard tiles)
         // so six metrics stay clear where there's room and stay compact on a

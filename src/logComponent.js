@@ -4,7 +4,9 @@ import {
     postEntry, readPrefilledLink, getFormConfig, setFormConfig, clearFormConfig,
     formViewUrl,
 } from './formConfig.js';
-import { stripParens, computeAggregateStats } from './dataProcessor.js';
+import {
+    stripParens, computeAggregateStats, recentRows, RECENT_WINDOW_DAYS,
+} from './dataProcessor.js';
 import { buildAggregateStatDefs } from './statDefs.js';
 import { tooltip } from './tooltip.js';
 import * as store from './logStore.js';
@@ -1149,10 +1151,19 @@ export class LogComponent {
         // repainted as a green tick and a piece name over "0 pieces this
         // sitting", an empty list and +0 on every tile.
         const pieces = sessionPieces(this.rows, submissions, store.pending(), at);
-        const agg = computeAggregateStats(this.rows);
-        const unpublished = countNew(pieces.filter(p => !p.landed), this.rows);
+        // The counts are the LAST 365 DAYS, not the whole log — the same
+        // window the calendar's header reports, through the same helper. A
+        // lifetime total is barely moved by one evening ("1,002 +3" says
+        // nothing about tonight), while a year is a span a sitting can
+        // plausibly change, and `Unique +1` becomes "a work you have not
+        // played in a year" rather than "never".
+        const window = recentRows(this.rows, RECENT_WINDOW_DAYS, at);
+        const agg = computeAggregateStats(window);
+        const unpublished = countNew(pieces.filter(p => !p.landed), window);
         const start = pieces[0]?.timestamp;
-        const before = start ? this.rows.filter(d => d.timestamp < start) : this.rows;
+        // Both sides of the delta come from the same window, or the tiles
+        // would be measuring a year against all time.
+        const before = start ? window.filter(d => d.timestamp < start) : window;
         const added = countNew(pieces, before);
         const totals = {
             ...agg,
@@ -1163,7 +1174,7 @@ export class LogComponent {
         };
         // The shared defs carry the label, the short label and the tooltip
         // copy, so these tiles cannot drift from the dashboard's.
-        const defs = buildAggregateStatDefs(totals, 'in your whole log');
+        const defs = buildAggregateStatDefs(totals, `in the last ${RECENT_WINDOW_DAYS} days`);
         const deltas = [added.pieces, added.uniquePieces, added.uniqueParts, added.uniquePeople];
         return {
             pieces,
