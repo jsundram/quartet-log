@@ -92,9 +92,10 @@ knows things the form cannot, because the app has your whole log loaded:
   field is exactly what a blank will carry forward, so you can see it rather
   than trust it (section 6).
 - **Each seat has a part beside it.** When two people swap you change a
-  dropdown instead of retyping both names into different columns, and a
-  quintet's second viola or cello can be said outright (section 5). The name
-  comes along on its own.
+  dropdown instead of retyping both names into different columns, and the name
+  comes along on its own. A seat only ever offers the three parts your own part
+  implies, so a second viola or a pianist is an **Others?** entry with a part of
+  their own (section 5).
 - **Extra players stay for the rest of the session** and are written onto every
   piece, so the **x** beside someone is all you do when they leave. That is the
   one column the sheet cannot repeat for you, and the usual way a fifth player
@@ -151,15 +152,16 @@ violin and no viola, so playing violin in one looks like this:
 |---|---|---|---|---|
 | `V1` | `-` | `-` | the cellist | `Alice Hart (p)` |
 
-**Say what someone played with `(instrument)`.** Anyone whose instrument isn't
-the one their seat implies needs an annotation — most often the pianist, but
-also a cellist you had to seat in a violin field because the pianist took the
-cello field. The annotation wins over the seat, so this is correct even though
-the pianist is in the cello field:
+**`(instrument)` on a player field is read, and old rows carry it.** The
+annotation wins over the seat, so a row written this way still counts the
+pianist as a pianist even though they sit in the cello field:
 
 | Which Part | Player 1 | Player 2 | Player 3 | Others? |
 |---|---|---|---|---|
 | `V1` | the violist `(va)` | the cellist `(vc)` | the pianist `(p)` | |
+
+New rows don't need it: everyone past the four goes in **Others?** with a tag,
+which is what the **Log a Piece** form writes (below).
 
 Both spellings and shorthands work — `p`, `pf` and `piano` are the same thing,
 as are `vc` and `cello`, and `va`, `vla` and `viola`. You can add a comment
@@ -182,15 +184,23 @@ are already full, as in a piano quintet where four string players fill every
 slot.
 
 The **Log a Piece** form removes the difference. Extras stay on the form for
-the rest of the session and it writes them onto every piece, and both a seat
-and an Others? entry get the same instrument dropdown — so you can put people
-wherever the ensemble actually puts them, and say what they played without
-remembering the `(p)` syntax.
+the rest of the session and it writes them onto every piece, and each one gets
+a part dropdown — so you can say what someone played without remembering the
+`(p)` syntax.
 
-That dropdown also handles the ordinary case of two people swapping seats. Set
-one of them to the part the other is on and the form swaps the pair, then
-writes the names in seat order — the columns still mean what your own part
-implies, so nothing is annotated and nothing has to be retyped.
+The seats have a dropdown too, but a different list, because the columns and
+Others? hold different things. A seat offers only the three parts your own part
+implies. That covers the ordinary case of two people swapping: set one of them
+to the part the other is on and the form swaps the pair, then writes the names
+in seat order — the columns still mean what your own part implies, so nothing
+is annotated and nothing has to be retyped.
+
+Everyone past the four is an Others? entry, and that list is the parts a column
+never holds — `v2` for an octet's second violin, `v3` and `v4`, `va1` when you
+are the second viola, `va2`, `vc2`, and piano, clarinet and flute. So a
+pianist goes in Others?, not in the cello field. A tag an older row left
+in a column still shows in that seat's dropdown, so nothing already written
+gets rewritten.
 
 ## 6. What repeats itself, and what doesn't
 
