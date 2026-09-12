@@ -147,8 +147,12 @@ had filled the form in by hand. What lags is the app's *copy* of the sheet: the
 calendar and the charts read a published version that Google rebuilds every few
 minutes, and the app re-checks every five. So each piece in the summary carries
 a dot — filled once the app's own copy holds that row, hollow while it is still
-on its way. The totals underneath count the whole sitting either way, including
-the pieces whose dot is still hollow.
+on its way. The totals underneath are your **last 365 days** — the same window
+the calendar's header reports — and they count the whole sitting either way,
+including the pieces whose dot is still hollow. A year rather than the whole log
+because one evening barely moves a lifetime total, so the green number under
+each is something an evening can actually change: `Unique +1` means a work you
+have not played in a year.
 
 A partial movement — anything with a `:` in the title, like `59#1: I` — is the
 one exception, and it shows in *italic*. The sheet keeps it, but this app leaves

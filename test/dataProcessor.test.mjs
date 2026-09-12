@@ -10,6 +10,8 @@ import {
     normalizePlayerNames,
     peopleKeysFor,
     computeAggregateStats,
+    recentRows,
+    RECENT_WINDOW_DAYS,
     longestRunInfo,
     formatStreakStart,
     normalizeDashboardPart,
@@ -1523,5 +1525,33 @@ describe('spelled-out instrument names', () => {
         for (const s of ['p', 'pf', 'pno', 'piano']) {
             assert.equal(partFromInstrument(s), 'OTHER', s);
         }
+    });
+});
+
+describe('recentRows', () => {
+    const NOW = new Date('2026-06-01T12:00:00Z');
+    const daysAgo = d => ({ timestamp: new Date(NOW.getTime() - d * 24 * 60 * 60 * 1000) });
+
+    it('keeps the window and drops what falls out of it', () => {
+        const rows = [daysAgo(400), daysAgo(366), daysAgo(365), daysAgo(1), daysAgo(0)];
+        assert.equal(recentRows(rows, 365, NOW).length, 3);
+        // The boundary is inclusive, so a row exactly on it counts.
+        assert.deepEqual(recentRows(rows, 365, NOW)[0], daysAgo(365));
+    });
+
+    it('drops a future row, which a mistyped year in the sheet creates', () => {
+        // Without the upper bound it would be counted in every window forever.
+        const rows = [daysAgo(-30), daysAgo(1)];
+        assert.equal(recentRows(rows, 365, NOW).length, 1);
+    });
+
+    it('drops a row whose timestamp never parsed', () => {
+        assert.deepEqual(recentRows([{ timestamp: null }, { }], 365, NOW), []);
+    });
+
+    it('defaults to the shared window', () => {
+        assert.equal(RECENT_WINDOW_DAYS, 365);
+        const rows = [daysAgo(400), daysAgo(10)];
+        assert.equal(recentRows(rows, undefined, NOW).length, 1);
     });
 });

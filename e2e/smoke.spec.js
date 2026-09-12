@@ -711,6 +711,30 @@ test.describe('log form', () => {
             .locator('.stat-tile-delta')).toHaveText('+1');
     });
 
+    test('the tiles count the last 365 days, not the whole log', async ({ page }) => {
+        // A lifetime total is barely moved by one evening, so the counts a
+        // sitting is measured against are the ones a sitting can change. The
+        // fixture's oldest row is 370 days back: in the window there are six
+        // pieces (the partial movement is dropped from the app), so this piece
+        // makes SEVEN. Counted over the whole log it would be eight, which is
+        // what makes this assertion worth having.
+        await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+
+        const tiles = page.locator('#logDoneTiles .stat-tile');
+        await expect(tiles.first().locator('.stat-tile-value')).toHaveText('7');
+        await expect(tiles.first().locator('.stat-tile-delta')).toHaveText('+1');
+        // Said on the panel, so the number is not read as an all-time total.
+        await expect(page.locator('.log-done-sub').last()).toContainText('365 days');
+        // And the tooltip copy the tiles share names the same window.
+        await tiles.first().click();
+        await expect(page.locator('#tooltip')).toContainText('in the last 365 days');
+    });
+
     test('a link cannot redirect a configured device without being asked', async ({ page }) => {
         // Someone sends you a link; one click and everything you log goes to
         // their spreadsheet while the form still says "Logged" and your own
