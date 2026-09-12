@@ -118,13 +118,15 @@ export function missingFields(entry) {
     return REQUIRED_FIELDS.filter(f => !entry[f].trim());
 }
 
+// Exported because the confirmation screen raises it for any italic row in the
+// SITTING, not only for the piece just submitted — one sentence, two callers.
+export const PARTIAL_MOVEMENT_NOTE = 'A “:” marks a partial movement — the sheet keeps it, '
+    + 'but this app leaves it out of its charts and its counts.';
+
 /**
  * Non-blocking things worth saying out loud before the row is written.
  * @param {Entry} entry @returns {string[]}
  */
-export const PARTIAL_MOVEMENT_NOTE = 'A “:” marks a partial movement — the sheet keeps it, '
-    + 'but this app leaves it out of its charts and its counts.';
-
 export function warnings(entry) {
     const out = [];
     // processData drops titles containing ':' as partial movements, so the row

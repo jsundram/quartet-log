@@ -191,7 +191,21 @@ export function recentAll() {
 // leaves the local copy shadowing the sheet.
 /** @param {any} row @param {Entry} entry */
 function isSameRow(row, entry) {
-    return row?.composer === entry.composer && row?.work?.title === entry.title;
+    return sameText(row?.composer, entry.composer) && sameText(row?.work?.title, entry.title);
+}
+
+// Trimmed, because the two records this compares do not agree on whitespace.
+// `forgetRecent` is handed the entry as it sits in the OUTBOX, which submit()
+// enqueued as typed, and matches it against the sitting record, which holds
+// resolveCarry's output — and that trims every field. A title typed with a
+// trailing space therefore missed, the x emptied the outbox and left the
+// phantom in the sitting, and it steered carry-forward for twelve hours
+// against a row the sheet will never hold: exactly what forgetRecent exists to
+// prevent. Absence still never matches, so a row missing a column cannot pair
+// with an entry whose field is empty.
+/** @param {unknown} a @param {unknown} b @returns {boolean} */
+function sameText(a, b) {
+    return typeof a === 'string' && typeof b === 'string' && a.trim() === b.trim();
 }
 
 /**
