@@ -1157,13 +1157,22 @@ export class LogComponent {
         // nothing about tonight), while a year is a span a sitting can
         // plausibly change, and `Unique +1` becomes "a work you have not
         // played in a year" rather than "never".
-        const window = recentRows(this.rows, RECENT_WINDOW_DAYS, at);
-        const agg = computeAggregateStats(window);
-        const unpublished = countNew(pieces.filter(p => !p.landed), window);
+        //
+        // Ends at NOW, not at `at`. The sitting above windows from the moment
+        // the piece was logged — it has a cliff, and a panel left open past
+        // SESSION_WINDOW_HOURS would otherwise empty — but a year has no
+        // cliff, and clipping the END there drops any row the sheet takes
+        // AFTER the submit: flush a piece queued at 17:30 and Forms stamps it
+        // 20:00, so it counts as landed in the list and falls outside the
+        // window in the tiles. The number went DOWN as the dot filled in,
+        // which is the exact disagreement this screen exists to end.
+        const inWindow = recentRows(this.rows, RECENT_WINDOW_DAYS);
+        const agg = computeAggregateStats(inWindow);
+        const unpublished = countNew(pieces.filter(p => !p.landed), inWindow);
         const start = pieces[0]?.timestamp;
         // Both sides of the delta come from the same window, or the tiles
         // would be measuring a year against all time.
-        const before = start ? window.filter(d => d.timestamp < start) : window;
+        const before = start ? inWindow.filter(d => d.timestamp < start) : inWindow;
         const added = countNew(pieces, before);
         const totals = {
             ...agg,

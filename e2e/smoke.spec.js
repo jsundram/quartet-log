@@ -735,6 +735,46 @@ test.describe('log form', () => {
         await expect(page.locator('#tooltip')).toContainText('in the last 365 days');
     });
 
+    test('a row the sheet takes after the submit is counted, not dropped', async ({ page }) => {
+        // Clipping the tile window's END at the submit moment dropped any row
+        // the sheet took afterwards: flush a piece queued at 17:30 and Forms
+        // stamps it 20:00, so it counts as landed in the list beside the tiles
+        // and falls outside the window inside them. The number went DOWN as
+        // the dot filled in — the exact disagreement this screen exists to end.
+        await page.clock.install();
+        let extraRow = '';
+        await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
+            contentType: 'text/csv', body: FIXTURE_CSV + extraRow,
+        }));
+        await page.goto('/');
+        await expect(page.locator('#update')).toContainText(/Data updated|from cache/, { timeout: 15000 });
+        await captureSubmits(page);
+        await page.evaluate(() => { window.location.hash = '#log'; });
+        await expect(page.locator('#logForm')).toBeVisible();
+
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+        // Six rows in the window plus this one.
+        await expect(page.locator('#logDoneTiles .stat-tile').first()
+            .locator('.stat-tile-value')).toHaveText('7');
+
+        // A row stamped two hours AFTER the submit — a queued piece flushing,
+        // or another device — and then the clock moves past it.
+        const later = new Date(Date.now() + 2 * 60 * 60 * 1000);
+        const stamp = `${later.getMonth() + 1}/${later.getDate()}/${later.getFullYear()}`
+            + ` ${later.getHours()}:${String(later.getMinutes()).padStart(2, '0')}:00`;
+        extraRow = `\n${stamp},Mozart,464,V1,Alice,Bob,Carol,,Home,`;
+        await page.clock.fastForward('05:00:00');
+        await expect(page.locator('#update')).toContainText(/Data updated/);
+
+        // It is in the sitting, so it has to be in the count beside it.
+        await expect(page.locator('#logDoneTiles .stat-tile').first()
+            .locator('.stat-tile-value')).toHaveText('8');
+    });
+
     test('a link cannot redirect a configured device without being asked', async ({ page }) => {
         // Someone sends you a link; one click and everything you log goes to
         // their spreadsheet while the form still says "Logged" and your own
