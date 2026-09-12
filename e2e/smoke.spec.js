@@ -338,6 +338,22 @@ test.describe('log form', () => {
         await page.selectOption('#logComposer', name);
     }
 
+    // A submit replaces the form with its confirmation, so "did that work" is
+    // read off the panel rather than off a line under a button that is no
+    // longer on screen.
+    async function expectLogged(page, what) {
+        await expect(page.locator('#logDone')).toBeVisible();
+        if (what) await expect(page.locator('#logDoneWhat')).toHaveText(what);
+        await expect(page.locator('#logForm')).toBeHidden();
+    }
+
+    // Back to the fields for the next piece of the sitting.
+    async function logAnother(page) {
+        await page.click('#logDoneNext');
+        await expect(page.locator('#logForm')).toBeVisible();
+        await expect(page.locator('#logDone')).toBeHidden();
+    }
+
     async function captureSubmits(page) {
         const bodies = [];
         await page.route('https://docs.google.com/forms/**', route => {
@@ -444,7 +460,7 @@ test.describe('log form', () => {
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.fill('#logPlayer2', 'Erin');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
 
         const body = new URLSearchParams(bodies.at(-1));
         // Composer always rides the Other escape (its value space is unbounded
@@ -468,7 +484,7 @@ test.describe('log form', () => {
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.fill('#logPlayer2', 'Erin');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
 
         // The published CSV lags by minutes, so the app's own data still ends
         // at the fixture's last row. The next piece of this session must still
@@ -499,13 +515,15 @@ test.describe('log form', () => {
             await page.fill('#logTitle', title);
             await page.click('#logPart .part-btn[data-part="VA1"]');
             await page.click('#logSubmit');
-            await expect(page.locator('#logStatus')).toContainText(`Logged ${composer}`);
+            await expectLogged(page);
+            await expect(page.locator('#logDoneWhat')).toContainText(composer);
 
             const body = new URLSearchParams(bodies.at(-1));
             expect(body.get(COMPOSER_ID)).toBe('__other_option__');
             expect(body.get(`${COMPOSER_ID}.other_option_response`)).toBe(composer);
             expect(body.get(PART_ID)).toBe('VA1');
             expect(body.has(`${PART_ID}.other_option_response`)).toBe(false);
+            await logAnother(page);
         }
     });
 
@@ -516,7 +534,8 @@ test.describe('log form', () => {
         await page.fill('#logTitle', '1');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
+        await logAnother(page);
         // The composer carries into the next piece like any other, so the
         // select must still read "Other..." with the name under it rather than
         // falling back to blank while "Ligeti" sits visible below.
@@ -553,15 +572,55 @@ test.describe('log form', () => {
         await page.fill('#logTitle', '76#1');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.click('#logSubmit');
-        // The response is opaque, so this line is the only acknowledgement a
-        // submit gets -- and a bare "Logged." cannot be told apart from the
-        // previous piece's.
-        await expect(page.locator('#logStatus')).toContainText('Logged Haydn 76#1');
-        await expect(page.locator('#logStatus')).toHaveAttribute('role', 'status');
+        // The response is opaque, so this panel is the only acknowledgement a
+        // submit gets. It names the piece and the line-up it recorded: a bare
+        // "Logged." could not be told apart from the previous piece's, and the
+        // form behind it looks identical either side of the tap.
+        await expectLogged(page, 'Haydn 76#1');
+        await expect(page.locator('#logDoneWho')).toContainText('You V1');
+        // Focus follows the screen, not the hidden fields behind it.
+        await expect(page.locator('#logDoneNext')).toBeFocused();
+
         // Composer, part and seats all carry, so the title is all that is left
         // to type for the next piece of the session.
+        await logAnother(page);
         await expect(page.locator('#logTitle')).toBeFocused();
         await expect(page.locator('#logTitle')).toHaveValue('');
+    });
+
+    test('the sitting is on the confirmation, and says what has reached the app', async ({ page }) => {
+        // The one thing the form has never been able to say: the row is in
+        // your sheet, and these charts have not caught up with it yet. A
+        // filled dot is a piece the app's own copy holds; a hollow one is a
+        // piece still on its way into it.
+        await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+
+        // The fixture's two rows nine days back are their own sitting, so
+        // tonight is this piece alone.
+        await expect(page.locator('.log-done-row')).toHaveCount(1);
+        await expect(page.locator('.log-done-row .log-done-dot--waiting')).toHaveCount(1);
+        await expect(page.locator('#logDoneSitting')).toContainText('First piece');
+        await expect(page.locator('#logDoneNote')).toContainText('already');
+
+        // Four tiles, each carrying what the sitting added to it. A lifetime
+        // total on its own says nothing about the piece just logged.
+        const tiles = page.locator('#logDoneTiles .stat-tile');
+        await expect(tiles).toHaveCount(4);
+        await expect(tiles.locator('.stat-tile-delta').first()).toHaveText('+1');
+        // The piece is counted even though the published sheet has not
+        // published it: the tiles must not disagree with the panel they sit on.
+        const pieces = Number(await tiles.first().locator('.stat-tile-value').innerText());
+        await logAnother(page);
+        await page.fill('#logTitle', '76#2');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#2');
+        await expect(tiles.first().locator('.stat-tile-value')).toHaveText(String(pieces + 1));
+        await expect(page.locator('.log-done-row')).toHaveCount(2);
     });
 
     test('a link cannot redirect a configured device without being asked', async ({ page }) => {
@@ -605,7 +664,7 @@ test.describe('log form', () => {
         await page.fill('#logTitle', '76#4');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         // The row went to the configured form, not the one the link named.
         expect(bodies.at(-1)).toContain(COMPOSER_ID);
         const posted = await page.evaluate(() => performance.getEntriesByType('resource')
@@ -630,7 +689,7 @@ test.describe('log form', () => {
         // Move seat 1 to V2 without touching the name field.
         await page.selectOption('#logSlotPart1', 'V2');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
 
         const body = new URLSearchParams(bodies.at(-1));
         // The name was materialised from the carried row precisely because a
@@ -655,7 +714,7 @@ test.describe('log form', () => {
         await page.fill('#logPlayer2', 'Erin Fry');
         await page.selectOption('#logSlotPart2', 'VA2');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
 
         const body = new URLSearchParams(bodies.at(-1));
         // partFromInstrument folds va2 into VA for the charts, but the sheet
@@ -682,7 +741,7 @@ test.describe('log form', () => {
         await second.locator('select').selectOption('VC2');
 
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         const body = new URLSearchParams(bodies.at(-1));
         expect(body.get(OTHERS_ID)).toBe('Dana Ellis (p); Erin Fry (vc2)');
     });
@@ -719,7 +778,7 @@ test.describe('log form', () => {
         await page.fill('#logTitle', '76#6');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Grace (piano)');
     });
 
@@ -739,27 +798,30 @@ test.describe('log form', () => {
         await page.locator('.log-other-row').nth(1).locator('select').selectOption('VC2');
         await page.fill('#logTitle', '76#8');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID))
             .toBe('Dana Ellis (p); Erin Fry (vc2)');
 
         // Next piece: both are still there, no tapping, no retyping.
+        await logAnother(page);
         await expect(page.locator('.log-other-row')).toHaveCount(2);
         await expect(page.locator('.log-other-row').first().locator('input')).toHaveValue('Dana Ellis');
         await expect(page.locator('.log-other-row').nth(1).locator('select')).toHaveValue('VC2');
         await page.fill('#logTitle', '76#9');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID))
             .toBe('Dana Ellis (p); Erin Fry (vc2)');
 
         // The cellist leaves: one x, and she stops being written.
+        await logAnother(page);
         await page.locator('.log-other-row').nth(1).locator('.log-other-drop').click();
         await page.fill('#logTitle', '76#10');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Dana Ellis (p)');
         // And she stays gone on the next piece, rather than coming back.
+        await logAnother(page);
         await expect(page.locator('.log-other-row')).toHaveCount(1);
         // She is still offered, though, since she was in the sitting.
         await expect(page.locator('#logOthersHere .log-chip-btn').filter({ hasText: 'Erin Fry' }))
@@ -902,10 +964,11 @@ test.describe('log form', () => {
         await page.locator('.log-other-row').first().locator('input').fill('Dana Ellis');
         await page.fill('#logTitle', '76#12');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
 
         // Next piece starts with Dana carried; remove her, then touch two
         // other controls before submitting.
+        await logAnother(page);
         await expect(page.locator('.log-other-row')).toHaveCount(1);
         await page.locator('.log-other-row').first().locator('.log-other-drop').click();
         await pickComposer(page, 'Mozart');
@@ -913,7 +976,7 @@ test.describe('log form', () => {
         await page.fill('#logTitle', 'K421');
         await expect(page.locator('.log-other-row')).toHaveCount(0);
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         expect(new URLSearchParams(bodies.at(-1)).has(OTHERS_ID)).toBe(false);
     });
 
@@ -944,7 +1007,7 @@ test.describe('log form', () => {
         await page.fill('#logOthersFree', 'Laura (v2, shadowing on I)');
 
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID))
             .toBe('Dana Ellis (vc2); Laura (v2, shadowing on I)');
     });
@@ -965,7 +1028,7 @@ test.describe('log form', () => {
         await expect(page.locator('.log-other-row')).toHaveCount(2);
 
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         // The blank row contributes nothing -- no stray separator, no bare
         // annotation.
         expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Dana Ellis');
@@ -983,7 +1046,7 @@ test.describe('log form', () => {
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.fill('#logPlayer1', 'Alise Hart');   // typo, as typed
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
         // The sheet hasn't caught up, so the local copy is carrying the seats.
         await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alise Hart');
 
@@ -1021,7 +1084,11 @@ test.describe('log form', () => {
         for (const title of ['76#1', '76#2']) {
             await page.fill('#logTitle', title);
             await page.click('#logSubmit');
-            await expect(page.locator('#logStatus')).toContainText('waiting for a network');
+            // Confirmed either way — the piece is safe, just not sent yet —
+            // and the note says which of the two it is.
+            await expectLogged(page, `Haydn ${title}`);
+            await expect(page.locator('#logDoneNote')).toContainText('waiting for a connection');
+            await logAnother(page);
         }
         // An invisible outbox is how a submission silently never happens.
         await expect(page.locator('#logPending')).toBeVisible();
@@ -1066,6 +1133,8 @@ test.describe('log form', () => {
         await page.fill('#logTitle', '76#1');
         await page.fill('#logPlayer1', 'Zelda Quill');
         await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+        await logAnother(page);
         await expect(page.locator('.log-pending-row')).toHaveCount(1);
         // The queued piece is what the next one would carry from.
         await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Zelda Quill');
@@ -1080,7 +1149,7 @@ test.describe('log form', () => {
         online = true;
         await page.fill('#logTitle', '76#2');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged Haydn 76#2');
+        await expectLogged(page, 'Haydn 76#2');
         expect(new URLSearchParams(bodies.at(-1)).get(PLAYER1_ID)).not.toBe('');
     });
 
@@ -1136,7 +1205,8 @@ test.describe('log form', () => {
         await page.click('#logOthersAdd');
         await page.fill('.log-other-row:last-of-type input[type=text]', 'Zelda Quill');
         await page.click('#logSubmit');
-        await expect(page.locator('#logStatus')).toContainText('Logged');
+        await expectLogged(page);
+        await logAnother(page);
 
         // She is in the sitting now, and carried on to the next piece as a
         // row, so no chip -- that much always worked.
@@ -1163,7 +1233,7 @@ test.describe('log form', () => {
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.click('#logSubmit');
 
-        await expect(page.locator('#logStatus')).toContainText('Logged Haydn 76#1');
+        await expectLogged(page, 'Haydn 76#1');
         // The claim has to be true: nothing persisted, so flush had nothing to
         // send and the submit is the only thing that could have sent it.
         expect(bodies.map(b => new URLSearchParams(b).get(TITLE_ID))).toEqual(['76#1']);
@@ -1182,6 +1252,12 @@ test.describe('log form', () => {
 
         await expect(page.locator('#logStatus')).toHaveClass(/error/);
         await expect(page.locator('#logStatus')).not.toContainText('Logged Haydn');
+        // No confirmation: nothing was logged, and the fields stay on screen.
+        await expect(page.locator('#logDone')).toBeHidden();
+        // The sentence is short enough for a phone; the rest is behind the (i).
+        await page.click('#logStatusInfo');
+        await expect(page.locator('#logStatusHelp')).toContainText('private browsing');
+        await expect(page.locator('#logStatusInfo')).toHaveAttribute('aria-expanded', 'true');
         // There is no outbox to hold it, so the form must: nothing on screen
         // is lost, and the piece can be submitted again.
         await expect(page.locator('#logTitle')).toHaveValue('76#1');

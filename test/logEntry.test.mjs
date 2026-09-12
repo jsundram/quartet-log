@@ -9,7 +9,7 @@ import {
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts, canonicalOthersCell,
     PART_CHOICES,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
-    sessionRows, sessionPeople,
+    sessionRows, sessionPeople, sessionPieces, countNew,
 } from '../src/logEntry.js';
 import { SLOT_TO_PART } from '../src/dataProcessor.js';
 
@@ -389,4 +389,90 @@ test('the part buttons are the app own vocabulary, and VC is not in it yet', () 
     assert.deepEqual([...PART_CHOICES], ['V1', 'V2', 'VA1', 'VA2']);
     assert.equal(PART_CHOICES.includes('VC'), false);
     assert.equal(SLOT_TO_PART.VC, undefined);
+});
+
+// The sitting as the interstitial reports it: what the app already has, plus
+// what this device sent that the published sheet has not caught up with.
+const hoursAgo = (h) => new Date(Date.UTC(2026, 0, 2, 12) - h * 3600_000);
+const NOW = new Date(Date.UTC(2026, 0, 2, 12));
+
+const submission = (h, over = {}) => ({
+    at: hoursAgo(h).getTime(),
+    entry: blankEntry({
+        composer: 'Haydn', title: '76#3', part: 'V1',
+        player1: 'Alice Hart', player2: 'Bob Bek', player3: 'Carol Diaz',
+        location: 'Home', ...over,
+    }),
+});
+
+test('sessionPieces marks which side of the lag each piece is on', () => {
+    const rows = [row({ timestamp: hoursAgo(2), work: { title: '20#2' } })];
+    const pieces = sessionPieces(rows, [submission(1, { title: '76#3' })], NOW);
+    assert.deepEqual(pieces.map(p => [p.title, p.landed]), [['20#2', true], ['76#3', false]]);
+    // The people come along either way: the tiles count them.
+    assert.deepEqual(pieces[1].people, ['Alice Hart', 'Bob Bek', 'Carol Diaz']);
+});
+
+test('sessionPieces drops a submission the app has already fetched', () => {
+    const rows = [row({ timestamp: hoursAgo(1), work: { title: '76#3' } })];
+    const pieces = sessionPieces(rows, [submission(1)], NOW);
+    assert.deepEqual(pieces.map(p => [p.title, p.landed]), [['76#3', true]]);
+});
+
+test('sessionPieces pairs one for one, so a piece played twice shows twice', () => {
+    // Pairing by identity alone would hide the second reading behind the
+    // first one's row and under-count the evening.
+    const rows = [row({ timestamp: hoursAgo(2), work: { title: '76#3' } })];
+    const pieces = sessionPieces(rows, [submission(2), submission(1)], NOW);
+    assert.deepEqual(pieces.map(p => p.landed), [true, false]);
+});
+
+test('sessionPieces re-windows the merged list', () => {
+    // A submission the sheet never took, from this morning: outside the
+    // window, so it is not part of tonight however long it is remembered.
+    const pieces = sessionPieces([], [submission(9), submission(0.5)], NOW);
+    assert.equal(pieces.length, 1);
+    assert.equal(pieces[0].landed, false);
+    assert.deepEqual(sessionPieces([], [], NOW), []);
+});
+
+test('sessionPieces folds VA1 to VA, as processRow does on the way in', () => {
+    // Otherwise one seat reads as two different parts either side of the lag.
+    const [piece] = sessionPieces([], [submission(1, { part: 'VA1' })], NOW);
+    assert.equal(piece.part, 'VA');
+});
+
+test('countNew scores a sitting against a log that does not contain it', () => {
+    const base = [
+        row({ work: { title: '76#3' }, part: 'V1' }),
+        row({ work: { title: '20#2' }, part: 'V1' }),
+    ];
+    const pieces = sessionPieces([], [
+        submission(2, { title: '76#3', part: 'V2' }),   // known work, new part
+        submission(1, { title: '33#1', part: 'V1' }),   // new work and part
+    ], NOW);
+    assert.deepEqual(countNew(pieces, base),
+        { pieces: 2, uniquePieces: 1, uniqueParts: 2, uniquePeople: 0 });
+});
+
+test('countNew does not call a carried first name a new person', () => {
+    // fillForward's own rule: "Alice" under "Alice Hart" is the same person.
+    // Without it every sitting that carries a seat forward would report a
+    // stranger — and the alias table that would settle it is deliberately
+    // out of reach here.
+    const base = [row({ player1: 'Alice Hart', player2: 'Bob Bek', player3: 'Carol Diaz' })];
+    const same = sessionPieces([], [submission(1, { player1: 'Alice' })], NOW);
+    assert.equal(countNew(same, base).uniquePeople, 0);
+    // A name that merely starts the same is a different person, not a
+    // shorthand — the word boundary is what says so.
+    const other = sessionPieces([], [submission(1, { player1: 'Ali' })], NOW);
+    assert.equal(countNew(other, base).uniquePeople, 1);
+    const guest = sessionPieces([], [submission(1, { others: 'Dana Ellis (p)' })], NOW);
+    assert.equal(countNew(guest, base).uniquePeople, 1);
+});
+
+test('countNew ignores an untitled work, as computeAggregateStats does', () => {
+    const pieces = sessionPieces([], [submission(1, { title: '' })], NOW);
+    assert.deepEqual(countNew(pieces, []),
+        { pieces: 1, uniquePieces: 0, uniqueParts: 0, uniquePeople: 3 });
 });

@@ -134,6 +134,25 @@ link** in the menu carries both, so setting up a second device is one link.
 
 3. Repeat.
 
+**What happens when you tap Log it.** The form is replaced by a short summary
+of what went in: the piece, who played what, and the rest of the sitting so
+far. **Log the next piece** brings the fields back with the composer, your part
+and the seats already carried over, so the work title is usually all that is
+left to type.
+
+**Why the piece is not in the charts yet.** Your entry is in the spreadsheet
+the moment you tap — the app writes through your Google Form, exactly as if you
+had filled the form in by hand. What lags is the app's *copy* of the sheet: the
+calendar and the charts read a published version that Google rebuilds every few
+minutes, and the app re-checks every five. So each piece in the summary carries
+a dot — filled once the app's own copy holds that row, hollow while it is still
+on its way. The totals underneath count the whole sitting either way, including
+the pieces whose dot is still hollow.
+
+If you have no signal the summary says so instead: the piece is held on the
+device and sent automatically, in the order you logged them, when you are back
+on a network.
+
 ## 5. Logging anything that isn't a string quartet
 
 The three player fields model a string quartet: you take one seat, and the
