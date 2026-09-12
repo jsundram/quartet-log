@@ -9,7 +9,7 @@ import {
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts, canonicalOthersCell,
     PART_CHOICES,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
-    sessionRows, sessionPeople, sessionPieces, countNew,
+    sessionRows, sessionPeople, sessionPieces, countNew, PARTIAL_MOVEMENT_NOTE,
 } from '../src/logEntry.js';
 import { SLOT_TO_PART } from '../src/dataProcessor.js';
 
@@ -543,4 +543,33 @@ test('warnings reads the same partial-movement rule parseWork does', () => {
     const [note] = warnings(blankEntry({ title: '76#1: I' }));
     assert.match(note, /partial movement/);
     assert.match(note, /counts/);
+});
+
+test('the outbox matches the sitting record though their whitespace disagrees', () => {
+    // submit() enqueues the entry as TYPED — blanks left blank so the sheet's
+    // own fillForward dittos them — and remembers resolveCarry's output, which
+    // trims every field. A title typed with a trailing space keyed the two
+    // records differently, so a piece still sitting in the outbox fell through
+    // to the partial branch and was painted with a filled "Sent to your sheet"
+    // tick: the exact false confidence this screen exists to remove.
+    const typed = blankEntry({ composer: 'Haydn', title: '76#1: I ', part: 'V1' });
+    const remembered = resolveCarry(typed, {});
+    const [piece] = sessionPieces([], [{ at: hoursAgo(1).getTime(), entry: remembered }],
+        [{ entry: typed }], NOW);
+    assert.equal(piece.queued, true);
+    assert.equal(piece.partial, true);
+
+    // The same disagreement must not hide a fetched row either.
+    const landed = sessionPieces(
+        [row({ timestamp: hoursAgo(1), composer: 'Haydn', work: { title: '76#1' } })],
+        [{ at: hoursAgo(1).getTime(), entry: resolveCarry(blankEntry({ composer: 'Haydn ', title: ' 76#1' }), {}) }],
+        [], NOW);
+    assert.deepEqual(landed.map(p => p.landed), [true]);
+});
+
+test('warnings and the confirmation share one partial-movement sentence', () => {
+    // The screen has to raise it for any italic row in the sitting, not only
+    // for the piece just submitted, so the string cannot live in warnings()
+    // alone.
+    assert.deepEqual(warnings(blankEntry({ title: '76#1: I' })), [PARTIAL_MOVEMENT_NOTE]);
 });

@@ -649,6 +649,20 @@ test.describe('log form', () => {
             .locator('.stat-tile-delta')).toHaveText('+0');
         // Nothing is left settling, so the note must not promise a dot fills in.
         await expect(page.locator('#logDoneNote')).not.toContainText('hollow dot');
+
+        // The italic row and the gap it opens between the count above and the
+        // tiles below outlive the submission that raised them, so the sentence
+        // that explains both has to as well.
+        await logAnother(page);
+        await page.fill('#logTitle', '76#2');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#2');
+        await expect(page.locator('.log-done-row')).toHaveCount(2);
+        await expect(page.locator('.log-done-row--partial')).toHaveCount(1);
+        await expect(page.locator('#logDoneWarn')).toContainText('partial movement');
+        // Two rows, one of them uncounted.
+        await expect(page.locator('#logDoneTiles .stat-tile').first()
+            .locator('.stat-tile-delta')).toHaveText('+1');
     });
 
     test('a link cannot redirect a configured device without being asked', async ({ page }) => {

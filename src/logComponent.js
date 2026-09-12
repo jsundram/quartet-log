@@ -15,6 +15,7 @@ import {
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, canonicalOthersCell,
     sessionPeople, sessionRows, slotPartKey, sessionPieces, countNew,
+    PARTIAL_MOVEMENT_NOTE,
 } from './logEntry.js';
 
 // The entry field each text input owns. `part` is absent: it's a segmented
@@ -1020,7 +1021,15 @@ export class LogComponent {
         tooltip.attach(cells, (event, d) => `<h4>${d.title}</h4><p>${d.desc}</p>`,
             { maxWidth: '320px' });
 
-        d3.select('#logDoneWarn').text(warn.join(' ')).property('hidden', !warn.length);
+        // Keyed to the SITTING, not to the piece just submitted: log a
+        // movement and then a whole piece and the italic row stays, the tiles
+        // stay a piece behind the count above them, and the sentence that
+        // explains both would have gone with the submission that raised it.
+        // A Set because warnings() raises the same sentence for a movement
+        // submitted just now, and one line should not say it twice.
+        const notes = new Set(warn);
+        if (pieces.some(p => p.partial)) notes.add(PARTIAL_MOVEMENT_NOTE);
+        d3.select('#logDoneWarn').text([...notes].join(' ')).property('hidden', !notes.size);
         const settling = pieces.some(p => !dots.get(p).filled && !p.queued);
         d3.select('#logDoneNote').text(waiting
             ? `${waiting} ${waiting === 1 ? 'piece is' : 'pieces are'} held on this device, `

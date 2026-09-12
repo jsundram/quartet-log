@@ -122,16 +122,16 @@ export function missingFields(entry) {
  * Non-blocking things worth saying out loud before the row is written.
  * @param {Entry} entry @returns {string[]}
  */
+export const PARTIAL_MOVEMENT_NOTE = 'A “:” marks a partial movement — the sheet keeps it, '
+    + 'but this app leaves it out of its charts and its counts.';
+
 export function warnings(entry) {
     const out = [];
     // processData drops titles containing ':' as partial movements, so the row
     // reaches the sheet and then vanishes from every view in this app. That is
     // correct behaviour and a genuine surprise; say so rather than let the
     // piece look unlogged.
-    if (parseWork(entry.title).incomplete) {
-        out.push('A “:” marks a partial movement — the sheet keeps it, but this app leaves it '
-            + 'out of its charts and its counts.');
-    }
+    if (parseWork(entry.title).incomplete) out.push(PARTIAL_MOVEMENT_NOTE);
     return out;
 }
 
@@ -519,6 +519,15 @@ const foldPart = (/** @type {string} */ part) => (part.trim() === 'VA1' ? 'VA' :
 const workKey = (/** @type {string} */ composer, /** @type {string} */ title) =>
     (title ? `${composer}|${title}` : null);
 
+// How a piece is recognised as "the same one" across the three records that
+// hold it. Trimmed, because they do not agree on whitespace: the outbox holds
+// the entry as TYPED (blanks left blank, so the sheet's own fillForward dittos
+// them) while the sitting record holds `resolveCarry`'s output, which trims
+// every field. A title typed with a trailing space matched neither the queue
+// nor itself, and a piece still on the device was painted as sent.
+const pieceKey = (/** @type {string} */ composer, /** @type {string} */ title) =>
+    `${(composer ?? '').trim()}|${(title ?? '').trim()}`;
+
 /**
  * The pieces logged in the sitting so far: the rows the app already has, plus
  * the submissions this device made that the published sheet has not caught up
@@ -585,13 +594,13 @@ export function sessionPieces(rows, submissions, queued = [], now = new Date()) 
     /** @type {Map<string, number>} */
     const accounted = new Map();
     for (const p of landed) {
-        const k = `${p.composer}|${p.title}`;
+        const k = pieceKey(p.composer, p.title);
         accounted.set(k, (accounted.get(k) ?? 0) + 1);
     }
     /** @type {Piece[]} */
     const waiting = [];
     for (const { at, entry } of sent) {
-        const k = `${entry.composer}|${entry.title}`;
+        const k = pieceKey(entry.composer, entry.title);
         const seen = accounted.get(k) ?? 0;
         if (seen > 0) { accounted.set(k, seen - 1); continue; }
         waiting.push({
@@ -617,11 +626,11 @@ export function sessionPieces(rows, submissions, queued = [], now = new Date()) 
     /** @type {Map<string, number>} */
     const inOutbox = new Map();
     for (const q of queued) {
-        const k = `${q.entry.composer}|${q.entry.title}`;
+        const k = pieceKey(q.entry.composer, q.entry.title);
         inOutbox.set(k, (inOutbox.get(k) ?? 0) + 1);
     }
     for (let i = waiting.length - 1; i >= 0; i--) {
-        const k = `${waiting[i].composer}|${waiting[i].title}`;
+        const k = pieceKey(waiting[i].composer, waiting[i].title);
         const n = inOutbox.get(k) ?? 0;
         if (n > 0) { inOutbox.set(k, n - 1); waiting[i].queued = true; }
     }
