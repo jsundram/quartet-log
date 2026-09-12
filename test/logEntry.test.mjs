@@ -7,7 +7,8 @@ import {
     blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts, canonicalOthersCell,
-    PART_CHOICES,
+    seatPlan, setSlotPart,
+    PART_CHOICES, columnParts, OTHERS_PARTS, partCode, partLabel,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
     sessionRows, sessionPeople, sessionPieces, countNew, PARTIAL_MOVEMENT_NOTE,
 } from '../src/logEntry.js';
@@ -215,15 +216,15 @@ test('a typed name takes the chosen part, and an empty seat stays empty', () => 
 });
 
 test('an annotation the options cannot express passes through unrewritten', () => {
-    // The sheet carries instruments this list does not offer. Re-serialising
-    // one into the nearest option would silently rewrite the record.
-    assert.equal(slotPartKey('cl'), null);
+    // The sheet carries instruments neither list offers. Re-serialising one
+    // into the nearest option would silently rewrite the record.
+    assert.equal(slotPartKey('hn'), null);
     assert.equal(
-        slotCell({ typed: '', carried: 'Erin Fry (cl)', chosen: 'cl', implied: 'V2' }),
+        slotCell({ typed: '', carried: 'Erin Fry (hn)', chosen: 'hn', implied: 'V2' }),
         '');
     assert.equal(
-        slotCell({ typed: 'Erin Fry', carried: '', chosen: 'cl', implied: 'V2' }),
-        'Erin Fry (cl)');
+        slotCell({ typed: 'Erin Fry', carried: '', chosen: 'hn', implied: 'V2' }),
+        'Erin Fry (hn)');
 });
 
 test('slotPartKey folds the codes the app folds, and keeps the ones it does not', () => {
@@ -239,6 +240,70 @@ test('slotPartKey folds the codes the app folds, and keeps the ones it does not'
     assert.equal(slotPartKey('v1'), 'V1');
     assert.equal(slotPartKey('piano'), 'P');
     assert.equal(slotPartKey(''), null);
+    // va1 is an Others? option -- the first violist, logged by the second --
+    // so it is its own key rather than folding into VA.
+    assert.equal(slotPartKey('va1'), 'VA1');
+    assert.equal(slotPartKey('vla1'), 'VA1');
+    // vc1 is nobody's extra: Player 3 always holds it, so it keeps folding.
+    assert.equal(slotPartKey('vc1'), 'VC');
+    // Octet violins and the wind rep, which used to come back as null and be
+    // offered as raw passthrough text instead of matching their own option.
+    assert.equal(slotPartKey('v3'), 'V3');
+    assert.equal(slotPartKey('v4'), 'V4');
+    assert.equal(slotPartKey('cl'), 'CL');
+    assert.equal(slotPartKey('clarinet'), 'CL');
+    assert.equal(slotPartKey('fl'), 'FL');
+    assert.equal(slotPartKey('flute'), 'FL');
+    // The (?![a-z]) guards still hold: "c" is cello, "cl" is not.
+    assert.equal(slotPartKey('c'), 'VC');
+});
+
+test('a column offers the three parts its columns hold, and nothing else', () => {
+    // The three columns ARE the quartet's parts, decided by your own part, so
+    // VA2 / VC2 / Piano are not on offer: everyone past the four is an Others?
+    // entry with a tag (howto section 5).
+    const keys = part => columnParts(part).map(p => p.key);
+    assert.deepEqual(keys('V1'), ['V2', 'VA', 'VC']);
+    assert.deepEqual(keys('V2'), ['V1', 'VA', 'VC']);
+    assert.deepEqual(keys('VA'), ['V1', 'V2', 'VC']);
+    assert.deepEqual(keys('VA1'), ['V1', 'V2', 'VC']);
+    assert.deepEqual(keys('VA2'), ['V1', 'V2', 'VC']);
+    // Before you have said what you play the seats imply nothing, and an empty
+    // dropdown is worse than the four parts a column can ever hold.
+    assert.deepEqual(keys(''), ['V1', 'V2', 'VA', 'VC']);
+});
+
+test('Others? offers the parts a column never holds', () => {
+    // No v1 (yours, or Player 1's) and no vc (Player 3 always holds vc1). v2
+    // is here because an octet pushes the second violin out of the columns.
+    assert.deepEqual(OTHERS_PARTS.map(p => p.key),
+        ['V2', 'V3', 'V4', 'VA1', 'VA2', 'VC2', 'P', 'CL', 'FL']);
+    assert.deepEqual(OTHERS_PARTS.map(p => p.code),
+        ['v2', 'v3', 'v4', 'va1', 'va2', 'vc2', 'p', 'cl', 'fl']);
+    // Every key either list offers writes a code, whichever list it came from:
+    // slotCell reads them through one table.
+    for (const p of [...OTHERS_PARTS, ...columnParts('V1'), ...columnParts('V2')]) {
+        assert.equal(partCode(p.key), p.code);
+    }
+    // And a raw annotation neither list knows passes through as itself.
+    assert.equal(partCode('klavier'), 'klavier');
+    // partLabel is the counterpart, and covers the union too: a column offers
+    // a carried `(p)` as a passthrough and should still call it Piano.
+    assert.equal(partLabel('P'), 'Piano');
+    assert.equal(partLabel('VA2'), 'VA2');
+    assert.equal(partLabel('klavier'), 'klavier');
+});
+
+test('columnParts hands out a fresh array, never the module constant', () => {
+    // seatsAsTyped is a factory for this reason: a returned array is a value
+    // the caller may sort or splice, and the bail path used to hand back the
+    // module-level list itself.
+    const a = columnParts('');
+    a.length = 0;
+    assert.equal(columnParts('').length, 4);
+    const b = columnParts('V1');
+    b.length = 0;
+    assert.equal(columnParts('V1').length, 3);
 });
 
 test('defaultSlotParts keeps a role across a session, like a name', () => {
@@ -253,8 +318,260 @@ test('defaultSlotParts keeps a role across a session, like a name', () => {
     // With nothing annotated, the seats mean what the layout says.
     assert.deepEqual(defaultSlotParts(carriedForward(row()), 'VA'), ['V1', 'V2', 'VC']);
     // An unrepresentable annotation comes back as itself, not as a guess.
-    const odd = carriedForward(row({ playerInstruments: [null, 'cl', null] }));
-    assert.deepEqual(defaultSlotParts(odd, 'VA'), ['V1', 'cl', 'VC']);
+    const odd = carriedForward(row({ playerInstruments: [null, 'hn', null] }));
+    assert.deepEqual(defaultSlotParts(odd, 'VA'), ['V1', 'hn', 'VC']);
+});
+
+// --- Reseating ---------------------------------------------------------------
+// The seats are positional, so a reordering of the parts they imply is said by
+// moving the names. Annotating it instead is the bug this section pins.
+
+// The three seats, as the form has them: what is typed, what each would ditto,
+// the part each is set to. Own part VA throughout, so the seats imply V1/V2/VC.
+function plan(over = {}) {
+    return seatPlan({
+        typed: ['', '', ''], carried: ['', '', ''],
+        chosen: ['V1', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        ...over,
+    });
+}
+
+// Most cases care only about what the sheet receives.
+function seats(over = {}) {
+    return plan(over).cells;
+}
+
+test('two violinists swapping are written in seat order, not annotated', () => {
+    // The shape that was reported: a row reading "Dana Ellis (v2), Erin Fry
+    // (v1)" where the sheet's own way to say it is "Erin Fry, Dana Ellis".
+    assert.deepEqual(seats({
+        typed: ['Dana Ellis', 'Erin Fry', ''],
+        chosen: ['V2', 'V1', 'VC'],
+    }), ['Erin Fry', 'Dana Ellis', '']);
+});
+
+test('a swap on seats nobody retyped moves the carried names', () => {
+    // Both cells materialise: leaving either blank would ditto the row above,
+    // which is the order being swapped out of.
+    assert.deepEqual(seats({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V2', 'V1', 'VC'],
+    }), ['Bob Bek', 'Alice Hart', '']);
+    // Seat 3 is untouched, so it dittos as it always has.
+});
+
+test('a swap across the classes moves the names too', () => {
+    // The cellist is playing V1 and the first violin is on cello; slot 3 is
+    // the cello seat, so that is where the cellist goes.
+    assert.deepEqual(seats({
+        typed: ['Alice Hart', '', 'Carol Diaz'],
+        chosen: ['VC', 'V2', 'V1'],
+    }), ['Carol Diaz', '', 'Alice Hart']);
+});
+
+test('a row already holding an annotated swap is normalised by the next one', () => {
+    // defaultSlotParts reads those annotations, so this is what the seats look
+    // like with nothing touched: the parts are unchanged and the names move to
+    // the seats that imply them. A row the old behaviour wrote (or one typed
+    // into the Google Form) stops propagating instead of dittoing forward.
+    const carried = carriedForward(row({ playerInstruments: ['v2', 'v1', null] }));
+    const chosen = defaultSlotParts(carried, 'VA');
+    assert.deepEqual(chosen, ['V2', 'V1', 'VC']);
+    assert.deepEqual(seats({
+        carried: [carried.player1, carried.player2, carried.player3], chosen,
+    }), ['Bob Bek', 'Alice Hart', '']);
+});
+
+test('a swap survives a seat that is on a part of its own', () => {
+    // The gap that let the reported shape back in: one seat carrying (vc2) --
+    // inherited from the row above with no user action at all -- used to make
+    // the whole row "not a reordering", so the two violinists were annotated
+    // again and the row came out contradicting SLOT_TO_PART. The swap is
+    // decided per cycle, so the second cellist sits out of it.
+    assert.deepEqual(seats({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz (vc2)'],
+        chosen: ['V2', 'V1', 'VC2'],
+    }), ['Bob Bek', 'Alice Hart', '']);
+});
+
+test('a seat cannot hand its name away and keep it', () => {
+    // Seat 2 is on V1, so it would read from seat 1 -- but nobody is on seat
+    // 1's own part, seat 2 having left V2 for a second viola. Seat 1 therefore
+    // keeps its name AND gives it away: Alice Hart written into two cells,
+    // playing two parts. Only a closed cycle can be reordered, and this is the
+    // head of a path.
+    assert.deepEqual(seats({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V2', 'VA2', 'VC'],
+    }), ['Alice Hart (v2)', 'Bob Bek (va2)', '']);
+});
+
+test('seatPlan says which seats were reseated, for the placeholders', () => {
+    // The form shows a name field and the part dropdown beside it, and the
+    // pair has to be a true statement about who played what. A moved name is
+    // therefore NOT previewed against the part its old seat claimed ("Bob Bek,
+    // V2" while Bob Bek is being written into the V1 column, backwards). The
+    // renderer needs the order to know which seats those are, and it comes
+    // back from the call that built the cells rather than from a second guess.
+    const swapped = plan({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V2', 'V1', 'VC'],
+    });
+    assert.deepEqual(swapped.order, [1, 0, 2]);
+    assert.deepEqual(swapped.cells, ['Bob Bek', 'Alice Hart', '']);
+    // Nothing moved: every seat is free to show the cell it will write.
+    const annotated = plan({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V1', 'VA2', 'VC'],
+    });
+    assert.deepEqual(annotated.order, [0, 1, 2]);
+    assert.deepEqual(annotated.cells, ['', 'Bob Bek (va2)', '']);
+});
+
+test("a plan's order is the plan's own, not a shared array", () => {
+    // seatPlan hands the order to its caller. Four of its five paths used to
+    // return one module-level array, so a caller that sorted it in place would
+    // rewrite what every later plan reported -- including the identity test
+    // renderPlaceholders uses to decide which seats it may preview.
+    const first = plan({ carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'] });
+    first.order.reverse();
+    assert.deepEqual(plan({ carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'] }).order, [0, 1, 2]);
+});
+
+test('a typed name takes the part shown beside it, not the column it sits in', () => {
+    // Raised in review, and kept deliberately: a carried row that already holds
+    // an annotated swap leaves the dropdowns reading V2/V1 with nothing the
+    // logger touched, so two NEW names typed into those seats come out
+    // transposed -- you type into "Player 1" and Player 1 receives the other.
+    //
+    // It is still what the form says on screen. The part beside the first field
+    // reads V2, so the person typed there played V2 and belongs in the V2
+    // column; the pair (field, dropdown) is the claim, and which column carries
+    // it is this form's business. Nor is the claim new: before the seats could
+    // be reordered this same entry wrote "Dana Ellis (v2) | Erin Fry (v1)" --
+    // the identical statement, in the shape this change exists to stop writing.
+    // What puts a part on a seat whose person just changed is defaultSlotParts,
+    // which did so before this too; that is the rule to revisit if the
+    // transposition is ever judged the wrong call.
+    const carried = carriedForward(row({ playerInstruments: ['v2', 'v1', null] }));
+    assert.deepEqual(seats({
+        typed: ['Dana Ellis', 'Erin Fry', ''],
+        carried: [carried.player1, carried.player2, carried.player3],
+        chosen: defaultSlotParts(carried, 'VA'),
+    }), ['Erin Fry', 'Dana Ellis', '']);
+});
+
+test('a part the seats cannot express is still an annotation', () => {
+    // VA2 and a pianist are what the annotation is FOR: no seat implies them,
+    // so there is nothing to reorder and moving names would say nothing.
+    assert.deepEqual(seats({
+        typed: ['Alice Hart', 'Bob Bek', 'Dana Ellis'],
+        chosen: ['V1', 'VA2', 'P'],
+    }), ['Alice Hart', 'Bob Bek (va2)', 'Dana Ellis (p)']);
+});
+
+test('two seats claiming one part are annotated, not reordered', () => {
+    // Under-determined: seat 2 still implies V2, so who is on V1? Saying
+    // "Alice is on V2" is at least true. setSlotPart is what keeps the form
+    // out of this state.
+    assert.deepEqual(seats({
+        typed: ['Alice Hart', 'Bob Bek', ''],
+        chosen: ['V2', 'V2', 'VC'],
+    }), ['Alice Hart (v2)', 'Bob Bek', '']);
+});
+
+test('a seat with no name to move is annotated instead', () => {
+    // The hazard the reorder must not create: moving Alice to seat 2 would
+    // leave seat 1 blank, and a blank is a ditto mark, not an empty chair --
+    // so the row above's first violin would reappear, on a part they did not
+    // play. Nothing is carried here and nothing was typed, so there is no name
+    // for seat 1 to take.
+    assert.deepEqual(seats({
+        typed: ['Alice Hart', '', ''],
+        carried: ['', '', 'Carol Diaz'],
+        chosen: ['V2', 'V1', 'VC'],
+    }), ['Alice Hart (v2)', '', '']);
+});
+
+test('an empty chair can be moved, and is written out when it is', () => {
+    // A trio's "-" in the cello seat, swapped with the V1 player: the "-" has
+    // to be written into seat 1, since a blank there would ditto a cellist.
+    assert.deepEqual(seats({
+        carried: ['Alice Hart', 'Bob Bek', '-'],
+        chosen: ['VC', 'V2', 'V1'],
+    }), ['-', '', 'Alice Hart']);
+    // The other direction: the seat holding "-" is the one left alone, so it
+    // keeps dittoing it rather than writing it out again.
+    assert.deepEqual(seats({
+        carried: ['Alice Hart', 'Bob Bek', '-'],
+        chosen: ['V2', 'V1', 'VC'],
+    }), ['Bob Bek', 'Alice Hart', '']);
+});
+
+test('no part chosen yet leaves every seat alone', () => {
+    // Own part is what implies the seats; before it is picked there is no
+    // ordering to reorder against.
+    assert.deepEqual(seats({
+        typed: ['Alice Hart', 'Bob Bek', ''],
+        chosen: [null, null, null], implied: [null, null, null],
+    }), ['Alice Hart', 'Bob Bek', '']);
+});
+
+// The seats a quartet layout implies, for the setSlotPart cases below.
+const SEAT_PARTS = ['V1', 'V2', 'VC'];
+const setPart = (chosen, seat, key, implied = SEAT_PARTS) =>
+    setSlotPart({ chosen, implied, seat, key });
+
+test('setSlotPart hands the other seat the part this one gave up', () => {
+    // One dropdown means "these two swapped" -- the state seatPlan can write
+    // as a reordering, reached in one tap instead of two.
+    assert.deepEqual(setPart(['V1', 'V2', 'VC'], 0, 'V2'), ['V2', 'V1', 'VC']);
+    assert.deepEqual(setPart(['V1', 'V2', 'VC'], 2, 'V1'), ['VC', 'V2', 'V1']);
+    // A part no other seat holds displaces nothing.
+    assert.deepEqual(setPart(['V1', 'V2', 'VC'], 1, 'VA2'), ['V1', 'VA2', 'VC']);
+    // Setting a seat to what it already holds is not a clash with itself.
+    assert.deepEqual(setPart(['V1', 'V2', 'VC'], 0, 'V1'), ['V1', 'V2', 'VC']);
+    // Before the Part row is tapped no seat holds anything, so there is
+    // nothing to clash with.
+    assert.deepEqual(setPart([null, null, null], 0, 'V1', [null, null, null]),
+        ['V1', null, null]);
+    // And the seat that gives a part up goes back to holding nothing, which
+    // slotParts reads as the part its seat implies.
+    assert.deepEqual(setPart(['V1', null, null], 1, 'V1', [null, null, null]),
+        [null, 'V1', null]);
+});
+
+test('a part that belonged to a person is not handed to another seat', () => {
+    // The pianist's seat moves to V2. Nobody swapped with anybody: the part
+    // given up was that person's, not the chair's, so handing (p) over would
+    // record an instrument the next player never played -- with their name
+    // field untouched, and with no way for them to know.
+    assert.deepEqual(setPart(['P', 'V2', 'VC'], 0, 'V2'), ['V2', 'V2', 'VC']);
+    // (vc2) is worse than wrong: classOf reads it as the CELLO class, so the
+    // displaced name would alias in a class it never played in.
+    assert.deepEqual(setPart(['V1', 'V2', 'VC2'], 2, 'V2'), ['V1', 'V2', 'V2']);
+    // A code the option list cannot express is the same story.
+    assert.deepEqual(setPart(['cl', 'V2', 'VC'], 0, 'V2'), ['V2', 'V2', 'VC']);
+
+    // And the same rule TAKING rather than giving, which is the mirror the
+    // first version of this guard missed. A seat moved onto the second
+    // violist's VA2 must not write her (v1): she is not trading chairs, she is
+    // a second viola, and in the VC2 case the class she aliases in would change
+    // with her part.
+    assert.deepEqual(setPart(['V1', 'VA2', 'VC'], 0, 'VA2'), ['VA2', 'VA2', 'VC']);
+    assert.deepEqual(setPart(['V1', 'V2', 'VC2'], 0, 'VC2'), ['VC2', 'V2', 'VC2']);
+    assert.deepEqual(setPart(['P', 'V2', 'VC'], 1, 'P'), ['P', 'P', 'VC']);
+
+    // Two seats already claim one part -- a legacy row can carry that in --
+    // so there is no single partner to trade with, and picking the first would
+    // move a third person nobody spoke about.
+    assert.deepEqual(setPart(['V2', 'V2', 'VC'], 2, 'V2'), ['V2', 'V2', 'V2']);
+    // What the sheet then gets: the duplicate claim is annotated, and the seat
+    // nobody spoke about dittos rather than gaining an instrument.
+    assert.deepEqual(seats({
+        carried: ['Dana Ellis (p)', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V2', 'V2', 'VC'],
+    }), ['Dana Ellis (v2)', '', '']);
 });
 
 // --- Others? rows -----------------------------------------------------------

@@ -11,7 +11,8 @@ import * as store from './logStore.js';
 import {
     blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
-    impliedSlotParts, defaultSlotParts, slotCell, SLOT_PARTS, PART_CHOICES,
+    impliedSlotParts, defaultSlotParts, seatPlan, setSlotPart, PART_CHOICES,
+    columnParts, OTHERS_PARTS, partCode, partLabel,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, canonicalOthersCell,
     sessionPeople, sessionRows, slotPartKey, sessionPieces, countNew,
@@ -492,6 +493,10 @@ export class LogComponent {
                     });
                 this.clearMissing();
                 this.renderSlotParts();
+                // Own part is what the seats mean, so it changes which cells
+                // the placeholders are promising — an annotation that is now
+                // redundant, or one that is now needed.
+                this.renderPlaceholders();
             });
     }
 
@@ -500,12 +505,37 @@ export class LogComponent {
             d3.select(sel).on('input', (e) => {
                 this.entry[field] = e.target.value;
                 this.clearMissing();
+                // A name typed in one seat decides whether the seats can
+                // swap at all — a seat with no name has none to hand over — so
+                // it changes what a DIFFERENT seat's placeholder promises.
+                if (SEATS.includes(field)) this.renderPlaceholders();
                 this.touch();
             });
         }
         SEATS.forEach((_, i) => {
             d3.select(`#logSlotPart${i + 1}`).on('change', (e) => {
-                this.slotPartOverrides[i] = e.target.value;
+                // Taking a part another seat holds hands that seat this one's,
+                // so one dropdown says "these two swapped" — hence the whole
+                // array, and hence re-rendering the others to show it.
+                const next = setSlotPart({
+                    chosen: this.slotParts(),
+                    implied: impliedSlotParts(this.entry.part),
+                    seat: i,
+                    key: e.target.value,
+                });
+                // Only the seats that actually DEPART from the carried row are
+                // held here. Pinning all three would freeze the untouched ones
+                // against the row they track, and a carried annotation is the
+                // thing that gets lost: touch one dropdown, let a revalidate
+                // land a `Frank (vc2)` seat (or restore this draft into a new
+                // sitting), and that seat is written out as a bare `Frank` —
+                // a second cellist recorded as the cellist.
+                const defaults = defaultSlotParts(this.carried(), this.entry.part);
+                this.slotPartOverrides = next.map((p, j) => (p === defaults[j] ? null : p));
+                this.renderSlotParts();
+                // The parts decide which seat each name lands in, so the
+                // promise the placeholders make changes with them.
+                this.renderPlaceholders();
                 this.touch();
             });
         });
@@ -527,18 +557,35 @@ export class LogComponent {
         return defaults.map((d, i) => this.slotPartOverrides[i] ?? d);
     }
 
+    // What the three seats will actually submit, names resolved and parts
+    // written, plus where each name came from. One answer for both callers: the
+    // row on submit, and the placeholders that promise what that row will hold.
+    seats() {
+        const carried = this.carried();
+        return seatPlan({
+            typed: SEATS.map(f => this.entry[f]),
+            carried: SEATS.map(f => carried[f]),
+            chosen: this.slotParts(),
+            implied: impliedSlotParts(this.entry.part),
+        });
+    }
+
     renderSlotParts() {
         const chosen = this.slotParts();
         const implied = impliedSlotParts(this.entry.part);
+        // Only the three parts the columns hold: everyone past the four is an
+        // Others? entry, so offering VA2 or Piano here would tag a column that
+        // by convention never carries a tag.
+        const options = columnParts(this.entry.part);
         SEATS.forEach((_, i) => {
             const value = chosen[i];
-            // An annotation the option list cannot express is offered as
-            // itself, so selecting it round-trips instead of being rewritten.
-            const extra = value && !SLOT_PARTS.some(p => p.key === value)
-                ? [{ key: value, label: value }] : [];
+            // A tag an older row left in this column is offered as itself, so
+            // it keeps showing and round-tripping instead of being rewritten.
+            const extra = value && !options.some(p => p.key === value)
+                ? [{ key: value, label: partLabel(value) }] : [];
             const select = d3.select(`#logSlotPart${i + 1}`);
             select.selectAll('option')
-                .data([...SLOT_PARTS, ...extra], d => d.key)
+                .data([...options, ...extra], d => d.key)
                 .join('option')
                 .attr('value', d => d.key)
                 // The seat's own part is the one you are departing from, so say
@@ -686,8 +733,26 @@ export class LogComponent {
     // (howto section 6).
     renderPlaceholders() {
         const carried = this.carried();
+        // A seat previews the CELL it will write, not blindly the name above
+        // it: a part picked on a blank seat materialises that name, annotated,
+        // and a placeholder still showing the bare carried name would promise
+        // a cell the row will not hold. The cell is blank exactly when it
+        // dittos, and then the carried cell IS what the row will hold.
+        //
+        // A RESEATED seat is the exception, and it matters: the pair on screen
+        // — this name field, the dropdown beside it — has to be a true
+        // statement about who played what, and the positional encoding is this
+        // form's business rather than the logger's. Previewing the moved name
+        // against the part this seat claimed states the swap backwards ("Dave,
+        // V2" while Dave is being written into the V1 column), so a moved seat
+        // goes on showing the name it carries, which is the person the
+        // dropdown beside it is speaking about.
+        const { cells, order } = this.seats();
         for (const field of CARRIED_INPUTS) {
-            d3.select(TEXT_INPUTS[field]).attr('placeholder', carried[field] || 'nobody yet');
+            const i = SEATS.indexOf(field);
+            const preview = i >= 0 && order[i] === i;
+            const shown = preview ? (cells[i] || carried[field]) : carried[field];
+            d3.select(TEXT_INPUTS[field]).attr('placeholder', shown || 'nobody yet');
         }
     }
 
@@ -860,7 +925,7 @@ export class LogComponent {
                 // back into rows on every reset.
                 select.on('change', (e, d) => {
                     const key = e.target.value;
-                    d.instrument = SLOT_PARTS.find(p => p.key === key)?.code ?? key;
+                    d.instrument = partCode(key);
                     this.syncOthers();
                 });
                 row.append('button')
@@ -871,17 +936,22 @@ export class LogComponent {
             })
             .select('select')
             .each((d, i, nodes) => {
-                // An instrument the option list can't express is offered as
-                // itself, so an existing "(klavier)" round-trips rather than
-                // being rewritten into the nearest thing we do know.
+                // An instrument this list can't express is offered as itself,
+                // so an existing "(klavier)" round-trips rather than being
+                // rewritten into the nearest thing we do know. That covers a
+                // part the COLUMNS hold too — a "(vc)" typed into Others? by
+                // hand reads as VC, which is not on offer here — since the
+                // alternative is a select showing "part?" over a cell that
+                // still says vc.
                 const key = slotPartKey(d.instrument);
-                const raw = d.instrument && !key ? [{ key: d.instrument, label: d.instrument }] : [];
+                const known = key !== null && OTHERS_PARTS.some(o => o.key === key);
+                const raw = d.instrument && !known ? [{ key: d.instrument, label: d.instrument }] : [];
                 d3.select(nodes[i]).selectAll('option')
-                    .data([{ key: '', label: 'part?' }, ...SLOT_PARTS, ...raw], o => o.key)
+                    .data([{ key: '', label: 'part?' }, ...OTHERS_PARTS, ...raw], o => o.key)
                     .join('option')
                     .attr('value', o => o.key)
                     .text(o => o.label);
-                nodes[i].value = key ?? d.instrument ?? '';
+                nodes[i].value = (known ? key : d.instrument) ?? '';
             });
     }
 
@@ -1121,19 +1191,14 @@ export class LogComponent {
             this.markMissing(missing);
             return;
         }
+        // Names and parts are two controls; the sheet has one cell per seat. A
+        // part changed on a blank seat materialises the carried name here
+        // (which is the retyping this whole control replaces), and parts that
+        // merely reorder the seats move the names instead of annotating them.
         const carried = this.carried();
-        const implied = impliedSlotParts(this.entry.part);
-        const chosen = this.slotParts();
-        // Names and parts are two controls; the sheet has one cell. A part
-        // changed on a blank seat materialises the carried name here, which is
-        // the retyping this whole control replaces.
+        const { cells } = this.seats();
         const entry = { ...this.entry };
-        SEATS.forEach((field, i) => {
-            entry[field] = slotCell({
-                typed: this.entry[field], carried: carried[field],
-                chosen: chosen[i], implied: implied[i],
-            });
-        });
+        SEATS.forEach((field, i) => { entry[field] = cells[i]; });
         // Resolve the blanks against what they ditto BEFORE advancing, so the
         // next piece of this session carries forward from what this row will
         // hold rather than from the row above it.
