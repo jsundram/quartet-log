@@ -727,22 +727,50 @@ test.describe('log form', () => {
         expect(body.get(PLAYER2_ID)).toBe('Alice');
     });
 
-    test('a quintet second viola is one dropdown away', async ({ page }) => {
+    test('a quintet second viola goes in Others?, not in a column', async ({ page }) => {
         const bodies = await captureSubmits(page);
         await pickComposer(page, 'Mozart');
         await page.fill('#logTitle', 'K515');
         await page.click('#logPart .part-btn[data-part="V1"]');
-        // Playing violin in a viola quintet: the other violist is a second
-        // viola, which the seat layout has no way to say.
-        await page.fill('#logPlayer2', 'Erin Fry');
-        await page.selectOption('#logSlotPart2', 'VA2');
+        // The three columns ARE the quartet's parts, decided by my own part, so
+        // a column cannot offer VA2 at all -- tagging one is the convention
+        // this form exists to stop writing.
+        await expect(page.locator('#logSlotPart2 option'))
+            .toHaveText(['V2', 'VA (seat)', 'VC']);
+        // Everyone past the four is an Others? entry with a tag.
+        await page.click('#logOthersAdd');
+        const row = page.locator('.log-other-row').first();
+        await row.locator('input').fill('Erin Fry');
+        await row.locator('select').selectOption('VA2');
         await page.click('#logSubmit');
         await expect(page.locator('#logStatus')).toContainText('Logged');
 
         const body = new URLSearchParams(bodies.at(-1));
         // partFromInstrument folds va2 into VA for the charts, but the sheet
         // keeps the distinction -- which is the reason to write it.
-        expect(body.get(PLAYER2_ID)).toBe('Erin Fry (va2)');
+        expect(body.get(OTHERS_ID)).toBe('Erin Fry (va2)');
+        // And the viola column is left holding the viola, untagged.
+        expect(body.has(PLAYER2_ID)).toBe(false);
+    });
+
+    test('Others? offers the octet and wind parts, and round-trips them', async ({ page }) => {
+        // v3/v4 for an octet, cl/fl for the wind rep. These used to be absent
+        // from the list entirely, so logging one meant typing the syntax.
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Mozart');
+        await page.fill('#logTitle', 'K581');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logOthersAdd');
+        const row = page.locator('.log-other-row').first();
+        await row.locator('input').fill('Frank Gomez');
+        await row.locator('select').selectOption('CL');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Frank Gomez (cl)');
+        // The next piece of the sitting carries them, and the dropdown shows
+        // the option rather than the raw code as passthrough text.
+        await expect(page.locator('.log-other-row').first().locator('select'))
+            .toHaveValue('CL');
     });
 
     test('a part that belonged to a person is not handed to the next seat', async ({ page }) => {
@@ -796,6 +824,36 @@ test.describe('log form', () => {
         await expect(page.locator('#logStatus')).toContainText('Logged');
         const body = new URLSearchParams(bodies.at(-1));
         expect(body.get(OTHERS_ID)).toBe('Dana Ellis (p); Erin Fry (vc2)');
+    });
+
+    test('an Others? part the columns hold is offered as itself', async ({ page }) => {
+        // "(vc)" reads as VC, which Others? does not offer -- Player 3 always
+        // holds vc1, so a cellist is only ever an extra as vc2. The cell still
+        // says vc, so the option list has to say it too; dropping it would show
+        // "part?" over a part that is written down.
+        const recent = new Date(Date.now() - 3600_000);
+        const stamp = `${recent.getMonth() + 1}/${recent.getDate()}/${recent.getFullYear()}`
+            + ` ${recent.getHours()}:${String(recent.getMinutes()).padStart(2, '0')}:00`;
+        await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
+            contentType: 'text/csv',
+            body: `${FIXTURE_CSV}\n${stamp},Haydn,20#3,V1,Alice,Bob,Carol,Heidi (vc),Home,`,
+        }));
+        await page.reload();
+        await expect(page.locator('#logForm')).toBeVisible();
+
+        const bodies = await captureSubmits(page);
+        await page.locator('#logOthersHere .log-chip-btn')
+            .filter({ hasText: 'Heidi' }).click();
+        const row = page.locator('.log-other-row').first();
+        await expect(row.locator('select')).toHaveValue('vc');
+
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#6');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expect(page.locator('#logStatus')).toContainText('Logged');
+        // Round-tripped, not rewritten into the nearest thing on the list.
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Heidi (vc)');
     });
 
     test('people already in the sitting are a tap, not a retype', async ({ page }) => {

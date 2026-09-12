@@ -1425,6 +1425,13 @@ describe('instrument annotations on player slots', () => {
             assert.equal(instrumentFromSlot('Alice Hart (violin)'), 'violin');
             assert.equal(instrumentFromSlot('Alice Hart (clarinet)'), 'clarinet');
             assert.equal(instrumentFromSlot('Alice Hart (asst v2)'), 'asst v2');
+            // v3/v4 are parts the log form writes for an octet, so a slot
+            // carrying one is an annotation and not a note -- reading it as a
+            // note would drop it the next time that seat is written out.
+            assert.equal(instrumentFromSlot('Alice Hart (v3)'), 'v3');
+            assert.equal(instrumentFromSlot('Alice Hart (v4)'), 'v4');
+            // The guard still holds: "v" alone names nothing.
+            assert.equal(instrumentFromSlot('Alice Hart (v)'), null);
         });
     });
 

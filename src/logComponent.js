@@ -9,7 +9,8 @@ import * as store from './logStore.js';
 import {
     blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
-    impliedSlotParts, defaultSlotParts, seatPlan, setSlotPart, SLOT_PARTS, PART_CHOICES,
+    impliedSlotParts, defaultSlotParts, seatPlan, setSlotPart, PART_CHOICES,
+    columnParts, OTHERS_PARTS, partCode, partLabel,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, canonicalOthersCell,
     sessionPeople, sessionRows, slotPartKey,
@@ -493,15 +494,19 @@ export class LogComponent {
     renderSlotParts() {
         const chosen = this.slotParts();
         const implied = impliedSlotParts(this.entry.part);
+        // Only the three parts the columns hold: everyone past the four is an
+        // Others? entry, so offering VA2 or Piano here would tag a column that
+        // by convention never carries a tag.
+        const options = columnParts(this.entry.part);
         SEATS.forEach((_, i) => {
             const value = chosen[i];
-            // An annotation the option list cannot express is offered as
-            // itself, so selecting it round-trips instead of being rewritten.
-            const extra = value && !SLOT_PARTS.some(p => p.key === value)
-                ? [{ key: value, label: value }] : [];
+            // A tag an older row left in this column is offered as itself, so
+            // it keeps showing and round-tripping instead of being rewritten.
+            const extra = value && !options.some(p => p.key === value)
+                ? [{ key: value, label: partLabel(value) }] : [];
             const select = d3.select(`#logSlotPart${i + 1}`);
             select.selectAll('option')
-                .data([...SLOT_PARTS, ...extra], d => d.key)
+                .data([...options, ...extra], d => d.key)
                 .join('option')
                 .attr('value', d => d.key)
                 // The seat's own part is the one you are departing from, so say
@@ -835,7 +840,7 @@ export class LogComponent {
                 // back into rows on every reset.
                 select.on('change', (e, d) => {
                     const key = e.target.value;
-                    d.instrument = SLOT_PARTS.find(p => p.key === key)?.code ?? key;
+                    d.instrument = partCode(key);
                     this.syncOthers();
                 });
                 row.append('button')
@@ -846,17 +851,22 @@ export class LogComponent {
             })
             .select('select')
             .each((d, i, nodes) => {
-                // An instrument the option list can't express is offered as
-                // itself, so an existing "(klavier)" round-trips rather than
-                // being rewritten into the nearest thing we do know.
+                // An instrument this list can't express is offered as itself,
+                // so an existing "(klavier)" round-trips rather than being
+                // rewritten into the nearest thing we do know. That covers a
+                // part the COLUMNS hold too — a "(vc)" typed into Others? by
+                // hand reads as VC, which is not on offer here — since the
+                // alternative is a select showing "part?" over a cell that
+                // still says vc.
                 const key = slotPartKey(d.instrument);
-                const raw = d.instrument && !key ? [{ key: d.instrument, label: d.instrument }] : [];
+                const known = key !== null && OTHERS_PARTS.some(o => o.key === key);
+                const raw = d.instrument && !known ? [{ key: d.instrument, label: d.instrument }] : [];
                 d3.select(nodes[i]).selectAll('option')
-                    .data([{ key: '', label: 'part?' }, ...SLOT_PARTS, ...raw], o => o.key)
+                    .data([{ key: '', label: 'part?' }, ...OTHERS_PARTS, ...raw], o => o.key)
                     .join('option')
                     .attr('value', o => o.key)
                     .text(o => o.label);
-                nodes[i].value = key ?? d.instrument ?? '';
+                nodes[i].value = (known ? key : d.instrument) ?? '';
             });
     }
 
