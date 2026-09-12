@@ -573,3 +573,16 @@ test('warnings and the confirmation share one partial-movement sentence', () => 
     // alone.
     assert.deepEqual(warnings(blankEntry({ title: '76#1: I' })), [PARTIAL_MOVEMENT_NOTE]);
 });
+
+test('a sitting is windowed from a moment, so an old one can still be read back', () => {
+    // The confirmation screen can sit on a phone for hours and repaints on
+    // every revalidate, so the moment it windows from is the moment the piece
+    // was logged rather than whenever the repaint happens. Asked about now,
+    // the same sitting is gone — which is what emptied the list under a green
+    // tick and zeroed every delta.
+    const sub = submission(1);
+    const asLogged = sessionPieces([], [sub], [], new Date(sub.at));
+    assert.equal(asLogged.length, 1);
+    const hoursLater = new Date(sub.at + 5 * 3600_000);
+    assert.deepEqual(sessionPieces([], [sub], [], hoursLater), []);
+});

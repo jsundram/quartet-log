@@ -638,6 +638,9 @@ test.describe('log form', () => {
 
         const row = page.locator('.log-done-row').first();
         await expect(row).toHaveClass(/log-done-row--partial/);
+        // A bare span is `generic`, which prohibits an accessible name, so the
+        // dot needs a role for its label to reach anyone reading by ear.
+        await expect(row.locator('.log-done-dot')).toHaveAttribute('role', 'img');
         await expect(row.locator('.log-done-piece')).toHaveCSS('font-style', 'italic');
         await expect(row.locator('.log-done-dot')).toHaveClass(/log-done-dot--landed/);
         await expect(row.locator('.log-done-dot')).toHaveAttribute('aria-label', /Sent to your sheet/);
@@ -661,6 +664,49 @@ test.describe('log form', () => {
         await expect(page.locator('.log-done-row--partial')).toHaveCount(1);
         await expect(page.locator('#logDoneWarn')).toContainText('partial movement');
         // Two rows, one of them uncounted.
+        await expect(page.locator('#logDoneTiles .stat-tile').first()
+            .locator('.stat-tile-delta')).toHaveText('+1');
+    });
+
+    test('a confirmation left open keeps describing the sitting it was made in', async ({ page }) => {
+        // The panel can sit on a phone for hours — put face down, or a PWA
+        // resumed the next morning — and redrawFromData repaints it on the
+        // next revalidate. Windowed against "now" rather than against the
+        // moment the piece was logged, a confirmation older than the session
+        // window repainted as a green tick and a piece name over "0 pieces
+        // this sitting", an empty list and +0 on every tile.
+        await page.clock.install();
+        // The repaint only happens when the sheet actually moved — revalidate
+        // guards on that — so the sheet has to gain a row while the panel is
+        // open. An old one, so it joins no sitting of its own. Registered
+        // after the suite's stub and scoped to the spreadsheet, so it wins
+        // without swallowing the form posts.
+        let extraRow = '';
+        await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
+            contentType: 'text/csv', body: FIXTURE_CSV + extraRow,
+        }));
+        // Boot again under the fake clock; the sheet URL and the form this
+        // device writes through are both already in localStorage.
+        await page.goto('/');
+        await expect(page.locator('#update')).toContainText(/Data updated|from cache/, { timeout: 15000 });
+        await captureSubmits(page);
+        await page.evaluate(() => { window.location.hash = '#log'; });
+        await expect(page.locator('#logForm')).toBeVisible();
+
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+        await expect(page.locator('.log-done-row')).toHaveCount(1);
+
+        // Well past SESSION_WINDOW_HOURS, with a changed sheet for the
+        // five-minute poll to find, so the panel really is repainted.
+        extraRow = `\n${day(300, '19:00:00')},Mozart,464,V1,Alice,Bob,Carol,,Home,`;
+        await page.clock.fastForward('05:00:00');
+        await expect(page.locator('#update')).toContainText(/Data updated/);
+        await expect(page.locator('.log-done-row')).toHaveCount(1);
+        await expect(page.locator('#logDoneSitting')).toContainText('First piece');
         await expect(page.locator('#logDoneTiles .stat-tile').first()
             .locator('.stat-tile-delta')).toHaveText('+1');
     });

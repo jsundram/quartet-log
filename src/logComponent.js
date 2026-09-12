@@ -333,8 +333,13 @@ export class LogComponent {
         const confirming = !deciding && !!this.done && !!this.config;
         d3.select('#logProposal').property('hidden', !deciding);
         if (deciding) this.renderProposal();
+        // Read before the write: the heading is a live region, and whether
+        // this repaint is a NEW submission or the five-minute revalidate
+        // landing on a panel already open is the difference between an
+        // acknowledgement and a reader being told the same thing all evening.
+        const entering = confirming && d3.select('#logDone').property('hidden');
         d3.select('#logDone').property('hidden', !confirming);
-        if (confirming) this.renderDone();
+        if (confirming) this.renderDone(entering);
         d3.select('#logForm').property('hidden', deciding || confirming || !this.config);
         d3.select('#logSetup').property('hidden', deciding || !!this.config);
         setLinkedText(d3.select('#logFormId'), this.config ? [{ formId: this.config.formId }] : []);
@@ -936,19 +941,18 @@ export class LogComponent {
      * data as it stands now — which is what lets a dot fill in under the
      * reader rather than only on the next visit.
      */
-    renderDone() {
+    renderDone(entering = false) {
         const { entry, at, seats, others, warn } = this.done;
         // The queue as it stands, not as it stood at submit time: `online`
         // fires while this screen is up and drains it, and the note would go
         // on claiming the piece was held on the device after it had gone.
         const waiting = store.pending().length;
-        // Written only when it changes: this is a live region, and
-        // redrawFromData repaints it on every revalidate — setting the same
-        // text back still replaces the node, which would re-announce the piece
-        // every five minutes to the one reader who cannot dismiss it.
-        const what = `${entry.composer} ${entry.title}`.trim();
-        const heading = d3.select('#logDoneWhat');
-        if (heading.text() !== what) heading.text(what);
+        // Written on the way in, not when the text differs. Both stop the
+        // five-minute revalidate re-announcing a panel someone is reading, but
+        // comparing the text also swallowed the second reading of one piece in
+        // an evening — the submission that most needs saying, since nothing
+        // else on the screen would have changed either.
+        if (entering) d3.select('#logDoneWhat').text(`${entry.composer} ${entry.title}`.trim());
         // Who was on what, as the row records it: the user's own part is
         // implicit in the sheet (no slot holds it), so it is named first.
         d3.select('#logDoneWho').text([
@@ -958,7 +962,7 @@ export class LogComponent {
         ].join(' \u00b7 '));
         d3.select('#logDoneWhere').text([entry.location, timeOfDay(at)].filter(Boolean).join(' \u00b7 '));
 
-        const { pieces, tiles } = this.doneStats();
+        const { pieces, tiles } = this.doneStats(new Date(at));
         const dots = new Map(pieces.map(p => [p, dotState(p)]));
         // Newest first: the piece just logged is the one being confirmed, and
         // scanning down is scanning back through the evening.
@@ -971,7 +975,11 @@ export class LogComponent {
             .join(enter => {
                 const row = enter.append('div');
                 // App-authored constant markup, no data in it.
-                row.append('span').attr('class', 'log-done-dot')
+                // role=img so the label below is exposed: a bare span is
+                // `generic`, which prohibits an accessible name, so the one
+                // signal that is otherwise shape and colour reached nobody
+                // reading by ear.
+                row.append('span').attr('class', 'log-done-dot').attr('role', 'img')
                     .html('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
                     + ' stroke-width="4" stroke-linecap="round" stroke-linejoin="round">'
                     + '<path d="M5 13l4 4L19 7"></path></svg>');
@@ -1053,14 +1061,21 @@ export class LogComponent {
      * against the log as it stood before the sitting began, so "Unique +1"
      * means a work that was new tonight rather than one logged twice.
      */
-    doneStats() {
+    doneStats(at = new Date()) {
         const submissions = store.recentAll();
         // setRecent said no, so this piece is in neither half of the sitting.
         // It is still a piece of it, and the receipt is the only record left.
         if (this.done && !this.done.remembered) {
             submissions.push({ at: this.done.at, entry: this.done.entry });
         }
-        const pieces = sessionPieces(this.rows, submissions, store.pending());
+        // Windowed from the moment the piece was logged, not from now. This
+        // panel describes the sitting that piece belonged to, and it can sit on
+        // screen for hours — a phone put face down, a PWA resumed the next
+        // morning — with redrawFromData repainting it on the next revalidate.
+        // Windowed against `now`, a confirmation older than SESSION_WINDOW_HOURS
+        // repainted as a green tick and a piece name over "0 pieces this
+        // sitting", an empty list and +0 on every tile.
+        const pieces = sessionPieces(this.rows, submissions, store.pending(), at);
         const agg = computeAggregateStats(this.rows);
         const unpublished = countNew(pieces.filter(p => !p.landed), this.rows);
         const start = pieces[0]?.timestamp;
