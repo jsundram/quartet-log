@@ -837,9 +837,9 @@ test.describe('log form', () => {
         await page.fill('#logTitle', '76#5');
         await page.click('#logPart .part-btn[data-part="VA1"]');
 
-        // Seat 1 is V1 by the quartet layout, and says so.
+        // Seat 1 comes up on the part the first column holds.
         await expect(page.locator('#logSlotPart1')).toHaveValue('V1');
-        await expect(page.locator('#logSlotPart1 option[value="V1"]')).toHaveText('V1 (seat)');
+        await expect(page.locator('#logSlotPart1 option[value="V1"]')).toHaveText('V1');
         await expect(page.locator('#logSlotPart3')).toHaveValue('VC');
 
         // Move seat 1 to V2 without touching the name field. Seat 2 was on V2,
@@ -873,6 +873,55 @@ test.describe('log form', () => {
         await expect(page.locator('#logSlotPart1')).toHaveValue('V1');
         await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Dave');
         await expect(page.locator('#logPlayer2')).toHaveAttribute('placeholder', 'Alice');
+    });
+
+    test('a fifth player arriving is two dropdowns, not four retyped names', async ({ page }) => {
+        // The session this whole shape was reported from. Three of you have
+        // been playing quartets; a fifth arrives, takes a part somebody else
+        // is on, and everyone shifts one seat over. Every name on the form is
+        // still right and every one of them is now in the wrong column.
+        //
+        // Nobody is retyped. The violist's dropdown says VA2, which no column
+        // holds, so the form writes him into Others?; the new arrival is typed
+        // once, on V2, and the form writes her into the column that holds it.
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Mozart');
+        await page.fill('#logTitle', 'K515');
+        await page.click('#logPart .part-btn[data-part="VA1"]');
+
+        await page.selectOption('#logSlotPart2', 'VA2');
+        await page.click('#logOthersAdd');
+        const row = page.locator('.log-other-row').first();
+        await row.locator('input').fill('Ida');
+        await row.locator('select').selectOption('V2');
+
+        // The row is previewed before it is sent, because a name moving out of
+        // a column -- or into one -- happens nowhere on the fields themselves.
+        await expect(page.locator('#logRowPreview'))
+            .toHaveText('Row: Alice  |  Ida  |  Carol  |  Dave (va2)');
+        // And the name fields are untouched: what moved, moved by itself.
+        await expect(page.locator('#logPlayer2')).toHaveValue('');
+        await expect(page.locator('#logPlayer2')).toHaveAttribute('placeholder', 'Dave');
+
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Mozart K515');
+        // The confirmation names the line-up it recorded, the violist included
+        // -- he is an extra now, not missing.
+        await expect(page.locator('#logDoneWho')).toContainText('Ida V2');
+        await expect(page.locator('#logDoneWho')).toContainText('Dave VA2');
+        const body = new URLSearchParams(bodies.at(-1));
+        expect(body.get(OTHERS_ID)).toBe('Dave (va2)');
+        expect(body.get(PLAYER2_ID)).toBe('Ida');
+        // The two columns nobody moved go on dittoing.
+        expect(body.has(PLAYER1_ID)).toBe(false);
+        expect(body.has(PLAYER3_ID)).toBe(false);
+
+        // The next piece of the sitting asks for nothing: the names are in the
+        // columns their parts imply, and the extra is written out again.
+        await logAnother(page);
+        await expect(page.locator('#logRowPreview'))
+            .toHaveText('Row: Alice  |  Ida  |  Carol  |  Dave (va2)');
+        await expect(page.locator('#logSlotPart2')).toHaveValue('V2');
     });
 
     test('two people typed in with their parts land in the right columns', async ({ page }) => {
@@ -933,12 +982,14 @@ test.describe('log form', () => {
         await page.click('#logSubmit');
         await expectLogged(page);
         const body = new URLSearchParams(bodies.at(-1));
-        // So it dittos, rather than writing out a bare "Frank" and demoting the
-        // second cellist to the cellist.
-        expect(body.has(PLAYER3_ID)).toBe(false);
-        // And the swap beside it is still written AS a swap: the seat on a part
-        // of its own sits out of it instead of turning the two violinists back
-        // into annotations, which is how the reported shape got back in.
+        // He keeps his part, which is the point: a second cellist stays a
+        // second cellist rather than being written out as a bare "Frank" and
+        // demoted to the cellist. VC2 is not a part any column holds, so that
+        // is said where the sheet says it -- in Others? -- and the cello
+        // column, which nobody is on, says so rather than dittoing him back.
+        expect(body.get(OTHERS_ID)).toBe('Frank (vc2)');
+        expect(body.get(PLAYER3_ID)).toBe('-');
+        // And the swap beside it is still written AS a swap.
         expect(body.get(PLAYER1_ID)).toBe('Dave');
         expect(body.get(PLAYER2_ID)).toBe('Alice');
     });
@@ -948,11 +999,12 @@ test.describe('log form', () => {
         await pickComposer(page, 'Mozart');
         await page.fill('#logTitle', 'K515');
         await page.click('#logPart .part-btn[data-part="V1"]');
-        // The three columns ARE the quartet's parts, decided by my own part, so
-        // a column cannot offer VA2 at all -- tagging one is the convention
-        // this form exists to stop writing.
-        await expect(page.locator('#logSlotPart2 option'))
-            .toHaveText(['V2', 'VA (seat)', 'VC']);
+        // Every name field offers every part but my own, and the column a
+        // person lands in follows from the part rather than the other way
+        // round. The second column comes up on the part it holds.
+        await expect(page.locator('#logSlotPart2')).toHaveValue('VA');
+        await expect(page.locator('#logSlotPart2 option')).toHaveText(
+            ['V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'Piano', 'Clarinet', 'Flute']);
         // Everyone past the four is an Others? entry with a tag.
         await page.click('#logOthersAdd');
         const row = page.locator('.log-other-row').first();
@@ -1042,11 +1094,12 @@ test.describe('log form', () => {
         expect(body.get(OTHERS_ID)).toBe('Dana Ellis (p); Erin Fry (vc2)');
     });
 
-    test('an Others? part the columns hold is offered as itself', async ({ page }) => {
-        // "(vc)" reads as VC, which Others? does not offer -- Player 3 always
-        // holds vc1, so a cellist is only ever an extra as vc2. The cell still
-        // says vc, so the option list has to say it too; dropping it would show
-        // "part?" over a part that is written down.
+    test('an extra on a part the columns hold, with the column already taken', async ({ page }) => {
+        // "(vc)" reads as VC, which IS a part a column holds here -- so this is
+        // the promotion case, refused: Carol is in the cello column and on VC
+        // already, and two people cannot be written in one cell. The one whose
+        // column it is keeps it, the other stays where she was typed, and
+        // neither cell is rewritten.
         const recent = new Date(Date.now() - 3600_000);
         const stamp = `${recent.getMonth() + 1}/${recent.getDate()}/${recent.getFullYear()}`
             + ` ${recent.getHours()}:${String(recent.getMinutes()).padStart(2, '0')}:00`;
@@ -1061,7 +1114,7 @@ test.describe('log form', () => {
         await page.locator('#logOthersHere .log-chip-btn')
             .filter({ hasText: 'Heidi' }).click();
         const row = page.locator('.log-other-row').first();
-        await expect(row.locator('select')).toHaveValue('vc');
+        await expect(row.locator('select')).toHaveValue('VC');
 
         await pickComposer(page, 'Haydn');
         await page.fill('#logTitle', '76#6');

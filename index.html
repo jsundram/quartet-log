@@ -220,8 +220,9 @@
                 <div id="logPart" class="part-buttons" role="radiogroup" aria-label="Which part"></div>
             </div>
 
-            <p class="log-note">Leave a seat blank to repeat whoever was there. Write <code>-</code> for a seat this work doesn't have.
-               Change a part to say someone swapped &mdash; the name comes along on its own.
+            <p class="log-note">Leave a name blank to repeat whoever was there. Write <code>-</code> for a part nobody played.
+               Say what each person played and the form works out which column they go in &mdash;
+               change a part and the name moves on its own, into <b>Others?</b> if no column holds it.
                Extra players stay for the rest of the session; remove one with its <b>x</b>.</p>
             <div class="log-field">
                 <label for="logPlayer1">Player 1</label>
@@ -279,6 +280,10 @@
             <datalist id="logPlayers"></datalist>
             <datalist id="logLocations"></datalist>
 
+            <!-- The row these fields will become. Which column someone lands
+                 in is decided by the part beside their name, so a move out of
+                 a column (or into one) would otherwise happen off screen. -->
+            <p id="logRowPreview" class="log-preview" aria-live="polite"></p>
             <button type="submit" id="logSubmit" class="log-submit">Log it</button>
             <!-- The line and its (i) share a row: the sentence has to stay
                  short enough for a phone, and the states that need more than

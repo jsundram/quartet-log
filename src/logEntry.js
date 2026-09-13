@@ -208,28 +208,31 @@ export function nextInSession(entry) {
 // --- Slot parts -------------------------------------------------------------
 //
 // The three player slots are positional: which part each holds is implied by
-// your own part (SLOT_TO_PART). That works until two people swap — and then
-// the only way to say so was to retype names into different columns.
+// your own part (SLOT_TO_PART). That works until the ensemble changes shape —
+// a fifth player arrives, you move from violin to viola, everyone shifts one
+// seat over — and then the only way to say so was to retype the same four
+// names into different columns.
 //
-// The form instead offers a part per slot. The names stay put and carry
-// forward as ever; a part the seat does not imply is written as the SAME
-// "(code)" annotation the sheet has always used, so nothing about the data at
-// rest changes shape.
+// So the form stopped being three columns and became a roster. Every name
+// field, seat or `Others?` alike, is one person and the part they played, and
+// the mapping of those onto the sheet's columns is the FORM's job (rowPlan):
+// whoever is on a part a column holds is written in that column, and everyone
+// else is written in `Others?` with the same "(code)" annotation the sheet has
+// always used. Nothing about the data at rest changes shape. What changes is
+// that "he moved to va2 and she took v1" is two dropdowns rather than four
+// retyped names.
 //
-// The two dropdowns offer different sets, because the columns and Others? hold
-// different things (howto section 5). The three columns ARE the quartet's
-// parts, decided by your own part, so a column offers only those three and a
-// swap is a reordering rather than a tag. Everyone past the four goes in
-// Others? with a tag, so that list is the parts a column never holds: a second
-// violin an octet pushes out of the columns, v3 and v4, va1 when you are the
-// second viola, va2, vc2, and the winds and keyboard the rep actually uses.
-// No v1 (yours, or Player 1's) and no vc (Player 3 always holds vc1).
+// Both dropdowns therefore offer the same list — every part except your own,
+// since the one part nobody else can be on is yours. A column still never
+// carries a tag for a part it cannot hold (issue #41): the form moves that
+// person to `Others?` rather than tagging the column, which is what the
+// convention in howto section 5 says out loud.
 
 /** @typedef {{ key: string, label: string, code: string }} SlotPart */
 
-// Every part either list can hold. The lists below are views of it, and
-// BY_KEY has to cover the union: slotCell turns a key back into the code it
-// writes without caring which dropdown the key came from.
+// Every part a name field can be put on. VA1 and VA are distinct keys because
+// the sheet writes both, and BY_KEY covers the lot: slotCell turns a key back
+// into the code it writes, and partLabel back into the text a dropdown shows.
 /** @type {SlotPart[]} */
 const PARTS = [
     { key: 'V1', label: 'V1', code: 'v1' },
@@ -248,36 +251,33 @@ const PARTS = [
 
 const BY_KEY = new Map(PARTS.map(p => [p.key, p]));
 
-/** @param {string[]} keys @returns {SlotPart[]} */
-const pick = (...keys) => keys.map(k => /** @type {SlotPart} */ (BY_KEY.get(k)));
-
-/** @type {SlotPart[]} */
-export const OTHERS_PARTS = pick('V2', 'V3', 'V4', 'VA1', 'VA2', 'VC2', 'P', 'CL', 'FL');
-
-// Which parts the three columns hold before you have said what you play. Every
-// row of the seat table is a subset of these four, and a dropdown with nothing
-// in it is worse than one offering a part you will re-decide the moment you tap
-// the Part row — which re-renders these.
-const COLUMN_PARTS = pick('V1', 'V2', 'VA', 'VC');
-
 /**
- * What one column dropdown offers: the three parts your columns hold.
+ * What every name field's dropdown offers: any part but your own.
+ *
+ * One list for the seats and for `Others?`, because a name field no longer
+ * says which COLUMN someone is in — rowPlan decides that from the part. The
+ * two-list version of this (a seat could only be one of the three parts your
+ * columns hold) meant the arrangement on screen had to be the arrangement in
+ * the sheet, so a quintet, a part swap or a move from violin to viola was
+ * still typed out name by name.
+ *
+ * Your own part is the one thing left out: you are already on it, and offering
+ * it would invite a row that says two people played the same part with no way
+ * to tell which of them you are. `VA1` and `VA2` are separate keys, so a second
+ * violist is offered `VA1` and the first is offered `VA2`.
+ *
+ * A fresh array every call: this is handed to a caller, and a module-level list
+ * returned as-is is one any caller could sort or splice in place.
  * @param {string} part your own part
  * @returns {SlotPart[]}
  */
-export function columnParts(part) {
-    const implied = impliedSlotParts(part);
-    // A fresh array on every path, for the reason seatsAsTyped is a factory:
-    // this is handed to a caller, and one module-level array returned from the
-    // bail path is a value any caller could sort or splice in place.
-    return implied.some(p => !p)
-        ? [...COLUMN_PARTS]
-        : implied.map(k => /** @type {SlotPart} */ (BY_KEY.get(/** @type {string} */ (k))));
+export function rosterParts(part) {
+    return PARTS.filter(p => p.key !== part);
 }
 
 /**
- * The code an option key writes into the cell. A key neither list knows is a
- * raw annotation being passed through, and passes through here too.
+ * The code an option key writes into the cell. A key the catalog does not know
+ * is a raw annotation being passed through, and passes through here too.
  * @param {string|null|undefined} key
  * @returns {string|null|undefined}
  */
@@ -287,9 +287,9 @@ export function partCode(key) {
 
 /**
  * The label an option key shows. The counterpart to partCode, and needed for
- * the same reason: a key a dropdown offers as a passthrough is still a key the
- * catalog may know, and "Piano" reads better than "P" on the one carried from
- * a row this list no longer offers.
+ * the same reason: the key a dropdown offers as a passthrough may still be one
+ * the catalog knows — your own part, left out of the list — and "Piano" reads
+ * better than "P".
  * @param {string} key
  * @returns {string}
  */
@@ -298,16 +298,15 @@ export function partLabel(key) {
 }
 
 /**
- * Which part in the union an existing annotation is, or null when the sheet
- * carries something no option can express (`(hn)`, `(klavier)`). Null matters:
+ * Which part an existing annotation is, or null when the sheet carries
+ * something no option can express (`(hn)`, `(klavier)`). Null matters:
  * re-serialising an annotation we cannot represent would silently rewrite it,
  * so the caller offers the raw code as its own option instead — and so does a
- * key the caller's OWN list does not offer, since the two lists are subsets.
+ * key the list leaves out, which is your own part.
  *
- * `va1` is its own key rather than folding into VA, because Others? offers it:
- * that is how you log the first violist when you are the second. `vc1` has no
- * key for the mirror reason — Player 3 always holds it, so it is never an
- * extra — and keeps folding into VC.
+ * `va1` is its own key rather than folding into VA: that is how you log the
+ * first violist when you are the second. `vc1` has no key for the mirror
+ * reason — Player 3 holds it whenever anyone does — and keeps folding into VC.
  * @param {string|null|undefined} annotation
  * @returns {string|null}
  */
@@ -380,76 +379,8 @@ export function slotCell({ typed, carried = '', chosen, implied }) {
     return desired === carried.trim() ? '' : desired;
 }
 
-// Every seat keeps its own name — the ordinary case, and what every guard in
-// seatOrder falls back to. A factory rather than a shared constant: seatPlan
-// hands the order out to its caller, and one shared array returned from four of
-// the five paths would be a module-level value any caller could sort in place.
-const seatsAsTyped = () => [0, 1, 2];
-
 /**
- * Which seat each cell's name comes from.
- *
- * A reordering of the parts the seats already imply is not an annotation, it is
- * a reordering: see seatPlan.
- * @param {{ typed: string[], carried: string[], chosen: (string|null)[], implied: (string|null)[] }} a
- * @returns {number[]} order[i] = the seat that seat i's name comes from
- */
-function seatOrder({ typed, carried, chosen, implied }) {
-    // Nothing to reorder against: a part this app has no seat table for, or
-    // none picked yet — which is every render before the Part row is tapped.
-    if (implied.some(p => !p) || chosen.some(p => !p)) return seatsAsTyped();
-    // Who is on each seat's own part: holder[i] is the seat set to implied[i],
-    // or -1 when no seat is — that part is out of band (a second viola, a
-    // pianist in a string seat), or two seats claim one part and leave a third
-    // unclaimed.
-    const holder = implied.map(p => chosen.indexOf(/** @type {string} */ (p)));
-    // Only a CYCLE of that map can be reordered, and the swap is decided PER
-    // cycle rather than over the whole row: one seat on a part of its own
-    // (`Carol Diaz (vc2)`, carried forward from the row above with no user
-    // action at all) must not quietly turn the two violinists' swap back into
-    // the annotated shape this exists to stop.
-    //
-    // `holder` is a partial permutation — the implied parts are distinct, so no
-    // two seats read the same source — so its components are cycles and open
-    // paths. The seat at the head of a path keeps its own name, nobody being on
-    // its part, and would then ALSO hand that name to the seat reading from it:
-    // one person written into two cells. Three seats admit at most one
-    // non-trivial cycle (a second would need a fourth seat), which is why one
-    // all-or-nothing name check below covers it.
-    const moving = seatsAsTyped().filter(i => holder[i] !== i && onCycle(holder, i));
-    // A seat that moves needs a name to move: it takes the other seat's field,
-    // or what that seat dittos. An empty one would leave a blank cell — which
-    // is a ditto mark and not an empty chair, so the row above's player would
-    // reappear, in a part they did not play. Annotate instead; that at least
-    // says something true.
-    if (!moving.every(i => seatName(typed[holder[i]], carried[holder[i]]))) return seatsAsTyped();
-    const order = seatsAsTyped();
-    for (const i of moving) order[i] = holder[i];
-    return order;
-}
-
-/**
- * Whether seat `i` sits on a cycle of the partial permutation `holder`, i.e.
- * following "who is on my part" from it comes back to it.
- *
- * The step bound is the loop's own termination guarantee and nothing more: a
- * walk that reached a cycle NOT containing `i` would spin, and that needs a
- * node with two edges into it, which `holder` cannot have (it reads distinct
- * implied parts, so no two seats resolve to the same source). Unreachable, and
- * kept rather than trusting a caller's invariant to bound a loop.
- * @param {number[]} holder @param {number} i @returns {boolean}
- */
-function onCycle(holder, i) {
-    let at = holder[i];
-    for (let step = 0; at >= 0 && step < holder.length; step++) {
-        if (at === i) return true;
-        at = holder[at];
-    }
-    return false;
-}
-
-/**
- * The name a seat holds: what was typed, else what it dittos.
+ * The name a field holds: what was typed, else what it dittos.
  * @param {string|null|undefined} typed @param {string|null|undefined} carried
  * @returns {string}
  */
@@ -458,91 +389,181 @@ function seatName(typed, carried) {
 }
 
 /**
- * The three seat cells to submit, and where each name came from.
+ * What a column holds when nobody on the roster is on its part.
  *
- * The seats are POSITIONAL, so when the parts chosen across them are the parts
- * the seats already imply in a different ORDER, the sheet's own way of saying
- * so is to move the names — "Bob Bek, Alice Hart", not "Alice Hart (v2), Bob
- * Bek (v1)". Annotating a plain swap writes a row every reader then has to undo:
- * slotPartsFor does recover the parts, so the charts stay right, but the
- * columns now contradict SLOT_TO_PART, anyone reading the spreadsheet sees the
- * second violin in the first chair, and the annotation dittos forward onto
- * every later row that leaves the seat blank. The annotation is for a part the
- * three seats cannot express — VA2, a pianist — not for a rearrangement of the
- * three they can.
+ * It cannot be left blank: a blank is a ditto mark, so the person who just
+ * moved off that part would come straight back in it. `-` is how the sheet
+ * says "nobody here" (howto section 5) — unless there is nothing above to
+ * repeat, and then the blank says the same thing with less text.
+ * @param {string} typed @param {string} carried
+ * @returns {string}
+ */
+function emptyCell(typed, carried) {
+    // A typed "-" is the logger saying it, and keeps its own case: a written
+    // "-" and a dittoed one are different cells.
+    if ((typed ?? '').trim() === '-') return '-';
+    const was = (carried ?? '').trim();
+    return !was || was === '-' ? '' : '-';
+}
+
+/**
+ * The part an `Others?` row is on — but only when the cell says exactly what a
+ * dropdown writes, and carries nothing else.
  *
- * A carried row that already holds such a swap is normalised the same way,
- * which is how a row the old behaviour wrote (or one typed into the Google
- * Form) stops propagating: the parts are unchanged, the names move to the
- * seats that imply them, and the annotations go away.
+ * A row's part decides whether it is promoted into a column, and promotion
+ * rewrites the cell: the column implies the part, so the tag goes away with
+ * it. That is right for `va2` and wrong for everything else. `Louisa (vc
+ * Shadow)` reads as a cellist, and promoting her would move her into the cello
+ * column, drop the word "Shadow" and displace whoever the column was dittoing;
+ * a comment — `Laura (v2, shadowing on I)` — is prose, and a column has
+ * nowhere to put prose. Anything the form did not write itself stays in
+ * `Others?`, exactly as the sheet has it.
+ * @param {OtherRow} row
+ * @returns {string|null}
+ */
+function othersKey(row) {
+    if ((row.comment ?? '').trim()) return null;
+    const raw = (row.instrument ?? '').trim().toLowerCase();
+    if (!raw) return null;
+    const key = slotPartKey(raw);
+    return key && partCode(key) === raw ? key : null;
+}
+
+/** @typedef {{ name: string, key: string|null, seat: number|null, row: OtherRow|null }} Claim */
+
+/**
+ * The row the roster makes: three seat cells and the `Others?` rows.
  *
- * Returns the cells AND the order they came from, because the two callers need
- * different halves of one answer: `submit` sends the cells, while the
- * placeholders have to know which seats were reseated — a moved name shown
- * against the part its old seat claimed says the swap backwards.
+ * Every name field is a claim — this person played this part — and the sheet's
+ * columns are where the form puts them. The columns are POSITIONAL and mean
+ * what your own part implies, so:
+ *
+ *   - whoever is on a part a column holds is written in that column, with no
+ *     annotation, wherever on the form they were typed. Two people swapping
+ *     parts swap columns; a violinist who moved to viola moves column; a fifth
+ *     player typed into `Others?` on `v1` is written in the `V1` column.
+ *   - everyone else is written in `Others?` with the `(code)` the sheet has
+ *     always used, which is where a second violist or a pianist belongs
+ *     (howto section 5). A column never gains a tag for a part it cannot hold.
+ *   - a column nobody is on is written `-`, since a blank would ditto the
+ *     person who just moved off it.
+ *
+ * Two cases are left exactly where they were typed rather than moved. An
+ * annotation no option can express (`(hn)`) is passed through on its own seat,
+ * because rewriting a cell we cannot read is worse than leaving it. And when
+ * two people claim one part, the one already in that column keeps it and the
+ * other is annotated where it sits: a duplicate is not an arrangement, and
+ * moving a third person nobody spoke about would be a guess.
  *
  * @param {object} a
- * @param {string[]} a.typed what is in each name field
+ * @param {string[]} a.typed what is in each seat's name field
  * @param {string[]} a.carried the cell each seat would ditto, annotation included
- * @param {(string|null)[]} a.chosen the part selected per seat
- * @param {(string|null)[]} a.implied the part each seat implies
- * @returns {{ cells: string[], order: number[], parts: (string|null)[] }}
- *   `parts` is null per seat only when the row's own part has no seat table
- *   (`impliedSlotParts` answers all-null) — a stale draft, not a live control.
+ * @param {(string|null)[]} a.chosen the part each seat is on
+ * @param {(string|null)[]} a.implied the part each column holds
+ * @param {OtherRow[]} [a.others] the `Others?` rows, as the editor has them
+ * @returns {{ cells: string[], others: OtherRow[], parts: (string|null)[] }}
+ *   `parts[i]` is what the person written into column i is playing, null where
+ *   nobody is. It is published rather than re-derived because the name in a
+ *   column need not be the one typed there: pairing cell i with the part field
+ *   i was SET to would print a swap backwards.
  */
-export function seatPlan({ typed, carried, chosen, implied }) {
-    const order = seatOrder({ typed, carried, chosen, implied });
-    // What the person written into each seat is playing — the same
-    // `chosen[from] ?? implied[i]` the cell below is built from, published
-    // rather than re-derived. The confirmation screen names the line-up it
-    // recorded, and deriving it per seat from `chosen[i]` would read a
-    // reordering backwards: after a swap the names have moved and each is on
-    // the part its NEW seat implies, which is the whole reason nothing is
-    // annotated.
-    const parts = order.map((from, i) => chosen[from] ?? implied[i]);
-    const cells = order.map((from, i) => {
-        // A seat that keeps its own name keeps its own CASE exactly: a typed
-        // "-" (nobody here) and a dittoed one are different cells, and
-        // resolving it early would write the "-" out where a blank would do.
-        // A seat taking another's name is materialising it either way.
-        //
-        // The part travels with the name, and for a seat that took one that
-        // part is implied[i] by construction — order[i] is the seat whose part
-        // IS implied[i] — so a reordering annotates nothing, which is the point.
-        return slotCell({
-            typed: from === i ? typed[i] : seatName(typed[from], carried[from]),
-            carried: carried[i],
-            chosen: chosen[from],
-            implied: implied[i],
-        });
+export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
+    /** @type {Claim[]} */
+    const claims = [];
+    [0, 1, 2].forEach(i => {
+        const name = seatName(typed[i], carried[i]);
+        // "-" is "nobody in this seat", not a person. It holds no part, and it
+        // must not out-argue someone who does.
+        if (!name || name === '-') return;
+        claims.push({ name, key: chosen[i] ?? null, seat: i, row: null });
     });
-    return { cells, order, parts };
+    others.forEach(row => {
+        const name = (row.name ?? '').trim();
+        if (!name) return;
+        claims.push({ name, key: othersKey(row), seat: null, row });
+    });
+
+    // Before the Part row is tapped the columns mean nothing, so nothing can
+    // be placed by part and nothing is moved out of a column either.
+    const layout = implied.some(Boolean);
+    /** @type {(Claim|null)[]} */
+    const placed = [null, null, null];
+    const taken = new Set();
+    // The part decides the column.
+    implied.forEach((part, i) => {
+        if (!part) return;
+        const on = claims.filter(c => c.key === part);
+        // Two people on one part: the seat that already IS that column keeps
+        // it, and the other is handled below.
+        const pick = on.length === 1 ? on[0] : on.find(c => c.seat === i);
+        if (pick) { placed[i] = pick; taken.add(pick); }
+    });
+    // Everyone the parts did not place stays in the seat they were typed in —
+    // no part chosen yet, an annotation this app cannot read, a duplicate
+    // claim — unless the part they are on is one no column holds, which is
+    // what `Others?` is for.
+    claims.forEach(c => {
+        if (taken.has(c) || c.seat === null || placed[c.seat]) return;
+        if (layout && c.key && BY_KEY.has(c.key) && !implied.includes(c.key)) return;
+        placed[c.seat] = c;
+        taken.add(c);
+    });
+
+    const cells = placed.map((c, i) => (c
+        ? slotCell({
+            // A claim that stays in its own seat keeps that field's text
+            // verbatim, so a blank goes on dittoing. One that moved is
+            // materialised: the cell it lands in dittos somebody else.
+            typed: c.seat === i ? typed[i] : c.name,
+            carried: carried[i],
+            chosen: c.key,
+            implied: implied[i],
+        })
+        : emptyCell(typed[i], carried[i])));
+    // What the person in each column is playing. For a claim the part placed
+    // it is implied[i] by construction; for one left where it was typed it is
+    // whatever the dropdown beside it says, which is what the cell was
+    // annotated with.
+    const parts = placed.map((c, i) => (c ? (c.key ?? implied[i]) : null));
+
+    // The rows that stayed in `Others?` are passed through untouched, comment
+    // and all; the seats that left are appended in seat order. A name already
+    // in the column is not repeated — writing someone twice is exactly what
+    // audit_ensembles exists to catch.
+    const othersOut = others.filter(row => !claims.some(c => c.row === row && taken.has(c)));
+    const already = new Set(othersOut.map(r => (r.name ?? '').trim().toLowerCase()));
+    claims.forEach(c => {
+        if (taken.has(c) || c.seat === null || already.has(c.name.toLowerCase())) return;
+        already.add(c.name.toLowerCase());
+        othersOut.push({ name: c.name, instrument: partCode(c.key) ?? '', comment: '' });
+    });
+    return { cells, others: othersOut, parts };
 }
 
 /**
  * The seat parts after one seat is set to `key`.
  *
- * Three seats hold three different parts, so a part taken from another seat
- * hands that seat the one this one gave up: changing a single dropdown says
- * "these two swapped", which is the thing that happens. Left alone, the sheet
- * gets a row with two second violins and no first — and seatPlan can only
- * annotate it, because a duplicate is not a reordering of anything.
+ * The three columns hold three different parts, so a part taken from another
+ * seat hands that seat the one this one gave up: changing a single dropdown
+ * says "these two swapped", which is the thing that happens. Left alone, the
+ * sheet gets a row with two second violins and no first — and rowPlan can only
+ * annotate that, because a duplicate is not an arrangement of anything.
  *
  * That hand-back is a trade, so it needs TWO chairs: the part given up and the
- * part taken both have to be ones the three seats hold. A part that is a
- * person's rather than a chair's — `P`, `VA2`, `VC2`, a code this list cannot
- * express — is nobody's to trade, and handing it either direction records an
- * instrument someone never played, with their name field untouched:
+ * part taken both have to be ones the columns hold. A part that is a person's
+ * rather than a chair's — `P`, `VA2`, `VC2`, a code this app cannot read — is
+ * nobody's to trade, and handing it either direction records an instrument
+ * somebody never played, with their name field untouched:
  *
- *   - give one away: move the pianist's seat to V2, and the seat already on V2
- *     is written `(p)`.
+ *   - give one away: move the pianist's seat to V2, and the person already on
+ *     V2 is now the pianist — written into `Others?` as one.
  *   - take one: move a seat onto the second violist's `VA2`, and SHE is written
  *     `(v1)` — the same bug mirrored, and the one this guard first missed.
  *
  * `VC2` is worse than wrong data, since `classOf` reads it as the cello class
  * and a bare first name there can normalize to a different person entirely.
- * Either way the other seat keeps its part and seatPlan annotates the duplicate
- * claim, which is what the annotation is for.
+ * Either way the other seat keeps the part it was on, and rowPlan annotates the
+ * duplicate claim where it sits.
  *
  * A part no other seat holds displaces nothing; that seat is simply on it now.
  * Neither does one that two other seats hold: from an already-duplicated state
@@ -551,7 +572,7 @@ export function seatPlan({ typed, carried, chosen, implied }) {
  *
  * @param {object} a
  * @param {(string|null)[]} a.chosen the part each seat is on
- * @param {(string|null)[]} a.implied the part each seat implies
+ * @param {(string|null)[]} a.implied the part each column holds
  * @param {number} a.seat the seat being changed
  * @param {string} a.key the part it is being set to
  * @returns {(string|null)[]}
@@ -584,7 +605,7 @@ export function defaultSlotParts(carried, part) {
     const implied = impliedSlotParts(part);
     return ['player1', 'player2', 'player3'].map((f, i) => {
         const annotation = instrumentFromSlot(carried[f]);
-        // An annotation this list cannot express is passed through as itself,
+        // An annotation no option can express is passed through as itself,
         // so submitting cannot rewrite it into something else.
         return annotation ? (slotPartKey(annotation) ?? annotation) : implied[i];
     });
