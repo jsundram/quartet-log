@@ -266,14 +266,31 @@ const BY_KEY = new Map(PARTS.map(p => [p.key, p]));
  * to tell which of them you are. `VA1` and `VA2` are separate keys, so a second
  * violist is offered `VA1` and the first is offered `VA2`.
  *
+ * Which means the **unnumbered `VA` goes with them**. On `VA1` it names the
+ * same chair you are in, and `processRow` folds `VA1` to `VA` anyway, so
+ * offering both records two violists on one part and no way to say which is
+ * you. On `VA2` it is the first violist said vaguely, and `VA1` says it. A
+ * carried `(va)` is still offered on the seat that holds it — as a
+ * passthrough, like any value the list leaves out — so nothing already written
+ * is rewritten.
+ *
  * A fresh array every call: this is handed to a caller, and a module-level list
  * returned as-is is one any caller could sort or splice in place.
  * @param {string} part your own part
  * @returns {SlotPart[]}
  */
 export function rosterParts(part) {
-    return PARTS.filter(p => p.key !== part);
+    const mine = OWN_SEAT[part] ?? [part];
+    return PARTS.filter(p => !mine.includes(p.key));
 }
+
+// Every spelling of the chair you are sitting in, for the parts that have more
+// than one. Only the violas do: `VA` is either of them said vaguely.
+const OWN_SEAT = {
+    VA: ['VA', 'VA1'],
+    VA1: ['VA', 'VA1'],
+    VA2: ['VA', 'VA2'],
+};
 
 /**
  * The code an option key writes into the cell. A key the catalog does not know
@@ -527,11 +544,24 @@ export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
     const parts = placed.map((c, i) => (c ? (c.key ?? implied[i]) : null));
 
     // The rows that stayed in `Others?` are passed through untouched, comment
-    // and all; the seats that left are appended in seat order. A name already
-    // in the column is not repeated — writing someone twice is exactly what
-    // audit_ensembles exists to catch.
-    const othersOut = others.filter(row => !claims.some(c => c.row === row && taken.has(c)));
-    const already = new Set(othersOut.map(r => (r.name ?? '').trim().toLowerCase()));
+    // and all; the seats that left are appended in seat order.
+    //
+    // **Nobody is written into the row twice**, in either direction, which is
+    // exactly what audit_ensembles and the unique-people counts exist to
+    // chase. Both directions actually happen now that a name can move between
+    // a column and this cell: the extras are re-seeded from the sitting on
+    // every piece, so a fifth player who takes a chair this time is typed into
+    // the seat while their extras row is still sitting there — one person, two
+    // parts, one row. The column wins, being the stronger claim: it is
+    // positional and it dittos forward, while the extras row is the stale copy
+    // the seeding left. A row carrying a COMMENT is kept even so — that is
+    // prose somebody wrote, not a re-seed, and the freeform box is the only
+    // other place it could go.
+    const placedNames = new Set(placed.filter(Boolean)
+        .map(c => /** @type {Claim} */ (c).name.toLowerCase()));
+    const othersOut = others.filter(row => !claims.some(c => c.row === row && taken.has(c))
+        && !(!(row.comment ?? '').trim() && placedNames.has((row.name ?? '').trim().toLowerCase())));
+    const already = new Set([...placedNames, ...othersOut.map(r => (r.name ?? '').trim().toLowerCase())]);
     claims.forEach(c => {
         if (taken.has(c) || c.seat === null || already.has(c.name.toLowerCase())) return;
         already.add(c.name.toLowerCase());

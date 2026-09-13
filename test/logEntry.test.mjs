@@ -274,9 +274,15 @@ test('every name field offers every part but your own', () => {
     assert.deepEqual(keys('V2'), ALL.filter(k => k !== 'V2'));
     // VA1 and VA2 are separate keys, so the second violist is offered the
     // first's part and the first is offered the second's.
-    assert.deepEqual(keys('VA1'), ALL.filter(k => k !== 'VA1'));
     assert.ok(keys('VA1').includes('VA2'));
     assert.ok(keys('VA2').includes('VA1'));
+    // And the unnumbered VA goes with your own: on VA1 it names the chair you
+    // are in -- processRow folds VA1 to VA, so a row offering both records two
+    // violists on one part with no way to say which is you -- and on VA2 it is
+    // the first violist said vaguely, which VA1 says.
+    assert.deepEqual(keys('VA1'), ALL.filter(k => k !== 'VA1' && k !== 'VA'));
+    assert.deepEqual(keys('VA'), ALL.filter(k => k !== 'VA1' && k !== 'VA'));
+    assert.deepEqual(keys('VA2'), ALL.filter(k => k !== 'VA2' && k !== 'VA'));
     // Every key writes the code the sheet has always held.
     for (const p of rosterParts('')) assert.equal(partCode(p.key), p.code);
     assert.deepEqual(rosterParts('').map(p => p.code),
@@ -505,6 +511,37 @@ test('an extra who is on a column part is written in that column', () => {
     });
     assert.deepEqual(got.cells, ['Erin Fry', '', '']);
     assert.equal(serializeOthersRows(got.others), 'Dana Ellis (p); Alice Hart (va2)');
+});
+
+test('nobody is written into the row twice, in either direction', () => {
+    // Both directions happen now that a name can move between a column and
+    // Others?. The extras are re-seeded from the sitting on every piece, so a
+    // fifth player who takes a chair this time is typed into the seat while
+    // their extras row is still sitting there. The column wins: it is
+    // positional and it dittos forward, and the extras row is the stale copy
+    // the seeding left behind.
+    const over = {
+        typed: ['', 'Dave Ellis', ''],
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V1', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'Dave Ellis', instrument: 'va2', comment: '' }],
+    };
+    const got = plan(over);
+    assert.deepEqual(got.cells, ['', 'Dave Ellis', '']);
+    assert.equal(serializeOthersRows(got.others), '');
+    // A row carrying a comment is kept even so: that is prose somebody wrote,
+    // not a re-seed, and there is nowhere else for it to go.
+    assert.equal(extras({
+        ...over,
+        others: [{ name: 'Dave Ellis', instrument: 'va2', comment: 'doubling' }],
+    }), 'Dave Ellis (va2, doubling)');
+    // The other direction, which the first version of this guard covered on
+    // its own: a seat moved into Others? is not appended beside itself.
+    assert.equal(extras({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V1', 'VA2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'Bob Bek', instrument: 'va2', comment: '' }],
+    }), 'Bob Bek (va2)');
 });
 
 test('a legacy tag carried in a column moves that person out of it', () => {
