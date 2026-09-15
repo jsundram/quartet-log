@@ -520,7 +520,10 @@ function only(list) {
  * @param {(string|null)[]} a.chosen the part each seat is on
  * @param {(string|null)[]} a.implied the part each column holds
  * @param {OtherRow[]} [a.others] the `Others?` rows, as the editor has them
- * @returns {{ cells: string[], others: OtherRow[], parts: (string|null)[] }}
+ * @returns {{ cells: string[], others: OtherRow[], parts: (string|null)[], dropped: OtherRow[] }}
+ *   `dropped` is the extras rows a seat of the same name superseded — said out
+ *   loud, because the rule cannot tell a stale re-seed from a second person of
+ *   that name and only the logger can.
  *   `parts[i]` is what the person written into column i is playing, null where
  *   nobody is. It is published rather than re-derived because the name in a
  *   column need not be the one typed there: pairing cell i with the part field
@@ -619,13 +622,32 @@ export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
     //
     // A row carrying a COMMENT survives regardless: that is prose somebody
     // wrote rather than a re-seed, and the freeform box is the only other
-    // place for it. And two SEAT claims of one name are both written — the
-    // logger typed that name into two chairs, and there is nothing to choose
-    // between them.
+    // place for it. For the same reason the freeform box itself is never
+    // deduped — it is not passed in here at all. It re-seeds like the rows do,
+    // so `Dave (va2, sub)` in it while Dave takes a chair does write him
+    // twice; that is the accepted cost of never destroying prose, and the
+    // preview shows the row it makes. And two SEAT claims of one name are both
+    // written — the logger typed that name into two chairs, and there is
+    // nothing to choose between them.
+    // Which row is the stale one cannot be known here, only guessed, and the
+    // guess is wrong when two people share a written name — a reading day with
+    // two Alices, one dittoing in a column and one hand-added at the piano.
+    // The log is first-name-only for fourteen people and `attribution.mjs`
+    // exists because several share one, so that is a real day, not a
+    // hypothesis. Hence `dropped`: the caller says out loud what was left out,
+    // and the one case the rule gets wrong is a sentence on the screen rather
+    // than a person missing from the sheet.
     const seatNames = new Set(claims.filter(c => c.seat !== null)
         .map(c => c.name.toLowerCase()));
-    const othersOut = others.filter(row => !claims.some(c => c.row === row && taken.has(c))
-        && !(!(row.comment ?? '').trim() && seatNames.has((row.name ?? '').trim().toLowerCase())));
+    /** @type {OtherRow[]} */
+    const dropped = [];
+    const othersOut = others.filter(row => {
+        if (claims.some(c => c.row === row && taken.has(c))) return false;   // promoted
+        const stale = !(row.comment ?? '').trim()
+            && seatNames.has((row.name ?? '').trim().toLowerCase());
+        if (stale) dropped.push(row);
+        return !stale;
+    });
     const said = (/** @type {string} */ name, /** @type {string} */ code) =>
         `${name.trim().toLowerCase()} (${(code ?? '').trim().toLowerCase()})`;
     const already = new Set(othersOut.map(r => said(r.name ?? '', r.instrument ?? '')));
@@ -636,7 +658,7 @@ export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
         already.add(said(c.name, code));
         othersOut.push({ name: c.name, instrument: code, comment: '' });
     });
-    return { cells, others: othersOut, parts };
+    return { cells, others: othersOut, parts, dropped };
 }
 
 /**

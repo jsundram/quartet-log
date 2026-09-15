@@ -1745,6 +1745,17 @@ body.network-fullscreen-open {
 /* The row the fields will become, columns separated the way the sheet
    separates them. Quiet: it is a receipt, not a control. Monospace so the
    four cells stay four cells when a name is long. */
+/* What the row does NOT include, when the form left somebody out. A step
+   louder than the row itself: it is the one thing on this line that the
+   logger may need to act on. */
+.log-preview-note {
+    display: block;
+    margin-top: 4px;
+    font-family: inherit;
+    font-style: italic;
+    color: var(--color-text-secondary);
+}
+
 .log-preview {
     margin: 6px 0 0;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;

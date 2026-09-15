@@ -1132,6 +1132,30 @@ test.describe('log form', () => {
         expect(body.has(PLAYER2_ID)).toBe(false);
     });
 
+    test('an extra a player field supersedes is named, not silently dropped', async ({ page }) => {
+        // The one case the "seats win" rule gets wrong: two people of one
+        // written name, one dittoing in a player field and one an extra. The
+        // form keeps the field -- it cannot tell that from a stale re-seed --
+        // and says what it left out, which is the only chance anyone has to
+        // notice.
+        await pickComposer(page, 'Mozart');
+        await page.fill('#logTitle', 'K478');
+        await page.click('#logPart .part-btn[data-part="V2"]');
+        await page.click('#logOthersAdd');
+        const row = page.locator('.log-other-row').first();
+        await row.locator('input').fill('Alice');
+        await row.locator('select').selectOption('P');
+        // Alice is already in Player 1, carried from the row above.
+        await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alice');
+        await expect(page.locator('#logRowNote'))
+            .toHaveText('Not written: Alice (p) — that name is in a player field above.');
+
+        // Name the pianist properly and the note goes: two people, two cells.
+        await row.locator('input').fill('Alice Chen');
+        await expect(page.locator('#logRowNote')).toHaveText('');
+        await expect(page.locator('#logRowPreview')).toContainText('Alice Chen (p)');
+    });
+
     test('an extra dropdown follows your own part when you change it', async ({ page }) => {
         // Both lists leave your own part out, so an extras row built before
         // the Part row was tapped is offering it. Pick it and the row records

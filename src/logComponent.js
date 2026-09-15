@@ -16,7 +16,7 @@ import {
     impliedSlotParts, defaultSlotParts, rowPlan, setSlotPart, PART_CHOICES,
     rosterParts, seatParts, partCode, partLabel,
     FIELDS, LABELS,
-    splitOthersCell, mergeOthersCell, parseOthersRows, canonicalOthersCell,
+    splitOthersCell, mergeOthersCell, parseOthersRows, serializeOthersRows, canonicalOthersCell,
     sessionPeople, sessionRows, slotPartKey, sessionPieces, countNew,
     PARTIAL_MOVEMENT_NOTE,
 } from './logEntry.js';
@@ -759,6 +759,14 @@ export class LogComponent {
     // another column, show it against the wrong one. What the sheet receives
     // is previewed in one place instead (renderPreview), where it can say the
     // whole row at once.
+    //
+    // That holds even when the column will be written `-` because the part
+    // beside the name is one no column holds — a carried `(vc2)`, say, which
+    // arrives with no user action. The pair still states something true about
+    // that person, which is what this form asks of the logger; where the sheet
+    // puts them is the form's business and is on the preview line. Blanking
+    // the placeholder there would say the opposite — that nobody is being
+    // recorded — about somebody who is.
     renderPlaceholders() {
         const carried = this.carried();
         for (const field of CARRIED_INPUTS) {
@@ -780,14 +788,23 @@ export class LogComponent {
     // hold; an empty column is shown as the `-` the sheet will receive.
     renderPreview() {
         const carried = this.carried();
-        const { cells, others } = this.plan();
+        const { cells, others, dropped } = this.plan();
         const shown = cells.map((cell, i) => cell || carried[SEATS[i]]);
         const extras = mergeOthersCell(others, this.othersFree);
         // Nobody anywhere is a first launch with no log to carry from, and
         // "- | - | -" is not a useful thing to say about an empty form.
-        if (!shown.some(Boolean) && !extras) return void d3.select('#logRowPreview').text('');
+        const empty = !shown.some(Boolean) && !extras;
         const row = [...shown.map(s => s || '-'), ...(extras ? [extras] : [])];
-        d3.select('#logRowPreview').text(`Row: ${row.join('  |  ')}`);
+        d3.select('#logRowCells').text(empty ? '' : `Row: ${row.join('  |  ')}`);
+        // An extra a player field superseded. Usually that is the sitting's
+        // own extras list catching up — somebody moved into a chair and their
+        // row went stale — and saying so is how the ONE case the rule gets
+        // wrong gets caught: two people of one written name, one in a field
+        // and one an extra, where the second is a person and not a leftover.
+        const gone = serializeOthersRows(dropped);
+        d3.select('#logRowNote').text(gone
+            ? `Not written: ${gone} — that name is in a player field above.`
+            : '');
     }
 
     // Two situations, two sentences. Connecting a first form and replacing a

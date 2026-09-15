@@ -541,6 +541,36 @@ test('an extra who is on a column part is written in that column', () => {
     assert.equal(serializeOthersRows(got.others), 'Dana Ellis (p); Alice Hart (va2)');
 });
 
+test('an extra a seat supersedes is reported, not just removed', () => {
+    // Which row is the stale one cannot be known from the row alone, and the
+    // guess is wrong when two people share a written name: one Alice dittoing
+    // in a column and another hand-added at the piano. Fourteen people in this
+    // log have no surname anywhere, so that is a real reading day. The rule
+    // still keeps the seat -- it is the half that heals -- but it says what it
+    // left out, so the case it gets wrong is a sentence on the screen rather
+    // than a person missing from the sheet.
+    const got = plan({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V1', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'Alice Hart', instrument: 'p', comment: '' }],
+    });
+    assert.equal(serializeOthersRows(got.others), '');
+    assert.equal(serializeOthersRows(got.dropped), 'Alice Hart (p)');
+    // An extra nobody is sitting on is not "dropped" -- and neither is one the
+    // plan PROMOTED into a column, which is a move rather than a removal.
+    const kept = plan({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['VA2', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [
+            { name: 'Erin Fry', instrument: 'p', comment: '' },
+            { name: 'Dana Ellis', instrument: 'v1', comment: '' },
+        ],
+    });
+    assert.deepEqual(kept.cells, ['Dana Ellis', '', '']);
+    assert.equal(serializeOthersRows(kept.others), 'Erin Fry (p); Alice Hart (va2)');
+    assert.deepEqual(kept.dropped, []);
+});
+
 test('a swap plus a second claim on one of the swapped parts keeps the swap', () => {
     // After a swap nobody is "already" sitting in the column their part now
     // belongs to, so a tie-break that only looks at the seat whose column it
