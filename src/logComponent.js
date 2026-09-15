@@ -794,6 +794,10 @@ export class LogComponent {
         // Nobody anywhere is a first launch with no log to carry from, and
         // "- | - | -" is not a useful thing to say about an empty form.
         const empty = !shown.some(Boolean) && !extras;
+        // "-" for a column nobody is on, whether the cell will say so or be
+        // left blank with nothing above it to repeat. The two are the same
+        // statement to every reader of the sheet, and the preview is about who
+        // is in the row rather than about which bytes the cell holds.
         const row = [...shown.map(s => s || '-'), ...(extras ? [extras] : [])];
         d3.select('#logRowCells').text(empty ? '' : `Row: ${row.join('  |  ')}`);
         // An extra a player field superseded. Usually that is the sitting's

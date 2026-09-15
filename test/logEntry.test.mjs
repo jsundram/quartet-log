@@ -12,7 +12,7 @@ import {
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
     sessionRows, sessionPeople, sessionPieces, countNew, PARTIAL_MOVEMENT_NOTE,
 } from '../src/logEntry.js';
-import { SLOT_TO_PART } from '../src/dataProcessor.js';
+import { SLOT_TO_PART, fillForward } from '../src/dataProcessor.js';
 
 // A processed row, as normalizePlayerNames leaves it: annotations split off
 // into playerInstruments, Others? parsed into othersList.
@@ -507,16 +507,25 @@ test('a column nobody is on is written out, never left blank', () => {
     }), ['', 'Alice Hart', '']);
 });
 
-test('an extra is promoted only when the cell says exactly what a dropdown writes', () => {
+test('an extra is promoted when the tag says the part and nothing else', () => {
     // Promotion rewrites the cell: the column implies the part, so the tag
-    // goes away with it. That is right for the code this form wrote and wrong
-    // for anything hand-typed around one -- "Louisa (vc Shadow)" reads as a
-    // cellist, and promoting her would move her into the cello column, drop
-    // the word Shadow and displace whoever the column was dittoing.
-    const shadow = [{ name: 'Louisa', instrument: 'vc Shadow', comment: '' }];
-    const got = plan({ carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'], others: shadow });
-    assert.deepEqual(got.cells, ['', '', '']);
-    assert.equal(serializeOthersRows(got.others), 'Louisa (vc Shadow)');
+    // goes away with it. Any bare spelling of the part is safe to lose that
+    // way -- "cello" is the option the dropdown beside it already reads as VC.
+    assert.deepEqual(plan({
+        carried: ['Alice Hart', 'Bob Bek', ''],
+        others: [{ name: 'Louisa', instrument: 'cello', comment: '' }],
+    }).cells, ['', '', 'Louisa']);
+    // Anything with more in it than the part is not: "Louisa (vc Shadow)"
+    // reads as a cellist, and promoting her would move her into the cello
+    // column, drop the word Shadow and displace whoever the column dittos.
+    for (const instrument of ['vc Shadow', 'vc1/2', 'asst v2', 'klavier']) {
+        const got = plan({
+            carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+            others: [{ name: 'Louisa', instrument, comment: '' }],
+        });
+        assert.deepEqual(got.cells, ['', '', ''], instrument);
+        assert.equal(serializeOthersRows(got.others), `Louisa (${instrument})`);
+    }
     // A comment on a promotable code is the same story -- it has prose in it,
     // and a column has nowhere to put prose.
     assert.equal(extras({
@@ -569,6 +578,17 @@ test('an extra a seat supersedes is reported, not just removed', () => {
     assert.deepEqual(kept.cells, ['Dana Ellis', '', '']);
     assert.equal(serializeOthersRows(kept.others), 'Erin Fry (p); Alice Hart (va2)');
     assert.deepEqual(kept.dropped, []);
+    // Nor is a row the demoted seat re-appends WORD FOR WORD: the extras cell
+    // holds it either way, and "not written" about text the row contains
+    // invites the logger to add it a second time.
+    const same = plan({
+        typed: ['Dana Ellis', '', ''],
+        carried: ['', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['VA2', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'Dana Ellis', instrument: 'va2', comment: '' }],
+    });
+    assert.equal(serializeOthersRows(same.others), 'Dana Ellis (va2)');
+    assert.deepEqual(same.dropped, []);
 });
 
 test('a swap plus a second claim on one of the swapped parts keeps the swap', () => {
@@ -724,12 +744,39 @@ test('an empty chair stays an empty chair', () => {
         carried: ['Alice Hart', 'Bob Bek', '-'],
         chosen: ['VC', 'V2', 'V1'],
     }), ['-', '', 'Alice Hart']);
-    // The other direction: the column holding "-" is the one left alone, so it
-    // keeps dittoing rather than writing it out again.
+    // The other direction: the column holding "-" is the one nobody touched,
+    // and it is written out AGAIN rather than left to ditto -- see emptyCell.
+    // fillForward skips a "-" row without advancing what it repeats, so a
+    // blank under one reaches past it to the last real name.
     assert.deepEqual(seats({
         carried: ['Alice Hart', 'Bob Bek', '-'],
         chosen: ['V2', 'V1', 'VC'],
-    }), ['Bob Bek', 'Alice Hart', '']);
+    }), ['Bob Bek', 'Alice Hart', '-']);
+    // Nothing above at all is the one cell that may stay blank: there is no
+    // name back there for fillForward to reach.
+    assert.deepEqual(seats({ carried: ['Alice Hart', 'Bob Bek', ''] }), ['', '', '']);
+});
+
+test('a column the form emptied stays empty once fillForward reads it back', () => {
+    // The round trip this file is one half of, and the only place it is
+    // tested: rowPlan writes the cells, fillForward reads them. A "-" row is
+    // SKIPPED without advancing what fillForward repeats, so a blank under one
+    // does not repeat the "-" -- it reaches past to the last real name, and
+    // the cellist the form just moved into Others? is put back in the chair
+    // beside their own extras entry. One person, two parts, every row after.
+    const at = h => new Date(`2026-01-01T${String(h).padStart(2, '0')}:00:00`);
+    const sheet = ['Carol Diaz', '-'].map((player3, i) => ({
+        ...row({ timestamp: at(12 + i), player3 }),
+    }));
+    // The next piece, with nobody touching anything: the cello chair is still
+    // empty and the form says so again.
+    const next = seats({
+        carried: ['Alice Hart', 'Bob Bek', '-'],
+        chosen: ['V1', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+    });
+    sheet.push({ ...row({ timestamp: at(14), player3: next[2] }) });
+    fillForward(sheet, {});
+    assert.deepEqual(sheet.map(r => r.player3), ['Carol Diaz', '-', '-']);
 });
 
 test('no part chosen yet leaves every seat alone', () => {

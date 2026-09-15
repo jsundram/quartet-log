@@ -444,8 +444,15 @@ function seatName(typed, carried) {
  *
  * It cannot be left blank: a blank is a ditto mark, so the person who just
  * moved off that part would come straight back in it. `-` is how the sheet
- * says "nobody here" (howto section 5) — unless there is nothing above to
- * repeat, and then the blank says the same thing with less text.
+ * says "nobody here" (howto section 5).
+ *
+ * **A `-` above is not a `-` this blank would repeat.** `fillForward` skips a
+ * `-` row without advancing what it repeats, so a blank under one reaches
+ * PAST it to the last real name: `Dave` then `-` then blank reads back as
+ * `Dave | - | Dave`. Leave the cello chair empty for a second piece and the
+ * sheet puts the cellist back in it — beside the `Others?` entry the form is
+ * still writing for them, one person on two parts, on every row that follows.
+ * So the only cell that may be left blank is one with nothing above it at all.
  * @param {string} typed @param {string} carried
  * @returns {string}
  */
@@ -453,8 +460,7 @@ function emptyCell(typed, carried) {
     // A typed "-" is the logger saying it, and keeps its own case: a written
     // "-" and a dittoed one are different cells.
     if ((typed ?? '').trim() === '-') return '-';
-    const was = (carried ?? '').trim();
-    return !was || was === '-' ? '' : '-';
+    return (carried ?? '').trim() ? '-' : '';
 }
 
 /**
@@ -463,21 +469,25 @@ function emptyCell(typed, carried) {
  *
  * A row's part decides whether it is promoted into a column, and promotion
  * rewrites the cell: the column implies the part, so the tag goes away with
- * it. That is right for `va2` and wrong for everything else. `Louisa (vc
- * Shadow)` reads as a cellist, and promoting her would move her into the cello
- * column, drop the word "Shadow" and displace whoever the column was dittoing;
- * a comment — `Laura (v2, shadowing on I)` — is prose, and a column has
- * nowhere to put prose. Anything the form did not write itself stays in
- * `Others?`, exactly as the sheet has it.
+ * it. That is right when the tag says the part and NOTHING else — `vc`, and
+ * equally `cello` or `violoncello`, which is what the dropdown beside it
+ * already reads as VC. It is wrong the moment there is more in there to lose:
+ * `Louisa (vc Shadow)` reads as a cellist, and promoting her would move her
+ * into the cello column, drop the word "Shadow" and displace whoever the
+ * column was dittoing. `(vc1/2)` and `(asst v2)` are the same story, and a
+ * comment — `Laura (v2, shadowing on I)` — is prose, which a column has
+ * nowhere to put.
+ *
+ * Hence a bare word, optionally numbered, and nothing else. Testing instead
+ * that the text is exactly the code a dropdown writes made `(cello)` behave
+ * differently from `(vc)` while the select over both said VC.
  * @param {OtherRow} row
  * @returns {string|null}
  */
 function othersKey(row) {
     if ((row.comment ?? '').trim()) return null;
     const raw = (row.instrument ?? '').trim().toLowerCase();
-    if (!raw) return null;
-    const key = slotPartKey(raw);
-    return key && partCode(key) === raw ? key : null;
+    return /^[a-z]+\d?$/.test(raw) ? slotPartKey(raw) : null;
 }
 
 /**
@@ -657,7 +667,17 @@ export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
         already.add(said(c.name, code));
         othersOut.push({ name: c.name, instrument: code, comment: '' });
     });
-    return { cells, others: othersOut, parts, dropped };
+    // A row superseded by an identical entry is not missing from anything: a
+    // seat demoted onto the part that row already named re-appends the same
+    // text. Saying "not written" about text the row holds invites the logger
+    // to add it a second time.
+    const written = new Set(othersOut.map(r => said(r.name ?? '', r.instrument ?? '')));
+    return {
+        cells,
+        others: othersOut,
+        parts,
+        dropped: dropped.filter(r => !written.has(said(r.name ?? '', r.instrument ?? ''))),
+    };
 }
 
 /**
