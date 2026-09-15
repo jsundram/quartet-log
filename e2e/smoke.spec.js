@@ -1148,7 +1148,7 @@ test.describe('log form', () => {
         // Alice is already in Player 1, carried from the row above.
         await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alice');
         await expect(page.locator('#logRowNote'))
-            .toHaveText('Not written: Alice (p) — that name is in a player field above.');
+            .toHaveText('Removed from Others?: Alice (p) — that name is in a player field.');
 
         // Name the pianist properly and the note goes: two people, two cells.
         await row.locator('input').fill('Alice Chen');
@@ -1210,7 +1210,7 @@ test.describe('log form', () => {
             + ` ${recent.getHours()}:${String(recent.getMinutes()).padStart(2, '0')}:00`;
         await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
             contentType: 'text/csv',
-            body: `${FIXTURE_CSV}\n${stamp},Haydn,20#3,V1,Alice,Bob,Carol,Heidi (vc),Home,`,
+            body: `${FIXTURE_CSV}\n${stamp},Haydn,20#3,V1,Alice,Bob,Carol,Heidi (vc); Ida (vc Shadow),Home,`,
         }));
         await page.reload();
         await expect(page.locator('#logForm')).toBeVisible();
@@ -1221,13 +1221,25 @@ test.describe('log form', () => {
         const row = page.locator('.log-other-row').first();
         await expect(row.locator('select')).toHaveValue('VC');
 
+        // The select says what the form will ACT on, which is why the one
+        // beside it differs: "(vc Shadow)" reads as a cellist too, but it has
+        // a word attached that a column has nowhere to put, so it is never
+        // promoted -- and it shows as itself rather than promising a cello
+        // column it will not reach.
+        await page.locator('#logOthersHere .log-chip-btn')
+            .filter({ hasText: 'Ida' }).click();
+        const shadow = page.locator('.log-other-row').nth(1);
+        await expect(shadow.locator('input')).toHaveValue('Ida');
+        await expect(shadow.locator('select')).toHaveValue('vc Shadow');
+
         await pickComposer(page, 'Haydn');
         await page.fill('#logTitle', '76#6');
         await page.click('#logPart .part-btn[data-part="V1"]');
         await page.click('#logSubmit');
         await expectLogged(page);
         // Round-tripped, not rewritten into the nearest thing on the list.
-        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID)).toBe('Heidi (vc)');
+        expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID))
+            .toBe('Heidi (vc); Ida (vc Shadow)');
     });
 
     test('people already in the sitting are a tap, not a retype', async ({ page }) => {

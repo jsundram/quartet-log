@@ -578,9 +578,12 @@ test('an extra a seat supersedes is reported, not just removed', () => {
     assert.deepEqual(kept.cells, ['Dana Ellis', '', '']);
     assert.equal(serializeOthersRows(kept.others), 'Erin Fry (p); Alice Hart (va2)');
     assert.deepEqual(kept.dropped, []);
-    // Nor is a row the demoted seat re-appends WORD FOR WORD: the extras cell
-    // holds it either way, and "not written" about text the row contains
-    // invites the logger to add it a second time.
+    // A row a demoted seat then re-appends WORD FOR WORD is still reported,
+    // and that is the deliberate choice: the text is identical to the case
+    // this exists for -- a second person of that name, whose row is gone while
+    // the replacement text belongs to somebody else -- and which of the two it
+    // is cannot be decided from the row. Noise beats silence, and the preview
+    // shows the row beside the note.
     const same = plan({
         typed: ['Dana Ellis', '', ''],
         carried: ['', 'Bob Bek', 'Carol Diaz'],
@@ -588,7 +591,27 @@ test('an extra a seat supersedes is reported, not just removed', () => {
         others: [{ name: 'Dana Ellis', instrument: 'va2', comment: '' }],
     });
     assert.equal(serializeOthersRows(same.others), 'Dana Ellis (va2)');
-    assert.deepEqual(same.dropped, []);
+    assert.equal(serializeOthersRows(same.dropped), 'Dana Ellis (va2)');
+});
+
+test('a numbered part the catalog does not write is never promoted', () => {
+    // slotPartKey prefix-matches, so `va3` reads as VA and `cello2` as VC.
+    // Promoting one rewrites the cell as a bare name in the viola column: a
+    // third violist recorded as the first, with the 3 gone. A bare word has no
+    // number to lose, and a code the catalog writes keeps its own.
+    const into = instrument => plan({
+        carried: ['Alice Hart', '', 'Carol Diaz'],
+        chosen: ['V2', 'VA', 'VC'], implied: ['V2', 'VA', 'VC'],
+        others: [{ name: 'Bob Bek', instrument, comment: '' }],
+    });
+    for (const instrument of ['va3', 'vc3', 'cello2', 'v5']) {
+        assert.deepEqual(into(instrument).cells, ['', '', ''], instrument);
+        assert.equal(serializeOthersRows(into(instrument).others), `Bob Bek (${instrument})`);
+    }
+    // ...while the spellings it does write go in.
+    for (const instrument of ['va', 'vla', 'viola']) {
+        assert.deepEqual(into(instrument).cells, ['', 'Bob Bek', ''], instrument);
+    }
 });
 
 test('a swap plus a second claim on one of the swapped parts keeps the swap', () => {

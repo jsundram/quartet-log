@@ -14,7 +14,7 @@ import {
     blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
     impliedSlotParts, defaultSlotParts, rowPlan, setSlotPart, PART_CHOICES,
-    rosterParts, seatParts, partCode, partLabel,
+    rosterParts, seatParts, partCode, partLabel, othersKey,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, serializeOthersRows, canonicalOthersCell,
     sessionPeople, sessionRows, slotPartKey, sessionPieces, countNew,
@@ -807,7 +807,7 @@ export class LogComponent {
         // and one an extra, where the second is a person and not a leftover.
         const gone = serializeOthersRows(dropped);
         d3.select('#logRowNote').text(gone
-            ? `Not written: ${gone} — that name is in a player field above.`
+            ? `Removed from Others?: ${gone} — that name is in a player field.`
             : '');
     }
 
@@ -1014,8 +1014,13 @@ export class LogComponent {
                 // actually turn up, and a part a COLUMN holds belongs here too
                 // — set an extra to `VC` and rowPlan writes them into the
                 // cello column, which is how somebody moves back in.
+                // The key rowPlan will ACT on, not merely the one the text
+                // reads as: `(vc Shadow)` and `(vc1/2)` read as VC and are
+                // deliberately not promoted, so a select saying VC over them
+                // would promise a cello column they never reach. They show as
+                // themselves instead, which is also what the cell says.
                 renderPartOptions(d3.select(nodes[i]), {
-                    key: slotPartKey(d.instrument),
+                    key: othersKey(d),
                     raw: d.instrument,
                     options: rosterParts(this.entry.part),
                     blank: true,

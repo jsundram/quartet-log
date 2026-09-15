@@ -478,16 +478,20 @@ function emptyCell(typed, carried) {
  * comment — `Laura (v2, shadowing on I)` — is prose, which a column has
  * nowhere to put.
  *
- * Hence a bare word, optionally numbered, and nothing else. Testing instead
- * that the text is exactly the code a dropdown writes made `(cello)` behave
- * differently from `(vc)` while the select over both said VC.
+ * Hence a bare word, or a code this catalog itself writes. **A digit it does
+ * NOT write is the trap**: `slotPartKey` prefix-matches, so `va3` reads as VA
+ * and `cello2` as VC, and promoting one rewrites the cell as a bare name — a
+ * third violist recorded as the first, with the `3` gone. A bare word cannot
+ * do that, since there is no number in it to lose.
  * @param {OtherRow} row
  * @returns {string|null}
  */
-function othersKey(row) {
+export function othersKey(row) {
     if ((row.comment ?? '').trim()) return null;
     const raw = (row.instrument ?? '').trim().toLowerCase();
-    return /^[a-z]+\d?$/.test(raw) ? slotPartKey(raw) : null;
+    const key = slotPartKey(raw);
+    if (!key) return null;
+    return partCode(key) === raw || /^[a-z]+$/.test(raw) ? key : null;
 }
 
 /**
@@ -667,17 +671,16 @@ export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
         already.add(said(c.name, code));
         othersOut.push({ name: c.name, instrument: code, comment: '' });
     });
-    // A row superseded by an identical entry is not missing from anything: a
-    // seat demoted onto the part that row already named re-appends the same
-    // text. Saying "not written" about text the row holds invites the logger
-    // to add it a second time.
-    const written = new Set(othersOut.map(r => said(r.name ?? '', r.instrument ?? '')));
-    return {
-        cells,
-        others: othersOut,
-        parts,
-        dropped: dropped.filter(r => !written.has(said(r.name ?? '', r.instrument ?? ''))),
-    };
+    // Every dropped row is reported, including one a demoted seat then
+    // re-appends word for word. That case reads oddly — the cell does hold the
+    // text — but it cannot be told from the case this exists for: a second
+    // person of that name, whose row is gone and whose replacement text
+    // belongs to somebody else. The two are identical strings and differ only
+    // in who they mean, which is the same thing `attribution.mjs` exists to
+    // decide and cannot be decided here. Noise beats silence, the preview
+    // shows the row beside the note, and the note says which row was removed
+    // rather than claiming the text is absent.
+    return { cells, others: othersOut, parts, dropped };
 }
 
 /**

@@ -1751,8 +1751,8 @@ body.network-fullscreen-open {
 .log-preview-note {
     display: block;
     margin-top: 4px;
-    /* Named, not inherited: the rule above sets a monospace stack for the row
-       itself, and this is a sentence rather than a row. */
+    /* Named, not inherited: this span sits inside .log-preview, which sets a
+       monospace stack for the row itself, and this is a sentence not a row. */
     font-family: sans-serif;
     font-style: italic;
     color: var(--color-text-secondary);
