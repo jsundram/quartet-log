@@ -602,28 +602,30 @@ export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
     // The rows that stayed in `Others?` are passed through untouched, comment
     // and all; the seats that left are appended in seat order.
     //
-    // **Nobody is written into the row twice**, and the two directions are
-    // deduped differently because the stale half is a different half.
+    // **Nobody is written into the row twice**, and where one person has two
+    // claims the SEATS win — a name the seats claim supersedes an extras row
+    // of that name, whichever part each of them names, and whether the seat
+    // ends in a column or is moved out of one.
     //
-    // A name in a COLUMN beats an extras row of the same name: the extras are
-    // re-seeded from the sitting on every piece, so a fifth player who takes a
-    // chair this time is typed into the seat while last piece's extras row is
-    // still sitting there. The row is the stale copy, whatever part it names,
-    // so the match is on the name alone — the two disagreeing about the part
-    // is the normal shape of it (in the column on `VA`, in the row on `va2`).
-    // A row carrying a COMMENT survives even so: that is prose somebody wrote
-    // rather than a re-seed, and the freeform box is the only other place for
-    // it.
+    // The seats win because the extras are the half that goes stale: they are
+    // re-seeded from the sitting on every piece, so last piece's `Dave (va2)`
+    // is still sitting there when Dave takes a chair this time, or when his
+    // seat is moved to `VA2` and back out. And the two disagreeing about the
+    // part is the NORMAL shape of that (in the column on `VA`, in the row on
+    // `va2`), so matching them on the part is matching on the thing that
+    // differs: keep both and the sheet gets one person twice — on every row
+    // of the sitting, since the next piece seeds its extras from this one.
+    // Dropping the stale row is the half that heals.
     //
-    // A DEMOTED seat, though, is the thing the logger just changed, and it is
-    // matched on the name AND the part. Matching on the name alone dropped it
-    // silently — set Bob's seat to `VA2` with a `bob (p)` row already there
-    // and the `va2` claim left the row altogether, which with 14 people in
-    // this log carrying no surname is not a hypothetical.
-    const placedNames = new Set(placed.filter(Boolean)
-        .map(c => /** @type {Claim} */ (c).name.toLowerCase()));
+    // A row carrying a COMMENT survives regardless: that is prose somebody
+    // wrote rather than a re-seed, and the freeform box is the only other
+    // place for it. And two SEAT claims of one name are both written — the
+    // logger typed that name into two chairs, and there is nothing to choose
+    // between them.
+    const seatNames = new Set(claims.filter(c => c.seat !== null)
+        .map(c => c.name.toLowerCase()));
     const othersOut = others.filter(row => !claims.some(c => c.row === row && taken.has(c))
-        && !(!(row.comment ?? '').trim() && placedNames.has((row.name ?? '').trim().toLowerCase())));
+        && !(!(row.comment ?? '').trim() && seatNames.has((row.name ?? '').trim().toLowerCase())));
     const said = (/** @type {string} */ name, /** @type {string} */ code) =>
         `${name.trim().toLowerCase()} (${(code ?? '').trim().toLowerCase()})`;
     const already = new Set(othersOut.map(r => said(r.name ?? '', r.instrument ?? '')));

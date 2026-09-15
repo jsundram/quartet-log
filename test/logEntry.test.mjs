@@ -605,16 +605,26 @@ test('nobody is written into the row twice, in either direction', () => {
         chosen: ['V1', 'VA2', 'VC'], implied: ['V1', 'V2', 'VC'],
         others: [{ name: 'Bob Bek', instrument: 'va2', comment: '' }],
     }), 'Bob Bek (va2)');
-    // That direction matches on the name AND the part, because the demoted
-    // seat is the thing the logger just changed. On the name alone it vanished
-    // from the row -- and a shared first name is not a hypothetical here,
-    // where fourteen people have no surname anywhere in the log.
+    // ...and the parts DISAGREEING is the normal shape of a stale seed, not a
+    // reason to keep both: Bob was an extra on piano last piece, so the
+    // seeding brings that row back, and this piece his seat moves to VA2.
+    // Matching on the part too wrote him twice -- on every row of the sitting,
+    // since the next piece seeds its extras from this one.
     assert.equal(extras({
         typed: ['', 'Bob Bek', ''],
         carried: ['Alice Hart', '', 'Carol Diaz'],
         chosen: ['V1', 'VA2', 'VC'], implied: ['V1', 'V2', 'VC'],
         others: [{ name: 'bob bek', instrument: 'p', comment: '' }],
-    }), 'bob bek (p); Bob Bek (va2)');
+    }), 'Bob Bek (va2)');
+    // Two SEAT claims of one name are both written: the logger typed that name
+    // into two chairs, and there is nothing here to choose between them.
+    const twice = plan({
+        typed: ['Bob Bek', 'Bob Bek', ''],
+        carried: ['', '', 'Carol Diaz'],
+        chosen: ['V1', 'VA2', 'VC'], implied: ['V1', 'V2', 'VC'],
+    });
+    assert.deepEqual(twice.cells, ['Bob Bek', '', '']);
+    assert.equal(serializeOthersRows(twice.others), 'Bob Bek (va2)');
 });
 
 test('a legacy tag carried in a column moves that person out of it', () => {
