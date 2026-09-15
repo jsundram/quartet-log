@@ -240,7 +240,9 @@ extra. Nobody is retyped, and the piece after that asks for nothing at all.
 VA2, VC, VC2, less whichever one is yours — because the trade they exist to
 make easy is the one that happens between two sextets, where everybody shifts
 within their own family. Others? offers all of them, plus V3 and V4 for an
-octet, VA1 for when you are the second viola, and piano, clarinet and flute.
+octet, VA1 for when you are the second viola, and bass, piano and clarinet.
+Anything else — an oboe, a flute — is still typed in the parens as it always
+was, and the dropdown shows it back rather than rewriting it.
 Moving somebody INTO a column works from either list, so a pianist who picks up
 a violin is one tap on their Others? dropdown. Only the other direction — a
 player field moving to piano or to an octet's V3 — isn't on offer, and there

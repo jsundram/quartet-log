@@ -244,9 +244,13 @@ const PARTS = [
     { key: 'VA2', label: 'VA2', code: 'va2' },
     { key: 'VC', label: 'VC', code: 'vc' },
     { key: 'VC2', label: 'VC2', code: 'vc2' },
+    // Strings high to low, then the keyboard, then the winds. Bass is here and
+    // flute is not because this log has eleven basses in it and no flutes at
+    // all — the catalog is the instruments the rep actually uses, and anything
+    // it lacks still round-trips as the raw code the cell holds.
+    { key: 'BASS', label: 'Bass', code: 'bass' },
     { key: 'P', label: 'Piano', code: 'p' },
     { key: 'CL', label: 'Clarinet', code: 'cl' },
-    { key: 'FL', label: 'Flute', code: 'fl' },
 ];
 
 const BY_KEY = new Map(PARTS.map(p => [p.key, p]));
@@ -369,9 +373,9 @@ export function slotPartKey(annotation) {
     if (/^v2/.test(s)) return 'V2';
     if (/^v3/.test(s)) return 'V3';
     if (/^v4/.test(s)) return 'V4';
+    if (/^(?:bass|contrabass|db|cb)(?![a-z])/.test(s)) return 'BASS';
     if (/^(?:p|pf|pno|piano)(?![a-z])/.test(s)) return 'P';
     if (/^(?:cl|clar|clarinet)(?![a-z])/.test(s)) return 'CL';
-    if (/^(?:fl|flute)(?![a-z])/.test(s)) return 'FL';
     return null;
 }
 

@@ -252,8 +252,15 @@ test('slotPartKey folds the codes the app folds, and keeps the ones it does not'
     assert.equal(slotPartKey('v4'), 'V4');
     assert.equal(slotPartKey('cl'), 'CL');
     assert.equal(slotPartKey('clarinet'), 'CL');
-    assert.equal(slotPartKey('fl'), 'FL');
-    assert.equal(slotPartKey('flute'), 'FL');
+    // Bass is in the catalog and flute is not: this log holds eleven of the
+    // one and none of the other. An instrument with no key round-trips as the
+    // raw code, which is the passthrough every dropdown offers.
+    assert.equal(slotPartKey('bass'), 'BASS');
+    assert.equal(slotPartKey('cb'), 'BASS');
+    assert.equal(slotPartKey('flute'), null);
+    assert.equal(slotPartKey('oboe'), null);
+    // "cb" must not read as the cello: the (?![a-z]) guard is what stops it,
+    // the same way it stops "c" matching clarinet.
     // The (?![a-z]) guards still hold: "c" is cello, "cl" is not.
     assert.equal(slotPartKey('c'), 'VC');
 });
@@ -265,7 +272,7 @@ test('an extra is offered every part but your own', () => {
     // arrangement on screen had to be the arrangement in the sheet, so a
     // quintet or a swap was still typed out name by name.
     const keys = part => rosterParts(part).map(p => p.key);
-    const ALL = ['V1', 'V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'P', 'CL', 'FL'];
+    const ALL = ['V1', 'V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'BASS', 'P', 'CL'];
     assert.deepEqual(keys(''), ALL);
     // Your own part is the one thing left out: you are already on it, and a row
     // saying two people played it cannot say which of them is you.
@@ -285,7 +292,7 @@ test('an extra is offered every part but your own', () => {
     // Every key writes the code the sheet has always held.
     for (const p of rosterParts('')) assert.equal(partCode(p.key), p.code);
     assert.deepEqual(rosterParts('').map(p => p.code),
-        ['v1', 'v2', 'v3', 'v4', 'va', 'va1', 'va2', 'vc', 'vc2', 'p', 'cl', 'fl']);
+        ['v1', 'v2', 'v3', 'v4', 'va', 'va1', 'va2', 'vc', 'vc2', 'bass', 'p', 'cl']);
     // A raw annotation the catalog does not know passes through as itself,
     // both ways -- the dropdown offers it, and submitting writes it back.
     assert.equal(partCode('klavier'), 'klavier');
@@ -309,7 +316,7 @@ test('a player column offers the string chairs, and nothing else', () => {
     // Piano, the winds and an octet's v3/v4 are Others? parts. Nobody moves
     // into them from a column often enough to earn a tap target on every row:
     // in this log, the pianists are 8 rows in 3465 and v3/v4 about 16.
-    for (const k of ['P', 'CL', 'FL', 'V3', 'V4', 'VA1']) {
+    for (const k of ['P', 'CL', 'BASS', 'V3', 'V4', 'VA1']) {
         assert.ok(!keys('V1').includes(k), `${k} is not a column part`);
         assert.ok(rosterParts('V1').some(p => p.key === k), `${k} is an Others? part`);
     }

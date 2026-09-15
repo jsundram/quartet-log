@@ -1066,7 +1066,7 @@ test.describe('log form', () => {
         // octet's second quartet and a wind player actually turn up.
         await page.click('#logOthersAdd');
         await expect(page.locator('.log-other-row').first().locator('option')).toHaveText(
-            ['part?', 'V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'Piano', 'Clarinet', 'Flute']);
+            ['part?', 'V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'Bass', 'Piano', 'Clarinet']);
         // Everyone past the four is an Others? entry with a tag.
         const row = page.locator('.log-other-row').first();
         await row.locator('input').fill('Erin Fry');
@@ -1082,9 +1082,10 @@ test.describe('log form', () => {
         expect(body.has(PLAYER2_ID)).toBe(false);
     });
 
-    test('Others? offers the octet and wind parts, and round-trips them', async ({ page }) => {
-        // v3/v4 for an octet, cl/fl for the wind rep. These used to be absent
-        // from the list entirely, so logging one meant typing the syntax.
+    test('Others? offers the octet, bass and wind parts, and round-trips them', async ({ page }) => {
+        // v3/v4 for an octet, bass for the quintets that have one, cl for the
+        // wind rep. These used to be absent from the list entirely, so logging
+        // one meant typing the syntax.
         const bodies = await captureSubmits(page);
         await pickComposer(page, 'Mozart');
         await page.fill('#logTitle', 'K581');
