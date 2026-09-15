@@ -1132,6 +1132,25 @@ test.describe('log form', () => {
         expect(body.has(PLAYER2_ID)).toBe(false);
     });
 
+    test('an extra dropdown follows your own part when you change it', async ({ page }) => {
+        // Both lists leave your own part out, so an extras row built before
+        // the Part row was tapped is offering it. Pick it and the row records
+        // a second first violin beside you. The mirror is as bad: a part that
+        // has just BECOME a column part is the way back into a column, and a
+        // stale list cannot offer it.
+        await page.click('#logOthersAdd');
+        const select = page.locator('.log-other-row').first().locator('select');
+        await expect(select.locator('option[value="V1"]')).toHaveCount(1);
+
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await expect(select.locator('option[value="V1"]')).toHaveCount(0);
+        // And back: on the viola, V1 is a column part again -- and the viola
+        // I am sitting in goes off the list in its place.
+        await page.click('#logPart .part-btn[data-part="VA1"]');
+        await expect(select.locator('option[value="V1"]')).toHaveCount(1);
+        await expect(select.locator('option[value="VA"]')).toHaveCount(0);
+    });
+
     test('an Others? player gets a part without typing the syntax', async ({ page }) => {
         // Others? is where a pianist or a second cellist actually turns up, so
         // it gets the same name-plus-part pair the seats have. It still

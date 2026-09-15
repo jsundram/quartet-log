@@ -541,6 +541,41 @@ test('an extra who is on a column part is written in that column', () => {
     assert.equal(serializeOthersRows(got.others), 'Dana Ellis (p); Alice Hart (va2)');
 });
 
+test('a swap plus a second claim on one of the swapped parts keeps the swap', () => {
+    // After a swap nobody is "already" sitting in the column their part now
+    // belongs to, so a tie-break that only looks at the seat whose column it
+    // is finds nobody -- and the column player was evicted into Others? with
+    // a tag while the chair they sat in was written "-". The one SEAT claim
+    // wins instead, and the extra keeps the duplicate claim they made.
+    const violins = plan({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V2', 'V1', 'VC'],
+        others: [{ name: 'Erin Fry', instrument: 'v2', comment: '' }],
+    });
+    assert.deepEqual(violins.cells, ['Bob Bek', 'Alice Hart', '']);
+    assert.equal(serializeOthersRows(violins.others), 'Erin Fry (v2)');
+
+    // The same shape with no extra promoted at all, which used to write the
+    // one thing this file says it never writes: a tag in a column.
+    const tagged = plan({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['VA', 'VA2', 'VC'], implied: ['V2', 'VA', 'VC'],
+        others: [{ name: 'Dana Ellis', instrument: 'va', comment: '' }],
+    });
+    assert.ok(!tagged.cells.some(c => c.includes('(')), `no tag in a column: ${tagged.cells}`);
+    assert.deepEqual(tagged.cells, ['-', 'Alice Hart', '']);
+});
+
+test('two seat claims with neither in the column stay where they were typed', () => {
+    // Under-determined, and the one case the order above deliberately leaves
+    // alone: picking either would move a third person nobody spoke about.
+    const got = plan({
+        typed: ['Alice Hart', 'Bob Bek', ''],
+        chosen: ['VC', 'VC', 'VC'], implied: ['V1', 'V2', 'VC'],
+    });
+    assert.deepEqual(got.cells, ['Alice Hart (vc)', 'Bob Bek (vc)', '']);
+});
+
 test('nobody is written into the row twice, in either direction', () => {
     // Both directions happen now that a name can move between a column and
     // Others?. The extras are re-seeded from the sitting on every piece, so a
@@ -570,6 +605,16 @@ test('nobody is written into the row twice, in either direction', () => {
         chosen: ['V1', 'VA2', 'VC'], implied: ['V1', 'V2', 'VC'],
         others: [{ name: 'Bob Bek', instrument: 'va2', comment: '' }],
     }), 'Bob Bek (va2)');
+    // That direction matches on the name AND the part, because the demoted
+    // seat is the thing the logger just changed. On the name alone it vanished
+    // from the row -- and a shared first name is not a hypothetical here,
+    // where fourteen people have no surname anywhere in the log.
+    assert.equal(extras({
+        typed: ['', 'Bob Bek', ''],
+        carried: ['Alice Hart', '', 'Carol Diaz'],
+        chosen: ['V1', 'VA2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'bob bek', instrument: 'p', comment: '' }],
+    }), 'bob bek (p); Bob Bek (va2)');
 });
 
 test('a legacy tag carried in a column moves that person out of it', () => {

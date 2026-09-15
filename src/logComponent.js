@@ -521,6 +521,12 @@ export class LogComponent {
                     });
                 this.clearMissing();
                 this.renderSlotParts();
+                // The extras' dropdowns are built from your own part too — it
+                // is the one option their list leaves out — so they go stale
+                // the moment it changes: an extra could be offered the part
+                // you just took, or be missing one that just became a column
+                // part and so the way back into a column.
+                this.renderOtherRows();
                 // Own part decides what the three columns hold, so it decides
                 // who lands in them: the same roster makes a different row.
                 this.renderPreview();

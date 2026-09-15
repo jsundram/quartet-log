@@ -480,6 +480,14 @@ function othersKey(row) {
     return key && partCode(key) === raw ? key : null;
 }
 
+/**
+ * The one element, or nothing. A choice between two is not a choice.
+ * @template T @param {T[]} list @returns {T|undefined}
+ */
+function only(list) {
+    return list.length === 1 ? list[0] : undefined;
+}
+
 /** @typedef {{ name: string, key: string|null, seat: number|null, row: OtherRow|null }} Claim */
 
 /**
@@ -540,13 +548,27 @@ export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
     /** @type {(Claim|null)[]} */
     const placed = [null, null, null];
     const taken = new Set();
-    // The part decides the column.
+    // The part decides the column. Where more than one person claims it, in
+    // this order:
+    //
+    //   1. whoever is already sitting in that column — the cell dittos, and
+    //      nothing moves that does not have to;
+    //   2. failing that, the only SEAT claim, because after a swap nobody is
+    //      "already" in the column their part now belongs to. Without this
+    //      step a swap plus any second claim on one of the swapped parts
+    //      evicted a column player into `Others?` with a tag and wrote `-`
+    //      over the chair they were sitting in;
+    //   3. failing that, the only claim there is, which is how an extra is
+    //      promoted into a column.
+    //
+    // Two seat claims with neither in the column is genuinely under-determined
+    // — nobody is placed, and both are annotated where they sit.
     implied.forEach((part, i) => {
         if (!part) return;
         const on = claims.filter(c => c.key === part);
-        // Two people on one part: the seat that already IS that column keeps
-        // it, and the other is handled below.
-        const pick = on.length === 1 ? on[0] : on.find(c => c.seat === i);
+        const pick = on.find(c => c.seat === i)
+            ?? only(on.filter(c => c.seat !== null))
+            ?? only(on);
         if (pick) { placed[i] = pick; taken.add(pick); }
     });
     // Everyone the parts did not place stays in the seat they were typed in —
@@ -580,26 +602,37 @@ export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
     // The rows that stayed in `Others?` are passed through untouched, comment
     // and all; the seats that left are appended in seat order.
     //
-    // **Nobody is written into the row twice**, in either direction, which is
-    // exactly what audit_ensembles and the unique-people counts exist to
-    // chase. Both directions actually happen now that a name can move between
-    // a column and this cell: the extras are re-seeded from the sitting on
-    // every piece, so a fifth player who takes a chair this time is typed into
-    // the seat while their extras row is still sitting there — one person, two
-    // parts, one row. The column wins, being the stronger claim: it is
-    // positional and it dittos forward, while the extras row is the stale copy
-    // the seeding left. A row carrying a COMMENT is kept even so — that is
-    // prose somebody wrote, not a re-seed, and the freeform box is the only
-    // other place it could go.
+    // **Nobody is written into the row twice**, and the two directions are
+    // deduped differently because the stale half is a different half.
+    //
+    // A name in a COLUMN beats an extras row of the same name: the extras are
+    // re-seeded from the sitting on every piece, so a fifth player who takes a
+    // chair this time is typed into the seat while last piece's extras row is
+    // still sitting there. The row is the stale copy, whatever part it names,
+    // so the match is on the name alone — the two disagreeing about the part
+    // is the normal shape of it (in the column on `VA`, in the row on `va2`).
+    // A row carrying a COMMENT survives even so: that is prose somebody wrote
+    // rather than a re-seed, and the freeform box is the only other place for
+    // it.
+    //
+    // A DEMOTED seat, though, is the thing the logger just changed, and it is
+    // matched on the name AND the part. Matching on the name alone dropped it
+    // silently — set Bob's seat to `VA2` with a `bob (p)` row already there
+    // and the `va2` claim left the row altogether, which with 14 people in
+    // this log carrying no surname is not a hypothetical.
     const placedNames = new Set(placed.filter(Boolean)
         .map(c => /** @type {Claim} */ (c).name.toLowerCase()));
     const othersOut = others.filter(row => !claims.some(c => c.row === row && taken.has(c))
         && !(!(row.comment ?? '').trim() && placedNames.has((row.name ?? '').trim().toLowerCase())));
-    const already = new Set([...placedNames, ...othersOut.map(r => (r.name ?? '').trim().toLowerCase())]);
+    const said = (/** @type {string} */ name, /** @type {string} */ code) =>
+        `${name.trim().toLowerCase()} (${(code ?? '').trim().toLowerCase()})`;
+    const already = new Set(othersOut.map(r => said(r.name ?? '', r.instrument ?? '')));
     claims.forEach(c => {
-        if (taken.has(c) || c.seat === null || already.has(c.name.toLowerCase())) return;
-        already.add(c.name.toLowerCase());
-        othersOut.push({ name: c.name, instrument: partCode(c.key) ?? '', comment: '' });
+        if (taken.has(c) || c.seat === null) return;
+        const code = /** @type {string} */ (partCode(c.key) ?? '');
+        if (already.has(said(c.name, code))) return;
+        already.add(said(c.name, code));
+        othersOut.push({ name: c.name, instrument: code, comment: '' });
     });
     return { cells, others: othersOut, parts };
 }
