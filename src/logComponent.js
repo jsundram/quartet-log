@@ -930,9 +930,24 @@ export class LogComponent {
         this._otherId = Math.max(this._otherId, ...this.otherRows.map(r => r.id ?? 0));
     }
 
+    // The extras a new piece starts from: the sitting's last row, rows only.
+    //
+    // **The freeform box is NOT re-seeded.** What goes in it is an entry with
+    // prose attached, and in this log prose is about the piece in front of
+    // you: of 21 such entries the comments are `on I`, `on III`, `on iii/iv`,
+    // `shadowing on II, III`, `unison`, `rest`, `they switched`, `doubling`.
+    // After one there were 49 further rows in the same sitting, and the logger
+    // wrote the same entry again on 2 of them — so re-seeding it stamped a
+    // stale note about the third movement of the last piece onto 96% of the
+    // rows that followed. The PERSON does not carry either: they were named
+    // again on 7 of those 49, these being guests who sat in for one piece.
+    //
+    // Nobody is lost by it. The sitting's chips still offer them by name, so
+    // the one-in-seven case is a tap, and what it writes is a comment-free row
+    // — which is what that case wants anyway.
     seedOthers() {
-        const { rows, freeform } = splitOthersCell(this.defaultOthersCell());
-        this.othersFree = freeform;
+        const { rows } = splitOthersCell(this.defaultOthersCell());
+        this.othersFree = '';
         this.setOtherRows(rows);
     }
 

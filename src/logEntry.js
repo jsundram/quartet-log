@@ -622,11 +622,10 @@ export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
     //
     // A row carrying a COMMENT survives regardless: that is prose somebody
     // wrote rather than a re-seed, and the freeform box is the only other
-    // place for it. For the same reason the freeform box itself is never
-    // deduped — it is not passed in here at all. It re-seeds like the rows do,
-    // so `Dave (va2, sub)` in it while Dave takes a chair does write him
-    // twice; that is the accepted cost of never destroying prose, and the
-    // preview shows the row it makes. And two SEAT claims of one name are both
+    // place for it. The box itself is never deduped either — it is not passed
+    // in here at all — and it does not need to be, because it does not
+    // re-seed: what is in it was typed for the piece in front of you (see
+    // LogComponent.seedOthers). And two SEAT claims of one name are both
     // written — the logger typed that name into two chairs, and there is
     // nothing to choose between them.
     // Which row is the stale one cannot be known here, only guessed, and the

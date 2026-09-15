@@ -1494,6 +1494,22 @@ test.describe('log form', () => {
         await expectLogged(page);
         expect(new URLSearchParams(bodies.at(-1)).get(OTHERS_ID))
             .toBe('Dana Ellis (vc2); Laura (v2, shadowing on I)');
+
+        // ...and it does NOT come back for the next piece. The row does: a
+        // name and a part is who is in the room, and it carries like a seat.
+        // Prose is about the piece in front of you -- "shadowing on I" is the
+        // first movement of the piece just logged -- so re-seeding it writes a
+        // stale note onto everything that follows. In this log the same
+        // commented entry was written again on 2 of the 49 rows that followed
+        // one.
+        await logAnother(page);
+        await expect(page.locator('#logOthersFree')).toHaveValue('');
+        await expect(page.locator('.log-other-row').first().locator('input'))
+            .toHaveValue('Dana Ellis');
+        // Laura is not lost -- the sitting offers her back as a tap, and what
+        // that writes is a row rather than prose.
+        await expect(page.locator('#logOthersHere .log-chip-btn')
+            .filter({ hasText: 'Laura' })).toBeVisible();
     });
 
     test('an Others? row can be removed, and a blank one says nothing', async ({ page }) => {
