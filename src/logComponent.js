@@ -14,7 +14,7 @@ import {
     blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
     impliedSlotParts, defaultSlotParts, rowPlan, setSlotPart, PART_CHOICES,
-    rosterParts, partCode, partLabel,
+    rosterParts, seatParts, partCode, partLabel,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, canonicalOthersCell,
     sessionPeople, sessionRows, slotPartKey, sessionPieces, countNew,
@@ -156,20 +156,21 @@ function ago(ms) {
     return hr < 24 ? `${hr}h ago` : `${Math.round(hr / 24)}d ago`;
 }
 
-// One dropdown wherever a name field has one. Which part someone played is the
-// same question whether their name sits in a column or in `Others?`, and
-// rowPlan reads the answer the same way from both — the difference between the
-// two is the form's to work out, not the logger's.
+// One dropdown wherever a name field has one, and one renderer. Which part
+// someone played is the same question whether their name sits in a column or
+// in `Others?` — rowPlan reads the answer the same way from both — so only the
+// LIST differs: a column offers the string chairs (`seatParts`), an extra
+// offers everything (`rosterParts`).
 //
-// A value the list leaves out is offered as itself: your own part, carried in
-// from a row that named it, or an annotation no option can express (`(hn)`,
-// `(klavier)`). A select reading "part?" over a cell that says klavier is the
-// same lie as rewriting the cell to the nearest thing we do know.
+// A value the list leaves out is offered as itself: your own part, a piano
+// carried in from a legacy column, or an annotation no option can express
+// (`(hn)`, `(klavier)`). A select reading "part?" over a cell that says
+// klavier is the same lie as rewriting the cell to the nearest thing we know.
 //
 // @param key the option key, or a raw code being passed through
 // @param raw the cell text to fall back on when no key reads it
-function renderPartOptions(select, { key, raw = '', myPart, blank }) {
-    const options = rosterParts(myPart);
+// @param options what this dropdown offers
+function renderPartOptions(select, { key, raw = '', options, blank }) {
     const known = !!key && options.some(o => o.key === key);
     const passthrough = key || raw;
     const extra = !known && passthrough ? [{ key: passthrough, label: partLabel(passthrough) }] : [];
@@ -600,7 +601,7 @@ export class LogComponent {
         const chosen = this.slotParts();
         SEATS.forEach((_, i) => {
             renderPartOptions(d3.select(`#logSlotPart${i + 1}`), {
-                key: chosen[i], myPart: this.entry.part, blank: !chosen[i],
+                key: chosen[i], options: seatParts(this.entry.part), blank: !chosen[i],
             });
         });
     }
@@ -966,16 +967,15 @@ export class LogComponent {
             })
             .select('select')
             .each((d, i, nodes) => {
-                // The same list the seats offer, and for the same reason: a
-                // row here is a person and a part, and whether that lands in a
-                // column or in this cell is rowPlan's answer, not the
-                // logger's. A "(v1)" typed here by hand therefore reads as V1
-                // and shows as V1, where the two-list version had no option
-                // for it and left the select saying "part?" over it.
+                // The whole catalog, unlike a column: this cell is where a
+                // pianist, an octet's second quartet and a wind player
+                // actually turn up, and a part a COLUMN holds belongs here too
+                // — set an extra to `VC` and rowPlan writes them into the
+                // cello column, which is how somebody moves back in.
                 renderPartOptions(d3.select(nodes[i]), {
                     key: slotPartKey(d.instrument),
                     raw: d.instrument,
-                    myPart: this.entry.part,
+                    options: rosterParts(this.entry.part),
                     blank: true,
                 });
             });

@@ -8,7 +8,7 @@ import {
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts, canonicalOthersCell,
     rowPlan, setSlotPart,
-    PART_CHOICES, rosterParts, partCode, partLabel,
+    PART_CHOICES, rosterParts, seatParts, partCode, partLabel,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
     sessionRows, sessionPeople, sessionPieces, countNew, PARTIAL_MOVEMENT_NOTE,
 } from '../src/logEntry.js';
@@ -258,13 +258,12 @@ test('slotPartKey folds the codes the app folds, and keeps the ones it does not'
     assert.equal(slotPartKey('c'), 'VC');
 });
 
-test('every name field offers every part but your own', () => {
-    // One list, for the seats and for Others? alike: a name field says which
-    // PART someone played, and which column that lands in is rowPlan's answer.
-    // The two-list version -- a seat could only be one of the three parts your
-    // columns hold -- meant the arrangement on screen had to be the
-    // arrangement in the sheet, so a quintet or a swap was still typed out
-    // name by name.
+test('an extra is offered every part but your own', () => {
+    // A name field says which PART someone played, and which column that lands
+    // in is rowPlan's answer -- so an extra's list is the whole catalog. The
+    // version that gave a seat only the three parts its columns hold meant the
+    // arrangement on screen had to be the arrangement in the sheet, so a
+    // quintet or a swap was still typed out name by name.
     const keys = part => rosterParts(part).map(p => p.key);
     const ALL = ['V1', 'V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'P', 'CL', 'FL'];
     assert.deepEqual(keys(''), ALL);
@@ -295,6 +294,28 @@ test('every name field offers every part but your own', () => {
     // carried in from a row that named it) should still read "Piano".
     assert.equal(partLabel('P'), 'Piano');
     assert.equal(partLabel('VA2'), 'VA2');
+});
+
+test('a player column offers the string chairs, and nothing else', () => {
+    // The columns hold a quartet, and the move they exist to make easy is the
+    // one that happens between two pieces: everybody shifts within their own
+    // family when a sextet reads a second sextet. Six keys cover that, and
+    // your own part comes off the same way it does for an extra.
+    const keys = part => seatParts(part).map(p => p.key);
+    assert.deepEqual(keys(''), ['V1', 'V2', 'VA', 'VA2', 'VC', 'VC2']);
+    assert.deepEqual(keys('V1'), ['V2', 'VA', 'VA2', 'VC', 'VC2']);
+    assert.deepEqual(keys('VA1'), ['V1', 'V2', 'VA2', 'VC', 'VC2']);
+    assert.deepEqual(keys('VA2'), ['V1', 'V2', 'VC', 'VC2']);
+    // Piano, the winds and an octet's v3/v4 are Others? parts. Nobody moves
+    // into them from a column often enough to earn a tap target on every row:
+    // in this log, the pianists are 8 rows in 3465 and v3/v4 about 16.
+    for (const k of ['P', 'CL', 'FL', 'V3', 'V4', 'VA1']) {
+        assert.ok(!keys('V1').includes(k), `${k} is not a column part`);
+        assert.ok(rosterParts('V1').some(p => p.key === k), `${k} is an Others? part`);
+    }
+    // Both lists are views of one catalog, so a key writes the same code
+    // whichever dropdown it came from.
+    for (const p of seatParts('V1')) assert.equal(partCode(p.key), p.code);
 });
 
 test('rosterParts hands out a fresh array, never the module constant', () => {

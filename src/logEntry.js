@@ -252,14 +252,14 @@ const PARTS = [
 const BY_KEY = new Map(PARTS.map(p => [p.key, p]));
 
 /**
- * What every name field's dropdown offers: any part but your own.
+ * What an `Others?` row's dropdown offers: any part but your own.
  *
- * One list for the seats and for `Others?`, because a name field no longer
- * says which COLUMN someone is in — rowPlan decides that from the part. The
- * two-list version of this (a seat could only be one of the three parts your
- * columns hold) meant the arrangement on screen had to be the arrangement in
- * the sheet, so a quintet, a part swap or a move from violin to viola was
- * still typed out name by name.
+ * A name field says which PART someone played, not which column they are in —
+ * rowPlan decides that from the part — so this is the whole catalog. The
+ * version of this that gave a seat only the three parts its columns hold meant
+ * the arrangement on screen had to be the arrangement in the sheet, so a
+ * quintet, a part swap or a move from violin to viola was still typed out name
+ * by name.
  *
  * Your own part is the one thing left out: you are already on it, and offering
  * it would invite a row that says two people played the same part with no way
@@ -283,6 +283,36 @@ export function rosterParts(part) {
     const mine = OWN_SEAT[part] ?? [part];
     return PARTS.filter(p => !mine.includes(p.key));
 }
+
+/**
+ * What a player COLUMN offers: the string chairs, and nothing else.
+ *
+ * The columns hold a quartet, and the move they have to make easy is the one
+ * that actually happens between two pieces — everybody shifts within their own
+ * family (v1↔v2, va1↔va2, vc1↔vc2) when a sextet reads a second sextet. Six
+ * keys cover that, and after your own part comes off, four or five are on the
+ * dropdown.
+ *
+ * Everything else is an `Others?` part and is reachable from there, including
+ * the promotion back INTO a column: a pianist set to `VC` is written in the
+ * cello column. What the short list costs is the other direction — moving a
+ * column player OUT to a part this list lacks, which means clearing the name
+ * field and adding them as an extra by hand. In this log that is the pianists
+ * (8 rows in 3465, five people who play both) and an octet's `v3`/`v4` (~16
+ * rows). A tap target on every row for either is the worse trade.
+ *
+ * A value the list lacks is still offered on the seat that holds it, as a
+ * passthrough — so a legacy `(piano)` column goes on saying Piano.
+ * @param {string} part your own part
+ * @returns {SlotPart[]}
+ */
+export function seatParts(part) {
+    return rosterParts(part).filter(p => SEAT_KEYS.includes(p.key));
+}
+
+// The string chairs a quartet has, plus the second viola and second cello a
+// sextet adds — the parts a player column is allowed to offer.
+const SEAT_KEYS = ['V1', 'V2', 'VA', 'VA2', 'VC', 'VC2'];
 
 // Every spelling of the chair you are sitting in, for the parts that have more
 // than one. Only the violas do: `VA` is either of them said vaguely.

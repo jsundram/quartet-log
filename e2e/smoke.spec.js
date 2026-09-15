@@ -994,19 +994,80 @@ test.describe('log form', () => {
         expect(body.get(PLAYER2_ID)).toBe('Alice');
     });
 
+    test('a sextet reading a second sextet swaps within each family, by dropdown', async ({ page }) => {
+        // The move the column list is chosen for. Two sextets in an afternoon
+        // and everyone shifts inside their own instrument family: the violins
+        // trade, the violas trade, the cellos trade. Half of each pair is in a
+        // column and half is an extra, so every trade crosses the boundary --
+        // which is the whole reason a column offers VA2 and VC2 at all.
+        const recent = new Date(Date.now() - 3600_000);
+        const stamp = `${recent.getMonth() + 1}/${recent.getDate()}/${recent.getFullYear()}`
+            + ` ${recent.getHours()}:${String(recent.getMinutes()).padStart(2, '0')}:00`;
+        await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
+            contentType: 'text/csv',
+            body: `${FIXTURE_CSV}\n${stamp},Brahms,18,VA1,Alice,Dave,Carol,Judy (va2); Karl (vc2),Home,`,
+        }));
+        await page.reload();
+        await expect(page.locator('#logForm')).toBeVisible();
+
+        const bodies = await captureSubmits(page);
+        // A second sextet, by somebody else: the composer of the row above is
+        // now a composer this log plays, so it is on its way to the chip row
+        // and out of the picker, and pickComposer would race that.
+        await pickComposer(page, 'Dvorak');
+        await page.fill('#logTitle', '48');
+        // I move to the second viola, so Judy takes the first.
+        await page.click('#logPart .part-btn[data-part="VA2"]');
+        // The other two are one tap each, on the instrument they were last
+        // logged on -- this device is only now joining the sitting, so it has
+        // no submission of its own to seed them from.
+        const here = page.locator('#logOthersHere .log-chip-btn');
+        await here.filter({ hasText: 'Judy' }).click();
+        await here.filter({ hasText: 'Karl' }).click();
+        const extras = page.locator('.log-other-row');
+        await expect(extras.nth(0).locator('select')).toHaveValue('VA2');
+        await expect(extras.nth(1).locator('select')).toHaveValue('VC2');
+        await extras.nth(0).locator('select').selectOption('VA1');
+        // The violins trade: one dropdown, since both are in columns.
+        await page.selectOption('#logSlotPart1', 'V2');
+        await expect(page.locator('#logSlotPart2')).toHaveValue('V1');
+        // The cellos trade across the boundary -- Carol out of the column,
+        // Karl into it -- which is two dropdowns and no typing.
+        await page.selectOption('#logSlotPart3', 'VC2');
+        await extras.nth(1).locator('select').selectOption('VC');
+        await expect(page.locator('#logRowPreview'))
+            .toHaveText('Row: Dave  |  Alice  |  Karl  |  Judy (va1); Carol (vc2)');
+
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Dvorak 48');
+        const body = new URLSearchParams(bodies.at(-1));
+        expect(body.get(PLAYER1_ID)).toBe('Dave');
+        expect(body.get(PLAYER2_ID)).toBe('Alice');
+        expect(body.get(PLAYER3_ID)).toBe('Karl');
+        expect(body.get(OTHERS_ID)).toBe('Judy (va1); Carol (vc2)');
+        // Nobody was typed: every name came from the row above.
+        for (const id of ['#logPlayer1', '#logPlayer2', '#logPlayer3']) {
+            await expect(page.locator(id)).toHaveValue('');
+        }
+    });
+
     test('a quintet second viola goes in Others?, not in a column', async ({ page }) => {
         const bodies = await captureSubmits(page);
         await pickComposer(page, 'Mozart');
         await page.fill('#logTitle', 'K515');
         await page.click('#logPart .part-btn[data-part="V1"]');
-        // Every name field offers every part but my own, and the column a
-        // person lands in follows from the part rather than the other way
-        // round. The second column comes up on the part it holds.
+        // A column offers the string chairs and my own part is not among them;
+        // which column someone lands in follows from the part rather than the
+        // other way round. The second column comes up on the part it holds.
         await expect(page.locator('#logSlotPart2')).toHaveValue('VA');
         await expect(page.locator('#logSlotPart2 option')).toHaveText(
-            ['V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'Piano', 'Clarinet', 'Flute']);
-        // Everyone past the four is an Others? entry with a tag.
+            ['V2', 'VA', 'VA2', 'VC', 'VC2']);
+        // An extra is offered the whole catalog: this is where a pianist, an
+        // octet's second quartet and a wind player actually turn up.
         await page.click('#logOthersAdd');
+        await expect(page.locator('.log-other-row').first().locator('option')).toHaveText(
+            ['part?', 'V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'Piano', 'Clarinet', 'Flute']);
+        // Everyone past the four is an Others? entry with a tag.
         const row = page.locator('.log-other-row').first();
         await row.locator('input').fill('Erin Fry');
         await row.locator('select').selectOption('VA2');
