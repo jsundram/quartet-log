@@ -1018,11 +1018,11 @@ export class LogComponent {
                 // actually turn up, and a part a COLUMN holds belongs here too
                 // — set an extra to `VC` and rowPlan writes them into the
                 // cello column, which is how somebody moves back in.
-                // The key rowPlan will ACT on, not merely the one the text
-                // reads as: `(vc Shadow)` and `(vc1/2)` read as VC and are
-                // deliberately not promoted, so a select saying VC over them
-                // would promise a cello column they never reach. They show as
-                // themselves instead, which is also what the cell says.
+                // The key rowPlan will ACT on. Since slotPartKey became a
+                // lookup the two answers agree for every tag — `(vc Shadow)`
+                // names no part to either of them — and othersKey is still the
+                // one to ask, because it also declines a row carrying a
+                // comment, which the form leaves where it is.
                 renderPartOptions(d3.select(nodes[i]), {
                     key: othersKey(d),
                     raw: d.instrument,

@@ -470,29 +470,19 @@ function emptyCell(typed, carried) {
 }
 
 /**
- * The part an `Others?` row is on — but only when the cell says exactly what a
- * dropdown writes, and carries nothing else.
+ * The part an `Others?` row is on, for deciding whether to move it into a
+ * column. Null leaves it where it is.
  *
- * A row's part decides whether it is promoted into a column, and promotion
- * rewrites the cell: the column implies the part, so the tag goes away with
- * it. That is right when the tag says the part and NOTHING else — `vc`, and
- * equally `cello` or `violoncello`, which is what the dropdown beside it
- * already reads as VC. It is wrong the moment there is more in there to lose:
- * `Louisa (vc Shadow)` reads as a cellist, and promoting her would move her
- * into the cello column, drop the word "Shadow" and displace whoever the
- * column was dittoing. `(vc1/2)` and `(asst v2)` are the same story, and a
- * comment — `Laura (v2, shadowing on I)` — is prose, which a column has
- * nowhere to put.
- *
- * A row whose tag names no part stays put, and so does one carrying a
- * comment: prose is something a column has nowhere to put.
+ * `slotPartKey` answers for the tag (and says why a tag it cannot read must
+ * not be acted on). The only thing added here is the comment: prose is
+ * something a column has nowhere to put, so `Laura (v2, shadowing on I)`
+ * stays in `Others?` whatever her tag says.
  * @param {OtherRow} row
  * @returns {string|null}
  */
 export function othersKey(row) {
     return (row.comment ?? '').trim() ? null : slotPartKey(row.instrument);
 }
-
 
 /**
  * The one element, or nothing. A choice between two is not a choice.
