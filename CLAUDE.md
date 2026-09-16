@@ -286,19 +286,24 @@ Pandoc reads `gfm+attributes+implicit_figures` so `![alt](path){width=600px}` sy
 
 ## Conventions and preferences
 
+- **Rationale lives in one of three places**, chosen by a single test: will
+  somebody redo this decision if they don't see it?
+  - **Commit message or PR** — why a change was made, what was measured, what
+    was tried. The default. It is attached to the change, `git blame` finds it,
+    it costs nothing per session, and it cannot go stale because it describes a
+    moment rather than the present.
+  - **A comment at the site** — a hazard you would trip over while editing that
+    line, or an alternative that keeps being re-proposed. `defaultSlotParts`
+    carries one: review has twice proposed scoping its inheritance to the
+    session window, and the note is what stopped a third round.
+  - **This file** — constraints that span files, or that you need before you
+    know which file to open (the alias tables are arguments, never imports).
 - **Comments say WHY, never HOW.** The reader is a software engineer or an
-  LLM; neither needs the code explained, and both can read it. A comment earns
-  its place only by carrying something the code cannot: why a rule exists,
-  what broke without it, what was tried and rejected. Use examples, and
-  anonymize them (Alice/Bob, never a real collaborator).
-  **Comments that describe the mechanism rot**, and silently — nothing tests
-  them. In one PR here a four-line function accumulated fifteen lines of doc
-  describing three implementations of itself, two of them deleted, because
-  each rewrite updated the code and one paragraph. The comments that survived
-  that PR's seven review rounds unchanged were the ones naming a hazard
-  (`fillForward` skips a `-` row without advancing what it repeats) rather
-  than a mechanism. Prefer fewer: a comment you did not write cannot go stale.
-  Same for this file and for commit messages.
+  LLM; neither needs the code explained. A comment describing the mechanism
+  rots, silently, because nothing tests it — in one PR here a four-line
+  function accumulated fifteen lines of doc describing three implementations of
+  itself, two already deleted. Prefer fewer: a comment you did not write cannot
+  go stale. Anonymize any example (Alice/Bob, never a real collaborator).
 - **Python**: use `uv run --with <pkg> python ...` for one-off scripts/tools. Don't try `pip install`. The user keeps Python environments isolated via `uv`.
 - **`cd`**: don't prepend `cd <current-dir>` to commands that need permission — it triggers redundant prompts. Use absolute paths for files outside the cwd, or `(cd path && cmd)` in a subshell only when the tool genuinely requires a different cwd (e.g. pandoc resolving relative image paths).
 - **Don't destructively overwrite user-supplied assets**: when transforming images/data/etc. the user shared, write the result to a NEW path (e.g. `*-redacted.png`) so the source can be re-used for iteration. Only overwrite the source when the user explicitly asks for in-place editing.
