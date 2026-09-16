@@ -478,20 +478,50 @@ function emptyCell(typed, carried) {
  * comment — `Laura (v2, shadowing on I)` — is prose, which a column has
  * nowhere to put.
  *
- * Hence a bare word, or a code this catalog itself writes. **A digit it does
- * NOT write is the trap**: `slotPartKey` prefix-matches, so `va3` reads as VA
- * and `cello2` as VC, and promoting one rewrites the cell as a bare name — a
- * third violist recorded as the first, with the `3` gone. A bare word cannot
- * do that, since there is no number in it to lose.
+ * A row whose tag is not faithful (see faithfulKey) stays put; so does one
+ * carrying a comment, prose being something a column has nowhere to put.
  * @param {OtherRow} row
  * @returns {string|null}
  */
 export function othersKey(row) {
-    if ((row.comment ?? '').trim()) return null;
-    const raw = (row.instrument ?? '').trim().toLowerCase();
+    return (row.comment ?? '').trim() ? null : faithfulKey(row.instrument);
+}
+
+/**
+ * The part an annotation names, but only when the key says everything the
+ * annotation does — so that reading it as that key and writing the key back
+ * loses nothing.
+ *
+ * `slotPartKey` alone is not that test, twice over. It **prefix-matches**, so
+ * `va3` reads as VA and `cello2` as VC; act on either and the cell is
+ * rewritten without the number, recording a third violist as the first. And
+ * it ignores whatever follows, so `vc Shadow`, `vc1/2` and `asst v2` all read
+ * as a bare part with the rest of the text dropped.
+ *
+ * Hence: one word, optionally numbered, and the number has to be one the key
+ * itself accounts for. `va2` is VA2 and `vla2` says the same; `va3` is not any
+ * key and keeps its text. A bare `1` on a part that is the first of its kind
+ * by default is redundant rather than lost — `vc1` IS VC, which is why the
+ * catalog has no VC1.
+ *
+ * Both halves of the form read this: an `Others?` row decides promotion by it
+ * (othersKey), and a seat's dropdown its default (defaultSlotParts). They were
+ * two different tests once, and the seat's was the looser one — so a carried
+ * `Bob Bek (va3)` came back as a bare `Bob Bek`, which is the same bug doing
+ * the more damaging thing, since that path rewrites a cell that already exists.
+ * @param {string|null|undefined} annotation
+ * @returns {string|null}
+ */
+function faithfulKey(annotation) {
+    const raw = (annotation ?? '').trim().toLowerCase();
+    // A word, maybe numbered, and nothing else: anything more has something
+    // to lose.
+    if (!/^[a-z]+\d*$/.test(raw)) return null;
     const key = slotPartKey(raw);
     if (!key) return null;
-    return partCode(key) === raw || /^[a-z]+$/.test(raw) ? key : null;
+    const num = raw.match(/\d+$/)?.[0] ?? '';
+    const keyNum = (partCode(key) ?? '').match(/\d+$/)?.[0] ?? '';
+    return !num || num === keyNum || (num === '1' && !keyNum) ? key : null;
 }
 
 /**
@@ -748,9 +778,11 @@ export function defaultSlotParts(carried, part) {
     const implied = impliedSlotParts(part);
     return ['player1', 'player2', 'player3'].map((f, i) => {
         const annotation = instrumentFromSlot(carried[f]);
-        // An annotation no option can express is passed through as itself,
-        // so submitting cannot rewrite it into something else.
-        return annotation ? (slotPartKey(annotation) ?? annotation) : implied[i];
+        // An annotation no option can express is passed through as itself, so
+        // submitting cannot rewrite it into something else — and "can express"
+        // is faithfulKey rather than slotPartKey, which prefix-matches and so
+        // read `(va3)` as VA, whereupon the seat wrote out a bare name.
+        return annotation ? (faithfulKey(annotation) ?? annotation) : implied[i];
     });
 }
 

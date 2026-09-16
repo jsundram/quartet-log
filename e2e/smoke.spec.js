@@ -1148,7 +1148,7 @@ test.describe('log form', () => {
         // Alice is already in Player 1, carried from the row above.
         await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alice');
         await expect(page.locator('#logRowNote'))
-            .toHaveText('Removed from Others?: Alice (p) — that name is in a player field.');
+            .toHaveText('Superseded by a player field: Alice (p).');
 
         // Name the pianist properly and the note goes: two people, two cells.
         await row.locator('input').fill('Alice Chen');

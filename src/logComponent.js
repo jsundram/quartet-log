@@ -17,7 +17,7 @@ import {
     rosterParts, seatParts, partCode, partLabel, othersKey,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, serializeOthersRows, canonicalOthersCell,
-    sessionPeople, sessionRows, slotPartKey, sessionPieces, countNew,
+    sessionPeople, sessionRows, sessionPieces, countNew,
     PARTIAL_MOVEMENT_NOTE,
 } from './logEntry.js';
 
@@ -806,8 +806,12 @@ export class LogComponent {
         // wrong gets caught: two people of one written name, one in a field
         // and one an extra, where the second is a person and not a leftover.
         const gone = serializeOthersRows(dropped);
+        // "Superseded", not "removed" or "not written": the row went, but a
+        // demoted seat may have re-appended the same text, and claiming the
+        // text is absent would then be false. What is always true is that a
+        // player field of that name took precedence over this row.
         d3.select('#logRowNote').text(gone
-            ? `Removed from Others?: ${gone} — that name is in a player field.`
+            ? `Superseded by a player field: ${gone}.`
             : '');
     }
 
@@ -1104,11 +1108,13 @@ export class LogComponent {
             // with no seat table — is named without one rather than beside
             // the word "null".
             ...seats.map(p => (p.part ? `${p.name} ${p.part}` : p.name)),
-            // An extra's part is read through the same table the dropdown
-            // shows, so the line does not mix "Carol VC" with "Dave va2" --
-            // and a code no option can express still prints as itself.
+            // An extra's part is read exactly as the dropdown read it --
+            // othersKey, not slotPartKey -- so the line does not mix "Carol
+            // VC" with "Dave va2", and does not answer VC for a `(vc Shadow)`
+            // the form deliberately left alone. A tag no option can express
+            // prints as itself, which is what the cell says.
             ...others.map(o => (o.instrument
-                ? `${o.name} ${partLabel(slotPartKey(o.instrument) ?? o.instrument)}`
+                ? `${o.name} ${partLabel(othersKey(o) ?? o.instrument)}`
                 : o.name)),
         ].join(' \u00b7 '));
         d3.select('#logDoneWhere').text([entry.location, timeOfDay(at)].filter(Boolean).join(' \u00b7 '));

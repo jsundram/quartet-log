@@ -604,14 +604,44 @@ test('a numbered part the catalog does not write is never promoted', () => {
         chosen: ['V2', 'VA', 'VC'], implied: ['V2', 'VA', 'VC'],
         others: [{ name: 'Bob Bek', instrument, comment: '' }],
     });
-    for (const instrument of ['va3', 'vc3', 'cello2', 'v5']) {
+    for (const instrument of ['va3', 'vc3', 'cello2', 'viola2', 'v5']) {
         assert.deepEqual(into(instrument).cells, ['', '', ''], instrument);
         assert.equal(serializeOthersRows(into(instrument).others), `Bob Bek (${instrument})`);
     }
-    // ...while the spellings it does write go in.
+    // ...while the spellings it does write go in, numbered ones included. The
+    // number has to be one the key ACCOUNTS for: `vla2` is VA2, and a bare 1
+    // on a part that is first by default is redundant rather than lost, which
+    // is why `vc1` is VC and there is no VC1 key.
     for (const instrument of ['va', 'vla', 'viola']) {
         assert.deepEqual(into(instrument).cells, ['', 'Bob Bek', ''], instrument);
     }
+    const cello = instrument => plan({
+        carried: ['Alice Hart', 'Bob Bek', ''],
+        chosen: ['V2', 'VA', 'VC'], implied: ['V2', 'VA', 'VC'],
+        others: [{ name: 'Heidi', instrument, comment: '' }],
+    }).cells;
+    for (const instrument of ['vc', 'vc1', 'cello', 'violoncello']) {
+        assert.deepEqual(cello(instrument), ['', '', 'Heidi'], instrument);
+    }
+});
+
+test('a seat reads its carried tag by the same rule an extra does', () => {
+    // The looser half of the same bug, and the more damaging one: this path
+    // rewrites a cell that already exists. `slotPartKey` prefix-matches, so a
+    // carried `(va3)` read as VA, matched the seat's own part, and the cell
+    // was written out as a bare name with the 3 gone.
+    const carried = carriedForward(row({
+        player2: 'Bob Bek', playerInstruments: [null, 'va3', null],
+    }));
+    assert.deepEqual(defaultSlotParts(carried, 'V1'), ['V2', 'va3', 'VC']);
+    assert.deepEqual(seats({
+        carried: [carried.player1, carried.player2, carried.player3],
+        chosen: defaultSlotParts(carried, 'V1'), implied: ['V2', 'VA', 'VC'],
+    }), ['', '', '']);
+    // A spelling the key accounts for still reads as the key, so the seat goes
+    // on offering it as an option rather than as raw text.
+    const known = carriedForward(row({ playerInstruments: [null, 'vla2', null] }));
+    assert.deepEqual(defaultSlotParts(known, 'V1'), ['V2', 'VA2', 'VC']);
 });
 
 test('a swap plus a second claim on one of the swapped parts keeps the swap', () => {
