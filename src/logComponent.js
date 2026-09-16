@@ -17,7 +17,7 @@ import {
     rosterParts, seatParts, partCode, partLabel, othersKey,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, serializeOthersRows, canonicalOthersCell,
-    sessionPeople, sessionRows, sessionPieces, countNew,
+    sessionPeople, sessionRows, sessionPieces, countNew, slotPartKey,
     PARTIAL_MOVEMENT_NOTE,
 } from './logEntry.js';
 
@@ -1108,13 +1108,13 @@ export class LogComponent {
             // with no seat table — is named without one rather than beside
             // the word "null".
             ...seats.map(p => (p.part ? `${p.name} ${p.part}` : p.name)),
-            // An extra's part is read exactly as the dropdown read it --
-            // othersKey, not slotPartKey -- so the line does not mix "Carol
-            // VC" with "Dave va2", and does not answer VC for a `(vc Shadow)`
-            // the form deliberately left alone. A tag no option can express
-            // prints as itself, which is what the cell says.
+            // This is a report of the CELL, so it reads the cell's own text --
+            // a row with a comment on it (`Laura (v2, shadowing on I)`) played
+            // V2 and says so, though the form leaves such a row alone. A tag
+            // that names no part prints as itself, which is again what the
+            // cell says.
             ...others.map(o => (o.instrument
-                ? `${o.name} ${partLabel(othersKey(o) ?? o.instrument)}`
+                ? `${o.name} ${partLabel(slotPartKey(o.instrument) ?? o.instrument)}`
                 : o.name)),
         ].join(' \u00b7 '));
         d3.select('#logDoneWhere').text([entry.location, timeOfDay(at)].filter(Boolean).join(' \u00b7 '));

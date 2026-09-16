@@ -228,30 +228,35 @@ export function nextInSession(entry) {
 // person to `Others?` rather than tagging the column, which is what the
 // convention in howto section 5 says out loud.
 
-/** @typedef {{ key: string, label: string, code: string }} SlotPart */
+/** @typedef {{ key: string, label: string, code: string, reads: string[] }} SlotPart */
 
 // Every part a name field can be put on. VA1 and VA are distinct keys because
 // the sheet writes both, and BY_KEY covers the lot: slotCell turns a key back
 // into the code it writes, and partLabel back into the text a dropdown shows.
 /** @type {SlotPart[]} */
 const PARTS = [
-    { key: 'V1', label: 'V1', code: 'v1' },
-    { key: 'V2', label: 'V2', code: 'v2' },
-    { key: 'V3', label: 'V3', code: 'v3' },
-    { key: 'V4', label: 'V4', code: 'v4' },
-    { key: 'VA', label: 'VA', code: 'va' },
-    { key: 'VA1', label: 'VA1', code: 'va1' },
-    { key: 'VA2', label: 'VA2', code: 'va2' },
-    { key: 'VC', label: 'VC', code: 'vc' },
-    { key: 'VC2', label: 'VC2', code: 'vc2' },
+    { key: 'V1', label: 'V1', code: 'v1', reads: ['v1'] },
+    { key: 'V2', label: 'V2', code: 'v2', reads: ['v2'] },
+    { key: 'V3', label: 'V3', code: 'v3', reads: ['v3'] },
+    { key: 'V4', label: 'V4', code: 'v4', reads: ['v4'] },
+    { key: 'VA', label: 'VA', code: 'va', reads: ['va', 'vla', 'viola'] },
+    { key: 'VA1', label: 'VA1', code: 'va1', reads: ['va1', 'vla1', 'viola1'] },
+    { key: 'VA2', label: 'VA2', code: 'va2', reads: ['va2', 'vla2', 'viola2'] },
+    { key: 'VC', label: 'VC', code: 'vc', reads: ['vc', 'vc1', 'vlc', 'vlc1', 'c', 'cello', 'cello1', 'violoncello'] },
+    { key: 'VC2', label: 'VC2', code: 'vc2', reads: ['vc2', 'vlc2', 'cello2'] },
     // Strings high to low, then the keyboard, then the winds. Bass is here and
     // flute is not because this log has eleven basses in it and no flutes at
     // all — the catalog is the instruments the rep actually uses, and anything
     // it lacks still round-trips as the raw code the cell holds.
-    { key: 'BASS', label: 'Bass', code: 'bass' },
-    { key: 'P', label: 'Piano', code: 'p' },
-    { key: 'CL', label: 'Clarinet', code: 'cl' },
+    { key: 'BASS', label: 'Bass', code: 'bass', reads: ['bass', 'contrabass', 'db', 'cb'] },
+    { key: 'P', label: 'Piano', code: 'p', reads: ['p', 'pf', 'pno', 'piano'] },
+    { key: 'CL', label: 'Clarinet', code: 'cl', reads: ['cl', 'clar', 'clarinet'] },
 ];
+
+// Every spelling the sheet is allowed to have used, to the part it names.
+// Built from the catalog so a part and the words for it are declared in one
+// place and cannot come apart.
+const BY_SPELLING = new Map(PARTS.flatMap(p => p.reads.map(r => [r, p.key])));
 
 const BY_KEY = new Map(PARTS.map(p => [p.key, p]));
 
@@ -349,34 +354,33 @@ export function partLabel(key) {
 }
 
 /**
- * Which part an existing annotation is, or null when the sheet carries
- * something no option can express (`(hn)`, `(klavier)`). Null matters:
- * re-serialising an annotation we cannot represent would silently rewrite it,
- * so the caller offers the raw code as its own option instead — and so does a
- * key the list leaves out, which is your own part.
+ * Which part an annotation names, or null when it says something this form
+ * cannot say back — `(hn)`, `(klavier)`, `(vc Shadow)`, `(va3)`.
  *
- * `va1` is its own key rather than folding into VA: that is how you log the
- * first violist when you are the second. `vc1` has no key for the mirror
- * reason — Player 3 holds it whenever anyone does — and keeps folding into VC.
+ * **Looked up, never inferred.** Every caller here uses the answer to REWRITE
+ * a cell: a seat writes its part back as a code, and an `Others?` row on a
+ * column's part is moved into that column with the tag dropped. So the only
+ * safe answer is one where the key says everything the text did, and the way
+ * to be sure of that is to have written the spelling down (`reads`, above)
+ * rather than to work it out.
+ *
+ * This replaced a list of prefix-matching patterns, which is where four
+ * separate defects came from and every one of them silently rewrote a cell:
+ * `va3` read as VA and came back as a bare name in the viola column, a third
+ * violist recorded as the first; `cello2` read as VC; `vc Shadow` read as VC
+ * and lost the word; `viola1` read as VA, turning the first violist into "a
+ * violist". Each fix narrowed the patterns and the next one found another gap,
+ * because a pattern answers for text nobody has ever written. A table answers
+ * only for text somebody has.
+ *
+ * The reader's own classifier (`partFromInstrument`, `classOf`) still matches
+ * loosely, and should: it is asking what a row MEANS for the charts, never
+ * what to write back, so a near miss costs a bucket rather than a name.
  * @param {string|null|undefined} annotation
  * @returns {string|null}
  */
 export function slotPartKey(annotation) {
-    const s = (annotation ?? '').toLowerCase().trim();
-    if (!s) return null;
-    if (/^vc2|^vlc2/.test(s)) return 'VC2';
-    if (/^(?:vc|vlc|cello|violoncello|c)(?![a-z])/.test(s)) return 'VC';
-    if (/^va1|^vla1/.test(s)) return 'VA1';
-    if (/^va2|^vla2/.test(s)) return 'VA2';
-    if (/^(?:vla|viola|va)(?![a-z])/.test(s)) return 'VA';
-    if (/^v1/.test(s)) return 'V1';
-    if (/^v2/.test(s)) return 'V2';
-    if (/^v3/.test(s)) return 'V3';
-    if (/^v4/.test(s)) return 'V4';
-    if (/^(?:bass|contrabass|db|cb)(?![a-z])/.test(s)) return 'BASS';
-    if (/^(?:p|pf|pno|piano)(?![a-z])/.test(s)) return 'P';
-    if (/^(?:cl|clar|clarinet)(?![a-z])/.test(s)) return 'CL';
-    return null;
+    return BY_SPELLING.get((annotation ?? '').toLowerCase().trim()) ?? null;
 }
 
 /**
@@ -478,51 +482,15 @@ function emptyCell(typed, carried) {
  * comment — `Laura (v2, shadowing on I)` — is prose, which a column has
  * nowhere to put.
  *
- * A row whose tag is not faithful (see faithfulKey) stays put; so does one
- * carrying a comment, prose being something a column has nowhere to put.
+ * A row whose tag names no part stays put, and so does one carrying a
+ * comment: prose is something a column has nowhere to put.
  * @param {OtherRow} row
  * @returns {string|null}
  */
 export function othersKey(row) {
-    return (row.comment ?? '').trim() ? null : faithfulKey(row.instrument);
+    return (row.comment ?? '').trim() ? null : slotPartKey(row.instrument);
 }
 
-/**
- * The part an annotation names, but only when the key says everything the
- * annotation does — so that reading it as that key and writing the key back
- * loses nothing.
- *
- * `slotPartKey` alone is not that test, twice over. It **prefix-matches**, so
- * `va3` reads as VA and `cello2` as VC; act on either and the cell is
- * rewritten without the number, recording a third violist as the first. And
- * it ignores whatever follows, so `vc Shadow`, `vc1/2` and `asst v2` all read
- * as a bare part with the rest of the text dropped.
- *
- * Hence: one word, optionally numbered, and the number has to be one the key
- * itself accounts for. `va2` is VA2 and `vla2` says the same; `va3` is not any
- * key and keeps its text. A bare `1` on a part that is the first of its kind
- * by default is redundant rather than lost — `vc1` IS VC, which is why the
- * catalog has no VC1.
- *
- * Both halves of the form read this: an `Others?` row decides promotion by it
- * (othersKey), and a seat's dropdown its default (defaultSlotParts). They were
- * two different tests once, and the seat's was the looser one — so a carried
- * `Bob Bek (va3)` came back as a bare `Bob Bek`, which is the same bug doing
- * the more damaging thing, since that path rewrites a cell that already exists.
- * @param {string|null|undefined} annotation
- * @returns {string|null}
- */
-function faithfulKey(annotation) {
-    const raw = (annotation ?? '').trim().toLowerCase();
-    // A word, maybe numbered, and nothing else: anything more has something
-    // to lose.
-    if (!/^[a-z]+\d*$/.test(raw)) return null;
-    const key = slotPartKey(raw);
-    if (!key) return null;
-    const num = raw.match(/\d+$/)?.[0] ?? '';
-    const keyNum = (partCode(key) ?? '').match(/\d+$/)?.[0] ?? '';
-    return !num || num === keyNum || (num === '1' && !keyNum) ? key : null;
-}
 
 /**
  * The one element, or nothing. A choice between two is not a choice.
@@ -779,10 +747,10 @@ export function defaultSlotParts(carried, part) {
     return ['player1', 'player2', 'player3'].map((f, i) => {
         const annotation = instrumentFromSlot(carried[f]);
         // An annotation no option can express is passed through as itself, so
-        // submitting cannot rewrite it into something else — and "can express"
-        // is faithfulKey rather than slotPartKey, which prefix-matches and so
-        // read `(va3)` as VA, whereupon the seat wrote out a bare name.
-        return annotation ? (faithfulKey(annotation) ?? annotation) : implied[i];
+        // submitting cannot rewrite it into something else. Both halves of the
+        // form ask slotPartKey, which answers only for spellings the catalog
+        // has written down — see the note there.
+        return annotation ? (slotPartKey(annotation) ?? annotation) : implied[i];
     });
 }
 

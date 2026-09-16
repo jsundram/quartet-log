@@ -599,12 +599,15 @@ test('a numbered part the catalog does not write is never promoted', () => {
     // Promoting one rewrites the cell as a bare name in the viola column: a
     // third violist recorded as the first, with the 3 gone. A bare word has no
     // number to lose, and a code the catalog writes keeps its own.
+    // Every seat empty, so nothing but the tag can keep Bob out of a column:
+    // leaving the cello seat occupied made this test pass for the wrong
+    // reason -- the seat won the tie-break whatever the tag said.
     const into = instrument => plan({
-        carried: ['Alice Hart', '', 'Carol Diaz'],
+        carried: ['Alice Hart', '', ''],
         chosen: ['V2', 'VA', 'VC'], implied: ['V2', 'VA', 'VC'],
         others: [{ name: 'Bob Bek', instrument, comment: '' }],
     });
-    for (const instrument of ['va3', 'vc3', 'cello2', 'viola2', 'v5']) {
+    for (const instrument of ['va3', 'vc3', 'viola3', 'v5', 'vc shadow', 'vc1/2', 'klavier']) {
         assert.deepEqual(into(instrument).cells, ['', '', ''], instrument);
         assert.equal(serializeOthersRows(into(instrument).others), `Bob Bek (${instrument})`);
     }
