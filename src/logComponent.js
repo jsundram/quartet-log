@@ -156,20 +156,11 @@ function ago(ms) {
     return hr < 24 ? `${hr}h ago` : `${Math.round(hr / 24)}d ago`;
 }
 
-// One dropdown wherever a name field has one, and one renderer. Which part
-// someone played is the same question whether their name sits in a column or
-// in `Others?` — rowPlan reads the answer the same way from both — so only the
-// LIST differs: a column offers the string chairs (`seatParts`), an extra
-// offers everything (`rosterParts`).
+// One renderer for both dropdowns; only the LIST differs.
 //
-// A value the list leaves out is offered as itself: your own part, a piano
-// carried in from a legacy column, or an annotation no option can express
-// (`(hn)`, `(klavier)`). A select reading "part?" over a cell that says
-// klavier is the same lie as rewriting the cell to the nearest thing we know.
-//
-// @param key the option key, or a raw code being passed through
-// @param raw the cell text to fall back on when no key reads it
-// @param options what this dropdown offers
+// A value the list leaves out is offered as itself — your own part, a legacy
+// `(klavier)` — because a select reading "part?" over a cell that says klavier
+// is the same lie as rewriting the cell to the nearest thing we know.
 function renderPartOptions(select, { key, raw = '', options, blank }) {
     const known = !!key && options.some(o => o.key === key);
     const passthrough = key || raw;
@@ -521,14 +512,10 @@ export class LogComponent {
                     });
                 this.clearMissing();
                 this.renderSlotParts();
-                // The extras' dropdowns are built from your own part too — it
-                // is the one option their list leaves out — so they go stale
-                // the moment it changes: an extra could be offered the part
-                // you just took, or be missing one that just became a column
-                // part and so the way back into a column.
+                // The extras' lists leave your own part out too, so they go
+                // stale the moment it changes — offering the part you just
+                // took, or missing the one that just became a column part.
                 this.renderOtherRows();
-                // Own part decides what the three columns hold, so it decides
-                // who lands in them: the same roster makes a different row.
                 this.renderPreview();
             });
     }
@@ -538,8 +525,6 @@ export class LogComponent {
             d3.select(sel).on('input', (e) => {
                 this.entry[field] = e.target.value;
                 this.clearMissing();
-                // A name typed in a seat changes the row, and not only in that
-                // column: the part beside it decides where it lands.
                 if (SEATS.includes(field)) this.renderPreview();
                 this.touch();
             });
@@ -565,8 +550,6 @@ export class LogComponent {
                 const defaults = defaultSlotParts(this.carried(), this.entry.part);
                 this.slotPartOverrides = next.map((p, j) => (p === defaults[j] ? null : p));
                 this.renderSlotParts();
-                // The parts decide which column each name lands in, and
-                // whether it lands in one at all.
                 this.renderPreview();
                 this.touch();
             });
@@ -718,7 +701,6 @@ export class LogComponent {
         this.renderSuggestions();
         this.renderSlotParts();
         this.renderSessionPeople();
-        // Last: it reads the fields and the parts, so it has to follow them.
         this.renderPreview();
         this.renderMode();
     }
@@ -748,25 +730,13 @@ export class LogComponent {
             .property('value', listed ? '' : this.entry.composer);
     }
 
-    // A blank field is a ditto mark, so the placeholder shows who it will
-    // repeat: the carry-forward made visible rather than trusted (howto
-    // section 6).
+    // The carry-forward made visible rather than trusted (howto §6).
     //
-    // A seat shows the NAME, without the annotation the cell carries. The pair
-    // on screen — this name field, the dropdown beside it — is one claim about
-    // one person, and the dropdown already says the part; repeating it in the
-    // placeholder would show it twice and, once a part moves someone to
-    // another column, show it against the wrong one. What the sheet receives
-    // is previewed in one place instead (renderPreview), where it can say the
-    // whole row at once.
-    //
-    // That holds even when the column will be written `-` because the part
-    // beside the name is one no column holds — a carried `(vc2)`, say, which
-    // arrives with no user action. The pair still states something true about
-    // that person, which is what this form asks of the logger; where the sheet
-    // puts them is the form's business and is on the preview line. Blanking
-    // the placeholder there would say the opposite — that nobody is being
-    // recorded — about somebody who is.
+    // A seat shows the NAME only: the dropdown beside it already says the
+    // part, and once a part moves someone to another column a placeholder
+    // carrying it would show it against the wrong one. That holds even when
+    // the column will be written `-` — the pair on screen is still true about
+    // that person, and where the sheet puts them is on the preview line.
     renderPlaceholders() {
         const carried = this.carried();
         for (const field of CARRIED_INPUTS) {
@@ -776,28 +746,19 @@ export class LogComponent {
         }
     }
 
-    // The row these fields will become, columns in sheet order.
-    //
-    // The form's job is to map a roster onto the sheet's columns, so it shows
-    // what it mapped: choosing `va2` moves that person out of a column and
-    // into `Others?`, and choosing a part someone else holds moves them
-    // between columns — all of it off screen otherwise, on the one view whose
-    // whole point is that the sheet gets what the logger meant.
-    //
-    // A blank cell is shown as what it dittos, since that is what the row will
-    // hold; an empty column is shown as the `-` the sheet will receive.
+    // Choosing `va2` moves that person out of a column; choosing a part
+    // someone else holds moves them between columns. Both happen off screen
+    // otherwise, on the one view whose whole point is that the sheet gets what
+    // the logger meant.
     renderPreview() {
         const carried = this.carried();
         const { cells, others, dropped } = this.plan();
         const shown = cells.map((cell, i) => cell || carried[SEATS[i]]);
         const extras = mergeOthersCell(others, this.othersFree);
-        // Nobody anywhere is a first launch with no log to carry from, and
-        // "- | - | -" is not a useful thing to say about an empty form.
+        // A first launch with no log to carry from.
         const empty = !shown.some(Boolean) && !extras;
-        // "-" for a column nobody is on, whether the cell will say so or be
-        // left blank with nothing above it to repeat. The two are the same
-        // statement to every reader of the sheet, and the preview is about who
-        // is in the row rather than about which bytes the cell holds.
+        // "-" whether the cell will say so or be blank with nothing above:
+        // the same statement to every reader of the sheet.
         const row = [...shown.map(s => s || '-'), ...(extras ? [extras] : [])];
         d3.select('#logRowCells').text(empty ? '' : `Row: ${row.join('  |  ')}`);
         // An extra a player field superseded. Usually that is the sitting's
