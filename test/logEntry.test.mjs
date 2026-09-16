@@ -7,12 +7,12 @@ import {
     blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts, canonicalOthersCell,
-    seatPlan, setSlotPart,
-    PART_CHOICES, columnParts, OTHERS_PARTS, partCode, partLabel,
+    rowPlan, setSlotPart,
+    PART_CHOICES, rosterParts, seatParts, partCode, partLabel,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
     sessionRows, sessionPeople, sessionPieces, countNew, PARTIAL_MOVEMENT_NOTE,
 } from '../src/logEntry.js';
-import { SLOT_TO_PART } from '../src/dataProcessor.js';
+import { SLOT_TO_PART, fillForward } from '../src/dataProcessor.js';
 
 // A processed row, as normalizePlayerNames leaves it: annotations split off
 // into playerInstruments, Others? parsed into othersList.
@@ -252,58 +252,101 @@ test('slotPartKey folds the codes the app folds, and keeps the ones it does not'
     assert.equal(slotPartKey('v4'), 'V4');
     assert.equal(slotPartKey('cl'), 'CL');
     assert.equal(slotPartKey('clarinet'), 'CL');
-    assert.equal(slotPartKey('fl'), 'FL');
-    assert.equal(slotPartKey('flute'), 'FL');
-    // The (?![a-z]) guards still hold: "c" is cello, "cl" is not.
+    // Bass is in the catalog and flute is not: this log holds eleven of the
+    // one and none of the other. An instrument with no key round-trips as the
+    // raw code, which is the passthrough every dropdown offers.
+    assert.equal(slotPartKey('bass'), 'BASS');
+    assert.equal(slotPartKey('cb'), 'BASS');
+    assert.equal(slotPartKey('flute'), null);
+    assert.equal(slotPartKey('oboe'), null);
+    // Near neighbours stay apart because each list names its own words, not
+    // because a pattern was guarded into place: "c" is the cello, "cl" the
+    // clarinet, "cb" the bass, and "bassoon" is none of them.
     assert.equal(slotPartKey('c'), 'VC');
+    assert.equal(slotPartKey('cl'), 'CL');
+    assert.equal(slotPartKey('cb'), 'BASS');
+    assert.equal(slotPartKey('bassoon'), null);
 });
 
-test('a column offers the three parts its columns hold, and nothing else', () => {
-    // The three columns ARE the quartet's parts, decided by your own part, so
-    // VA2 / VC2 / Piano are not on offer: everyone past the four is an Others?
-    // entry with a tag (howto section 5).
-    const keys = part => columnParts(part).map(p => p.key);
-    assert.deepEqual(keys('V1'), ['V2', 'VA', 'VC']);
-    assert.deepEqual(keys('V2'), ['V1', 'VA', 'VC']);
-    assert.deepEqual(keys('VA'), ['V1', 'V2', 'VC']);
-    assert.deepEqual(keys('VA1'), ['V1', 'V2', 'VC']);
-    assert.deepEqual(keys('VA2'), ['V1', 'V2', 'VC']);
-    // Before you have said what you play the seats imply nothing, and an empty
-    // dropdown is worse than the four parts a column can ever hold.
-    assert.deepEqual(keys(''), ['V1', 'V2', 'VA', 'VC']);
-});
-
-test('Others? offers the parts a column never holds', () => {
-    // No v1 (yours, or Player 1's) and no vc (Player 3 always holds vc1). v2
-    // is here because an octet pushes the second violin out of the columns.
-    assert.deepEqual(OTHERS_PARTS.map(p => p.key),
-        ['V2', 'V3', 'V4', 'VA1', 'VA2', 'VC2', 'P', 'CL', 'FL']);
-    assert.deepEqual(OTHERS_PARTS.map(p => p.code),
-        ['v2', 'v3', 'v4', 'va1', 'va2', 'vc2', 'p', 'cl', 'fl']);
-    // Every key either list offers writes a code, whichever list it came from:
-    // slotCell reads them through one table.
-    for (const p of [...OTHERS_PARTS, ...columnParts('V1'), ...columnParts('V2')]) {
-        assert.equal(partCode(p.key), p.code);
-    }
-    // And a raw annotation neither list knows passes through as itself.
+test('an extra is offered every part but your own', () => {
+    // A name field says which PART someone played, and which column that lands
+    // in is rowPlan's answer -- so an extra's list is the whole catalog. The
+    // version that gave a seat only the three parts its columns hold meant the
+    // arrangement on screen had to be the arrangement in the sheet, so a
+    // quintet or a swap was still typed out name by name.
+    const keys = part => rosterParts(part).map(p => p.key);
+    const ALL = ['V1', 'V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'BASS', 'P', 'CL'];
+    assert.deepEqual(keys(''), ALL);
+    // Your own part is the one thing left out: you are already on it, and a row
+    // saying two people played it cannot say which of them is you.
+    assert.deepEqual(keys('V1'), ALL.filter(k => k !== 'V1'));
+    assert.deepEqual(keys('V2'), ALL.filter(k => k !== 'V2'));
+    // VA1 and VA2 are separate keys, so the second violist is offered the
+    // first's part and the first is offered the second's.
+    assert.ok(keys('VA1').includes('VA2'));
+    assert.ok(keys('VA2').includes('VA1'));
+    // And the unnumbered VA goes with your own: on VA1 it names the chair you
+    // are in -- processRow folds VA1 to VA, so a row offering both records two
+    // violists on one part with no way to say which is you -- and on VA2 it is
+    // the first violist said vaguely, which VA1 says.
+    assert.deepEqual(keys('VA1'), ALL.filter(k => k !== 'VA1' && k !== 'VA'));
+    assert.deepEqual(keys('VA'), ALL.filter(k => k !== 'VA1' && k !== 'VA'));
+    assert.deepEqual(keys('VA2'), ALL.filter(k => k !== 'VA2' && k !== 'VA'));
+    // Every key writes the code the sheet has always held.
+    for (const p of rosterParts('')) assert.equal(partCode(p.key), p.code);
+    assert.deepEqual(rosterParts('').map(p => p.code),
+        ['v1', 'v2', 'v3', 'v4', 'va', 'va1', 'va2', 'vc', 'vc2', 'bass', 'p', 'cl']);
+    // A raw annotation the catalog does not know passes through as itself,
+    // both ways -- the dropdown offers it, and submitting writes it back.
     assert.equal(partCode('klavier'), 'klavier');
-    // partLabel is the counterpart, and covers the union too: a column offers
-    // a carried `(p)` as a passthrough and should still call it Piano.
+    assert.equal(partLabel('klavier'), 'klavier');
+    // partLabel covers the keys too: a part offered as a passthrough (your own,
+    // carried in from a row that named it) should still read "Piano".
     assert.equal(partLabel('P'), 'Piano');
     assert.equal(partLabel('VA2'), 'VA2');
-    assert.equal(partLabel('klavier'), 'klavier');
 });
 
-test('columnParts hands out a fresh array, never the module constant', () => {
-    // seatsAsTyped is a factory for this reason: a returned array is a value
-    // the caller may sort or splice, and the bail path used to hand back the
-    // module-level list itself.
-    const a = columnParts('');
+test('a player column offers the string chairs, and nothing else', () => {
+    // The columns hold a quartet, and the move they exist to make easy is the
+    // one that happens between two pieces: everybody shifts within their own
+    // family when a sextet reads a second sextet. Six keys cover that, and
+    // your own part comes off the same way it does for an extra.
+    const keys = part => seatParts(part).map(p => p.key);
+    assert.deepEqual(keys(''), ['V1', 'V2', 'VA', 'VA2', 'VC', 'VC2']);
+    assert.deepEqual(keys('V1'), ['V2', 'VA', 'VA2', 'VC', 'VC2']);
+    assert.deepEqual(keys('VA1'), ['V1', 'V2', 'VA2', 'VC', 'VC2']);
+    assert.deepEqual(keys('VA2'), ['V1', 'V2', 'VC', 'VC2']);
+    // Piano, the winds and an octet's v3/v4 are Others? parts. Nobody moves
+    // into them from a column often enough to earn a tap target on every row:
+    // in this log, the pianists are 8 rows in 3465 and v3/v4 about 16.
+    for (const k of ['P', 'CL', 'BASS', 'V3', 'V4', 'VA1']) {
+        assert.ok(!keys('V1').includes(k), `${k} is not a column part`);
+        assert.ok(rosterParts('V1').some(p => p.key === k), `${k} is an Others? part`);
+    }
+    // Both lists are views of one catalog, so a key writes the same code
+    // whichever dropdown it came from.
+    for (const p of seatParts('V1')) assert.equal(partCode(p.key), p.code);
+});
+
+test('every part reads back the code it writes', () => {
+    // The invariant the lookup rests on: slotCell writes partCode(key) into
+    // the cell, and defaultSlotParts and othersKey read it back with
+    // slotPartKey. The patterns this replaced matched a part's own code by
+    // construction; a written-down list of spellings does not, so a part whose
+    // `reads` forgets its own code would write a tag the form then cannot
+    // read -- the dropdown falls back to raw text and the row is never
+    // promoted, all of it green until somebody logs one.
+    for (const p of rosterParts('')) {
+        assert.equal(slotPartKey(p.code), p.key, `${p.key} writes ${p.code}`);
+    }
+});
+
+test('rosterParts hands out a fresh array, never the module constant', () => {
+    // It is handed to a caller, and a module-level list returned as-is is one
+    // any caller could sort or splice in place.
+    const a = rosterParts('V1');
     a.length = 0;
-    assert.equal(columnParts('').length, 4);
-    const b = columnParts('V1');
-    b.length = 0;
-    assert.equal(columnParts('V1').length, 3);
+    assert.equal(rosterParts('V1').length, 11);
 });
 
 test('defaultSlotParts keeps a role across a session, like a name', () => {
@@ -322,16 +365,18 @@ test('defaultSlotParts keeps a role across a session, like a name', () => {
     assert.deepEqual(defaultSlotParts(odd, 'VA'), ['V1', 'hn', 'VC']);
 });
 
-// --- Reseating ---------------------------------------------------------------
-// The seats are positional, so a reordering of the parts they imply is said by
-// moving the names. Annotating it instead is the bug this section pins.
+// --- The row the roster makes ------------------------------------------------
+// Every name field is a person and the part they played; the sheet is three
+// positional columns and a cell of extras. Which of the two a name lands in is
+// rowPlan's answer, and this section pins it.
 
 // The three seats, as the form has them: what is typed, what each would ditto,
-// the part each is set to. Own part VA throughout, so the seats imply V1/V2/VC.
+// the part each is set to. Own part VA throughout, so the columns hold V1/V2/VC.
 function plan(over = {}) {
-    return seatPlan({
+    return rowPlan({
         typed: ['', '', ''], carried: ['', '', ''],
         chosen: ['V1', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [],
         ...over,
     });
 }
@@ -341,26 +386,41 @@ function seats(over = {}) {
     return plan(over).cells;
 }
 
-test('the plan says which part each written seat is on, not which it was set to', () => {
+// ...and the cell the extras come out as.
+function extras(over = {}) {
+    return serializeOthersRows(plan(over).others);
+}
+
+test('the plan says which part each written column is on, not which it was set to', () => {
     // The confirmation screen names the line-up it recorded, and it is the
-    // third reader of this plan. After a swap the NAMES have moved, so each is
-    // on the part its new seat implies — pairing name i with the part seat i
-    // was set to prints the swap backwards, which is the same mistake the
-    // placeholders had to avoid.
-    const swapped = plan({ typed: ['Dana Ellis', 'Erin Fry', ''], chosen: ['V2', 'V1', 'VC'] });
+    // third reader of this plan. The name in a column need not be the one
+    // typed there -- after a swap the names have moved -- so pairing cell i
+    // with the part field i was SET to prints the swap backwards.
+    const swapped = plan({
+        typed: ['Dana Ellis', 'Erin Fry', ''],
+        carried: ['', '', 'Carol Diaz'],
+        chosen: ['V2', 'V1', 'VC'],
+    });
     assert.deepEqual(swapped.cells, ['Erin Fry', 'Dana Ellis', '']);
     assert.deepEqual(swapped.parts, ['V1', 'V2', 'VC']);
 
-    // A part with no seat to move to is annotated, and the part reported is
-    // the one annotated rather than the seat's own.
-    const annotated = plan({ typed: ['Dana Ellis', 'Erin Fry', 'Carol Diaz'],
-        chosen: ['V1', 'VA2', 'VC'] });
-    assert.deepEqual(annotated.parts, ['V1', 'VA2', 'VC']);
+    // Someone on a part no column holds is not in a column at all: their part
+    // is reported with them, in the extras.
+    const moved = plan({
+        typed: ['Dana Ellis', 'Erin Fry', 'Carol Diaz'],
+        chosen: ['V1', 'VA2', 'VC'],
+    });
+    assert.deepEqual(moved.parts, ['V1', null, 'VC']);
+    assert.equal(serializeOthersRows(moved.others), 'Erin Fry (va2)');
 
-    // Nothing chosen yet — every render before the Part row is tapped.
-    assert.deepEqual(plan({ chosen: [null, null, null] }).parts, ['V1', 'V2', 'VC']);
-    assert.deepEqual(plan({ chosen: [null, null, null], implied: [null, null, null] }).parts,
+    // Nothing chosen yet -- every render before the Part row is tapped.
+    const carried = ['Alice Hart', 'Bob Bek', 'Carol Diaz'];
+    assert.deepEqual(plan({ carried, chosen: [null, null, null] }).parts, ['V1', 'V2', 'VC']);
+    assert.deepEqual(
+        plan({ carried, chosen: [null, null, null], implied: [null, null, null] }).parts,
         [null, null, null]);
+    // And a column nobody is on reports nobody, rather than the part it holds.
+    assert.deepEqual(plan({ carried: ['Alice Hart', '', ''] }).parts, ['V1', null, null]);
 });
 
 test('two violinists swapping are written in seat order, not annotated', () => {
@@ -394,7 +454,7 @@ test('a swap across the classes moves the names too', () => {
 test('a row already holding an annotated swap is normalised by the next one', () => {
     // defaultSlotParts reads those annotations, so this is what the seats look
     // like with nothing touched: the parts are unchanged and the names move to
-    // the seats that imply them. A row the old behaviour wrote (or one typed
+    // the columns that imply them. A row the old behaviour wrote (or one typed
     // into the Google Form) stops propagating instead of dittoing forward.
     const carried = carriedForward(row({ playerInstruments: ['v2', 'v1', null] }));
     const chosen = defaultSlotParts(carried, 'VA');
@@ -404,60 +464,323 @@ test('a row already holding an annotated swap is normalised by the next one', ()
     }), ['Bob Bek', 'Alice Hart', '']);
 });
 
-test('a swap survives a seat that is on a part of its own', () => {
-    // The gap that let the reported shape back in: one seat carrying (vc2) --
-    // inherited from the row above with no user action at all -- used to make
-    // the whole row "not a reordering", so the two violinists were annotated
-    // again and the row came out contradicting SLOT_TO_PART. The swap is
-    // decided per cycle, so the second cellist sits out of it.
+test('the fifth player arriving is two dropdowns, not four retyped names', () => {
+    // The session this was reported from. Three of you have been playing
+    // quartets all afternoon; a fifth arrives, takes V1, and you move from
+    // violin to viola. Every name on the form is still right and every one of
+    // them is now in the wrong place: the violist you were sitting beside is a
+    // second viola, the second violin moves over, and the new arrival takes a
+    // column that was never his.
+    //
+    // Nobody is retyped. The violist's dropdown says VA2 and he is written into
+    // Others?; the new arrival is typed once, on V1, and is written into the
+    // column that holds it.
+    const carried = ['Jess Lin', 'Arjun', 'Paul Mattal'];
+    const got = plan({
+        carried,
+        // Own part is now VA1, so the columns hold V1 / V2 / VC.
+        chosen: ['V2', 'VA2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'Andrew Wong', instrument: 'v1', comment: '' }],
+    });
+    assert.deepEqual(got.cells, ['Andrew Wong', 'Jess Lin', '']);
+    assert.equal(serializeOthersRows(got.others), 'Arjun (va2)');
+    // And the next piece asks for nothing at all: the names are in the columns
+    // their parts imply, so every seat dittos and the extra is written out
+    // again -- which is what the sheet's own rows look like.
     assert.deepEqual(seats({
-        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz (vc2)'],
-        chosen: ['V2', 'V1', 'VC2'],
-    }), ['Bob Bek', 'Alice Hart', '']);
+        carried: ['Andrew Wong', 'Jess Lin', 'Paul Mattal'],
+        chosen: ['V1', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'Arjun', instrument: 'va2', comment: '' }],
+    }), ['', '', '']);
 });
 
-test('a seat cannot hand its name away and keep it', () => {
-    // Seat 2 is on V1, so it would read from seat 1 -- but nobody is on seat
-    // 1's own part, seat 2 having left V2 for a second viola. Seat 1 therefore
-    // keeps its name AND gives it away: Alice Hart written into two cells,
-    // playing two parts. Only a closed cycle can be reordered, and this is the
-    // head of a path.
+test('a part no column holds moves that person into Others?', () => {
+    // The rule the columns have always had (howto section 5): the three are
+    // the quartet's parts and everyone past them is an extra with a tag. A
+    // column never gains a tag for a part it cannot hold -- the form moves the
+    // person instead, which is the whole difference between this and writing
+    // "Bob Bek (va2)" into the second column and leaving it there.
+    const got = plan({
+        typed: ['Alice Hart', 'Bob Bek', 'Dana Ellis'],
+        chosen: ['V1', 'VA2', 'P'],
+    });
+    assert.deepEqual(got.cells, ['Alice Hart', '', '']);
+    assert.equal(serializeOthersRows(got.others), 'Bob Bek (va2); Dana Ellis (p)');
+});
+
+test('a column nobody is on is written out, never left blank', () => {
+    // A blank is a ditto mark, so a column the row above filled would repeat
+    // the person who just moved off it -- in a part they are no longer on.
     assert.deepEqual(seats({
         carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
         chosen: ['V2', 'VA2', 'VC'],
-    }), ['Alice Hart (v2)', 'Bob Bek (va2)', '']);
+    }), ['-', 'Alice Hart', '']);
+    // With nothing above to repeat, blank already says it, and "-" would be
+    // text the sheet does not need.
+    assert.deepEqual(seats({
+        typed: ['Alice Hart', '', ''],
+        chosen: ['V2', 'V2', 'VC'],
+    }), ['', 'Alice Hart', '']);
 });
 
-test('seatPlan says which seats were reseated, for the placeholders', () => {
-    // The form shows a name field and the part dropdown beside it, and the
-    // pair has to be a true statement about who played what. A moved name is
-    // therefore NOT previewed against the part its old seat claimed ("Bob Bek,
-    // V2" while Bob Bek is being written into the V1 column, backwards). The
-    // renderer needs the order to know which seats those are, and it comes
-    // back from the call that built the cells rather than from a second guess.
-    const swapped = plan({
+test('an extra is promoted when the tag says the part and nothing else', () => {
+    // Promotion rewrites the cell: the column implies the part, so the tag
+    // goes away with it. Any bare spelling of the part is safe to lose that
+    // way -- "cello" is the option the dropdown beside it already reads as VC.
+    assert.deepEqual(plan({
+        carried: ['Alice Hart', 'Bob Bek', ''],
+        others: [{ name: 'Louisa', instrument: 'cello', comment: '' }],
+    }).cells, ['', '', 'Louisa']);
+    // Anything with more in it than the part is not: "Louisa (vc Shadow)"
+    // reads as a cellist, and promoting her would move her into the cello
+    // column, drop the word Shadow and displace whoever the column dittos.
+    for (const instrument of ['vc Shadow', 'vc1/2', 'asst v2', 'klavier']) {
+        const got = plan({
+            carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+            others: [{ name: 'Louisa', instrument, comment: '' }],
+        });
+        assert.deepEqual(got.cells, ['', '', ''], instrument);
+        assert.equal(serializeOthersRows(got.others), `Louisa (${instrument})`);
+    }
+    // A comment on a promotable code is the same story -- it has prose in it,
+    // and a column has nowhere to put prose.
+    assert.equal(extras({
+        carried: ['Alice Hart', 'Bob Bek', ''],
+        others: [{ name: 'Louisa', instrument: 'vc', comment: 'shadowing on I' }],
+    }), 'Louisa (vc, shadowing on I)');
+});
+
+test('an extra who is on a column part is written in that column', () => {
+    // The mirror of the move out, and what lets a new arrival be typed once
+    // rather than typed over somebody. The row keeps its extras in order and
+    // loses only the one that was promoted.
+    const got = plan({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['VA2', 'V2', 'VC'],
+        others: [
+            { name: 'Dana Ellis', instrument: 'p', comment: '' },
+            { name: 'Erin Fry', instrument: 'v1', comment: '' },
+        ],
+    });
+    assert.deepEqual(got.cells, ['Erin Fry', '', '']);
+    assert.equal(serializeOthersRows(got.others), 'Dana Ellis (p); Alice Hart (va2)');
+});
+
+test('an extra a seat supersedes is reported, not just removed', () => {
+    // Which row is the stale one cannot be known from the row alone, and the
+    // guess is wrong when two people share a written name: one Alice dittoing
+    // in a column and another hand-added at the piano. Fourteen people in this
+    // log have no surname anywhere, so that is a real reading day. The rule
+    // still keeps the seat -- it is the half that heals -- but it says what it
+    // left out, so the case it gets wrong is a sentence on the screen rather
+    // than a person missing from the sheet.
+    const got = plan({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V1', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'Alice Hart', instrument: 'p', comment: '' }],
+    });
+    assert.equal(serializeOthersRows(got.others), '');
+    assert.equal(serializeOthersRows(got.dropped), 'Alice Hart (p)');
+    // An extra nobody is sitting on is not "dropped" -- and neither is one the
+    // plan PROMOTED into a column, which is a move rather than a removal.
+    const kept = plan({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['VA2', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [
+            { name: 'Erin Fry', instrument: 'p', comment: '' },
+            { name: 'Dana Ellis', instrument: 'v1', comment: '' },
+        ],
+    });
+    assert.deepEqual(kept.cells, ['Dana Ellis', '', '']);
+    assert.equal(serializeOthersRows(kept.others), 'Erin Fry (p); Alice Hart (va2)');
+    assert.deepEqual(kept.dropped, []);
+    // A row a demoted seat then re-appends WORD FOR WORD is still reported,
+    // and that is the deliberate choice: the text is identical to the case
+    // this exists for -- a second person of that name, whose row is gone while
+    // the replacement text belongs to somebody else -- and which of the two it
+    // is cannot be decided from the row. Noise beats silence, and the preview
+    // shows the row beside the note.
+    const same = plan({
+        typed: ['Dana Ellis', '', ''],
+        carried: ['', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['VA2', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'Dana Ellis', instrument: 'va2', comment: '' }],
+    });
+    assert.equal(serializeOthersRows(same.others), 'Dana Ellis (va2)');
+    assert.equal(serializeOthersRows(same.dropped), 'Dana Ellis (va2)');
+});
+
+test('a numbered part the catalog does not write is never promoted', () => {
+    // A spelling nobody wrote down names no part, so it cannot be acted on.
+    // These all used to resolve by prefix -- `va3` as VA, `vc shadow` as VC --
+    // and promoting one rewrote the cell as a bare name in the viola column: a
+    // third violist recorded as the first, with the 3 gone.
+    // Every seat empty, so nothing but the tag can keep Bob out of a column:
+    // leaving the cello seat occupied made this test pass for the wrong
+    // reason -- the seat won the tie-break whatever the tag said.
+    const into = instrument => plan({
+        carried: ['Alice Hart', '', ''],
+        chosen: ['V2', 'VA', 'VC'], implied: ['V2', 'VA', 'VC'],
+        others: [{ name: 'Bob Bek', instrument, comment: '' }],
+    });
+    for (const instrument of ['va3', 'vc3', 'viola3', 'v5', 'vc shadow', 'vc1/2', 'klavier']) {
+        assert.deepEqual(into(instrument).cells, ['', '', ''], instrument);
+        assert.equal(serializeOthersRows(into(instrument).others), `Bob Bek (${instrument})`);
+    }
+    // ...while the spellings it does write go in, numbered ones included. The
+    // number has to be one the key ACCOUNTS for: `vla2` is VA2, and a bare 1
+    // on a part that is first by default is redundant rather than lost, which
+    // is why `vc1` is VC and there is no VC1 key.
+    for (const instrument of ['va', 'vla', 'viola']) {
+        assert.deepEqual(into(instrument).cells, ['', 'Bob Bek', ''], instrument);
+    }
+    const cello = instrument => plan({
+        carried: ['Alice Hart', 'Bob Bek', ''],
+        chosen: ['V2', 'VA', 'VC'], implied: ['V2', 'VA', 'VC'],
+        others: [{ name: 'Heidi', instrument, comment: '' }],
+    }).cells;
+    for (const instrument of ['vc', 'vc1', 'cello', 'violoncello']) {
+        assert.deepEqual(cello(instrument), ['', '', 'Heidi'], instrument);
+    }
+});
+
+test('a seat reads its carried tag by the same rule an extra does', () => {
+    // The looser half of the same bug, and the more damaging one: this path
+    // rewrites a cell that already exists. A carried `(va3)` used to resolve
+    // by prefix to VA, match the seat's own part, and be written out as a bare
+    // name with the 3 gone.
+    const carried = carriedForward(row({
+        player2: 'Bob Bek', playerInstruments: [null, 'va3', null],
+    }));
+    assert.deepEqual(defaultSlotParts(carried, 'V1'), ['V2', 'va3', 'VC']);
+    assert.deepEqual(seats({
+        carried: [carried.player1, carried.player2, carried.player3],
+        chosen: defaultSlotParts(carried, 'V1'), implied: ['V2', 'VA', 'VC'],
+    }), ['', '', '']);
+    // A spelling the table knows still reads as the key, so the seat goes on
+    // offering it as an option rather than as raw text.
+    const known = carriedForward(row({ playerInstruments: [null, 'vla2', null] }));
+    assert.deepEqual(defaultSlotParts(known, 'V1'), ['V2', 'VA2', 'VC']);
+});
+
+test('a carried tag the table now reads moves that player out of the column', () => {
+    // `cello2` and `viola1` used to fall through as raw text, so the cell was
+    // left alone. They name a part the columns cannot hold, so reading them
+    // puts that player where the convention puts them -- in Others?, with the
+    // column written out as empty. It is the same policy a carried `(vc2)`
+    // already followed, now reached by two more spellings, and it respells the
+    // tag to the code the catalog writes.
+    for (const [annotation, code] of [['cello2', 'vc2'], ['viola1', 'va1']]) {
+        const carried = carriedForward(row({
+            player2: 'Bob Bek', playerInstruments: [null, annotation, null],
+        }));
+        const got = plan({
+            carried: [carried.player1, carried.player2, carried.player3],
+            chosen: defaultSlotParts(carried, 'V1'), implied: ['V2', 'VA', 'VC'],
+        });
+        assert.deepEqual(got.cells, ['', '-', ''], annotation);
+        assert.equal(serializeOthersRows(got.others), `Bob Bek (${code})`);
+    }
+});
+
+test('a swap plus a second claim on one of the swapped parts keeps the swap', () => {
+    // After a swap nobody is "already" sitting in the column their part now
+    // belongs to, so a tie-break that only looks at the seat whose column it
+    // is finds nobody -- and the column player was evicted into Others? with
+    // a tag while the chair they sat in was written "-". The one SEAT claim
+    // wins instead, and the extra keeps the duplicate claim they made.
+    const violins = plan({
         carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
         chosen: ['V2', 'V1', 'VC'],
+        others: [{ name: 'Erin Fry', instrument: 'v2', comment: '' }],
     });
-    assert.deepEqual(swapped.order, [1, 0, 2]);
-    assert.deepEqual(swapped.cells, ['Bob Bek', 'Alice Hart', '']);
-    // Nothing moved: every seat is free to show the cell it will write.
-    const annotated = plan({
+    assert.deepEqual(violins.cells, ['Bob Bek', 'Alice Hart', '']);
+    assert.equal(serializeOthersRows(violins.others), 'Erin Fry (v2)');
+
+    // The same shape with no extra promoted at all, which used to write the
+    // one thing this file says it never writes: a tag in a column.
+    const tagged = plan({
         carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
-        chosen: ['V1', 'VA2', 'VC'],
+        chosen: ['VA', 'VA2', 'VC'], implied: ['V2', 'VA', 'VC'],
+        others: [{ name: 'Dana Ellis', instrument: 'va', comment: '' }],
     });
-    assert.deepEqual(annotated.order, [0, 1, 2]);
-    assert.deepEqual(annotated.cells, ['', 'Bob Bek (va2)', '']);
+    assert.ok(!tagged.cells.some(c => c.includes('(')), `no tag in a column: ${tagged.cells}`);
+    assert.deepEqual(tagged.cells, ['-', 'Alice Hart', '']);
 });
 
-test("a plan's order is the plan's own, not a shared array", () => {
-    // seatPlan hands the order to its caller. Four of its five paths used to
-    // return one module-level array, so a caller that sorted it in place would
-    // rewrite what every later plan reported -- including the identity test
-    // renderPlaceholders uses to decide which seats it may preview.
-    const first = plan({ carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'] });
-    first.order.reverse();
-    assert.deepEqual(plan({ carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'] }).order, [0, 1, 2]);
+test('two seat claims with neither in the column stay where they were typed', () => {
+    // Under-determined, and the one case the order above deliberately leaves
+    // alone: picking either would move a third person nobody spoke about.
+    const got = plan({
+        typed: ['Alice Hart', 'Bob Bek', ''],
+        chosen: ['VC', 'VC', 'VC'], implied: ['V1', 'V2', 'VC'],
+    });
+    assert.deepEqual(got.cells, ['Alice Hart (vc)', 'Bob Bek (vc)', '']);
+});
+
+test('nobody is written into the row twice, in either direction', () => {
+    // Both directions happen now that a name can move between a column and
+    // Others?. The extras are re-seeded from the sitting on every piece, so a
+    // fifth player who takes a chair this time is typed into the seat while
+    // their extras row is still sitting there. The column wins: it is
+    // positional and it dittos forward, and the extras row is the stale copy
+    // the seeding left behind.
+    const over = {
+        typed: ['', 'Dave Ellis', ''],
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V1', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'Dave Ellis', instrument: 'va2', comment: '' }],
+    };
+    const got = plan(over);
+    assert.deepEqual(got.cells, ['', 'Dave Ellis', '']);
+    assert.equal(serializeOthersRows(got.others), '');
+    // A row carrying a comment is kept even so: that is prose somebody wrote,
+    // not a re-seed, and there is nowhere else for it to go.
+    assert.equal(extras({
+        ...over,
+        others: [{ name: 'Dave Ellis', instrument: 'va2', comment: 'doubling' }],
+    }), 'Dave Ellis (va2, doubling)');
+    // The other direction, which the first version of this guard covered on
+    // its own: a seat moved into Others? is not appended beside itself.
+    assert.equal(extras({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['V1', 'VA2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'Bob Bek', instrument: 'va2', comment: '' }],
+    }), 'Bob Bek (va2)');
+    // ...and the parts DISAGREEING is the normal shape of a stale seed, not a
+    // reason to keep both: Bob was an extra on piano last piece, so the
+    // seeding brings that row back, and this piece his seat moves to VA2.
+    // Matching on the part too wrote him twice -- on every row of the sitting,
+    // since the next piece seeds its extras from this one.
+    assert.equal(extras({
+        typed: ['', 'Bob Bek', ''],
+        carried: ['Alice Hart', '', 'Carol Diaz'],
+        chosen: ['V1', 'VA2', 'VC'], implied: ['V1', 'V2', 'VC'],
+        others: [{ name: 'bob bek', instrument: 'p', comment: '' }],
+    }), 'Bob Bek (va2)');
+    // Two SEAT claims of one name are both written: the logger typed that name
+    // into two chairs, and there is nothing here to choose between them.
+    const twice = plan({
+        typed: ['Bob Bek', 'Bob Bek', ''],
+        carried: ['', '', 'Carol Diaz'],
+        chosen: ['V1', 'VA2', 'VC'], implied: ['V1', 'V2', 'VC'],
+    });
+    assert.deepEqual(twice.cells, ['Bob Bek', '', '']);
+    assert.equal(serializeOthersRows(twice.others), 'Bob Bek (va2)');
+});
+
+test('a legacy tag carried in a column moves that person out of it', () => {
+    // The one case nobody asked for: (vc2) on the cello seat is inherited from
+    // the row above with no user action at all, and the next row moves her to
+    // Others? and writes the cello column empty. The part is unchanged -- she
+    // is a second cellist either way -- and the row stops contradicting
+    // SLOT_TO_PART, which is what the reader and the spreadsheet both go by.
+    const got = plan({
+        carried: ['Alice Hart', 'Bob Bek', 'Carol Diaz (vc2)'],
+        chosen: ['V2', 'V1', 'VC2'],
+    });
+    assert.deepEqual(got.cells, ['Bob Bek', 'Alice Hart', '-']);
+    assert.equal(serializeOthersRows(got.others), 'Carol Diaz (vc2)');
 });
 
 test('a typed name takes the part shown beside it, not the column it sits in', () => {
@@ -469,8 +792,8 @@ test('a typed name takes the part shown beside it, not the column it sits in', (
     // It is still what the form says on screen. The part beside the first field
     // reads V2, so the person typed there played V2 and belongs in the V2
     // column; the pair (field, dropdown) is the claim, and which column carries
-    // it is this form's business. Nor is the claim new: before the seats could
-    // be reordered this same entry wrote "Dana Ellis (v2) | Erin Fry (v1)" --
+    // it is this form's business. Nor is the claim new: before the parts could
+    // move anyone this same entry wrote "Dana Ellis (v2) | Erin Fry (v1)" --
     // the identical statement, in the shape this change exists to stop writing.
     // What puts a part on a seat whose person just changed is defaultSlotParts,
     // which did so before this too; that is the rule to revisit if the
@@ -483,60 +806,82 @@ test('a typed name takes the part shown beside it, not the column it sits in', (
     }), ['Erin Fry', 'Dana Ellis', '']);
 });
 
-test('a part the seats cannot express is still an annotation', () => {
-    // VA2 and a pianist are what the annotation is FOR: no seat implies them,
-    // so there is nothing to reorder and moving names would say nothing.
-    assert.deepEqual(seats({
-        typed: ['Alice Hart', 'Bob Bek', 'Dana Ellis'],
-        chosen: ['V1', 'VA2', 'P'],
-    }), ['Alice Hart', 'Bob Bek (va2)', 'Dana Ellis (p)']);
-});
-
-test('two seats claiming one part are annotated, not reordered', () => {
-    // Under-determined: seat 2 still implies V2, so who is on V1? Saying
-    // "Alice is on V2" is at least true. setSlotPart is what keeps the form
-    // out of this state.
+test('two people claiming one part are annotated, not moved', () => {
+    // Under-determined: two claims on V2 and none on V1, so who is on V1?
+    // The seat that already IS the V2 column keeps it and the other is
+    // annotated where it sits -- "Alice is on V2" is at least true, and moving
+    // a third person nobody spoke about would be a guess. setSlotPart is what
+    // keeps the form out of this state.
     assert.deepEqual(seats({
         typed: ['Alice Hart', 'Bob Bek', ''],
         chosen: ['V2', 'V2', 'VC'],
     }), ['Alice Hart (v2)', 'Bob Bek', '']);
 });
 
-test('a seat with no name to move is annotated instead', () => {
-    // The hazard the reorder must not create: moving Alice to seat 2 would
-    // leave seat 1 blank, and a blank is a ditto mark, not an empty chair --
-    // so the row above's first violin would reappear, on a part they did not
-    // play. Nothing is carried here and nothing was typed, so there is no name
-    // for seat 1 to take.
+test('an annotation no option can read is left exactly where it is', () => {
+    // Rewriting a cell we cannot read is worse than leaving it: the code could
+    // be a part, an instrument or a note, and the form has no business
+    // guessing which.
     assert.deepEqual(seats({
-        typed: ['Alice Hart', '', ''],
-        carried: ['', '', 'Carol Diaz'],
-        chosen: ['V2', 'V1', 'VC'],
-    }), ['Alice Hart (v2)', '', '']);
+        carried: ['Alice Hart (hn)', 'Bob Bek', 'Carol Diaz'],
+        chosen: ['hn', 'V2', 'VC'],
+    }), ['', '', '']);
 });
 
-test('an empty chair can be moved, and is written out when it is', () => {
-    // A trio's "-" in the cello seat, swapped with the V1 player: the "-" has
-    // to be written into seat 1, since a blank there would ditto a cellist.
+test('an empty chair stays an empty chair', () => {
+    // A trio's "-" in the cello seat: it is nobody, so it holds no part and
+    // never argues with someone who does. Here the V1 player moves to cello,
+    // and the "-" has to be written into the column they left.
     assert.deepEqual(seats({
         carried: ['Alice Hart', 'Bob Bek', '-'],
         chosen: ['VC', 'V2', 'V1'],
     }), ['-', '', 'Alice Hart']);
-    // The other direction: the seat holding "-" is the one left alone, so it
-    // keeps dittoing it rather than writing it out again.
+    // The other direction: the column holding "-" is the one nobody touched,
+    // and it is written out AGAIN rather than left to ditto -- see emptyCell.
+    // fillForward skips a "-" row without advancing what it repeats, so a
+    // blank under one reaches past it to the last real name.
     assert.deepEqual(seats({
         carried: ['Alice Hart', 'Bob Bek', '-'],
         chosen: ['V2', 'V1', 'VC'],
-    }), ['Bob Bek', 'Alice Hart', '']);
+    }), ['Bob Bek', 'Alice Hart', '-']);
+    // Nothing above at all is the one cell that may stay blank: there is no
+    // name back there for fillForward to reach.
+    assert.deepEqual(seats({ carried: ['Alice Hart', 'Bob Bek', ''] }), ['', '', '']);
+});
+
+test('a column the form emptied stays empty once fillForward reads it back', () => {
+    // The round trip this file is one half of, and the only place it is
+    // tested: rowPlan writes the cells, fillForward reads them. A "-" row is
+    // SKIPPED without advancing what fillForward repeats, so a blank under one
+    // does not repeat the "-" -- it reaches past to the last real name, and
+    // the cellist the form just moved into Others? is put back in the chair
+    // beside their own extras entry. One person, two parts, every row after.
+    const at = h => new Date(`2026-01-01T${String(h).padStart(2, '0')}:00:00`);
+    const sheet = ['Carol Diaz', '-'].map((player3, i) => ({
+        ...row({ timestamp: at(12 + i), player3 }),
+    }));
+    // The next piece, with nobody touching anything: the cello chair is still
+    // empty and the form says so again.
+    const next = seats({
+        carried: ['Alice Hart', 'Bob Bek', '-'],
+        chosen: ['V1', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'],
+    });
+    sheet.push({ ...row({ timestamp: at(14), player3: next[2] }) });
+    fillForward(sheet, {});
+    assert.deepEqual(sheet.map(r => r.player3), ['Carol Diaz', '-', '-']);
 });
 
 test('no part chosen yet leaves every seat alone', () => {
-    // Own part is what implies the seats; before it is picked there is no
-    // ordering to reorder against.
+    // Own part is what the columns mean; before it is picked there is nothing
+    // to place anyone against, and nobody is moved out of a column either.
     assert.deepEqual(seats({
         typed: ['Alice Hart', 'Bob Bek', ''],
         chosen: [null, null, null], implied: [null, null, null],
     }), ['Alice Hart', 'Bob Bek', '']);
+    assert.equal(extras({
+        typed: ['Alice Hart', '', ''],
+        chosen: ['P', null, null], implied: [null, null, null],
+    }), '');
 });
 
 // The seats a quartet layout implies, for the setSlotPart cases below.
@@ -545,8 +890,8 @@ const setPart = (chosen, seat, key, implied = SEAT_PARTS) =>
     setSlotPart({ chosen, implied, seat, key });
 
 test('setSlotPart hands the other seat the part this one gave up', () => {
-    // One dropdown means "these two swapped" -- the state seatPlan can write
-    // as a reordering, reached in one tap instead of two.
+    // One dropdown means "these two swapped" -- the state rowPlan writes by
+    // moving the names, reached in one tap instead of two.
     assert.deepEqual(setPart(['V1', 'V2', 'VC'], 0, 'V2'), ['V2', 'V1', 'VC']);
     assert.deepEqual(setPart(['V1', 'V2', 'VC'], 2, 'V1'), ['VC', 'V2', 'V1']);
     // A part no other seat holds displaces nothing.

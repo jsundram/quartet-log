@@ -1735,10 +1735,36 @@ body.network-fullscreen-open {
 }
 
 .log-note,
+.log-preview,
 .log-status,
 .log-submit,
 .log-pending-title {
     grid-column: 1 / -1;
+}
+
+/* The row the fields will become, columns separated the way the sheet
+   separates them. Quiet: it is a receipt, not a control. Monospace so the
+   four cells stay four cells when a name is long. */
+/* What the row does NOT include, when the form left somebody out. A step
+   louder than the row itself: it is the one thing on this line that the
+   logger may need to act on. */
+.log-preview-note {
+    display: block;
+    margin-top: 4px;
+    /* Named, not inherited: this span sits inside .log-preview, which sets a
+       monospace stack for the row itself, and this is a sentence not a row. */
+    font-family: sans-serif;
+    font-style: italic;
+    color: var(--color-text-secondary);
+}
+
+.log-preview {
+    margin: 6px 0 0;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-text-tertiary);
+    overflow-wrap: break-word;
 }
 
 .log-note {

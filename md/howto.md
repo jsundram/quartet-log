@@ -216,19 +216,42 @@ the rest of the session and it writes them onto every piece, and each one gets
 a part dropdown — so you can say what someone played without remembering the
 `(p)` syntax.
 
-The seats have a dropdown too, but a different list, because the columns and
-Others? hold different things. A seat offers only the three parts your own part
-implies. That covers the ordinary case of two people swapping: set one of them
-to the part the other is on and the form swaps the pair, then writes the names
-in seat order — the columns still mean what your own part implies, so nothing
-is annotated and nothing has to be retyped.
+Every name field has a part dropdown. **Say what each person played and the
+form works out where it goes** — which column, or Others?, is the form's
+business, and the only thing asked of you is who played what.
 
-Everyone past the four is an Others? entry, and that list is the parts a column
-never holds — `v2` for an octet's second violin, `v3` and `v4`, `va1` when you
-are the second viola, `va2`, `vc2`, and piano, clarinet and flute. So a
-pianist goes in Others?, not in the cello field. A tag an older row left
-in a column still shows in that seat's dropdown, so nothing already written
-gets rewritten.
+So a field is a person and their part, not a column. The three columns are
+still the quartet's parts, decided by your own part, and the form writes each
+person into the column that holds theirs. Two people swapping: set one of them
+to the part the other is on, the form swaps the pair, and the names are written
+in the order the columns mean — nothing is annotated and nothing is retyped.
+Someone on a part no column holds — a second viola, a pianist, an octet's third
+violin — is written into Others? with the tag, and the column they left is
+written `-`, since nobody is on it. It goes the other way too: an extra you put
+on `v1` is written in the column that holds V1.
+
+That's what makes a change of personnel mid-session two taps. A fifth player
+arrives and takes V1 while you move from violin to viola: set the violist
+beside you to `va2`, type the newcomer into Others? on `v1`, and the row comes
+out with the violins and cello in their columns and the second viola as an
+extra. Nobody is retyped, and the piece after that asks for nothing at all.
+
+**The two lists differ.** A player field offers the string chairs — V1, V2, VA,
+VA2, VC, VC2, less whichever one is yours — because the trade they exist to
+make easy is the one that happens between two sextets, where everybody shifts
+within their own family. Others? offers all of them, plus V3 and V4 for an
+octet, VA1 for when you are the second viola, and bass, piano and clarinet.
+Anything else — an oboe, a flute — is still typed in the parens as it always
+was, and the dropdown shows it back rather than rewriting it.
+Moving somebody INTO a column works from either list, so a pianist who picks up
+a violin is one tap on their Others? dropdown. Only the other direction — a
+player field moving to piano or to an octet's V3 — isn't on offer, and there
+you clear the name and add them as an extra by hand.
+
+The row the fields will become is shown under them, so a name moving between a
+column and Others? is never something that happens out of sight. A tag an older
+row left in a column still shows in that field's dropdown, and a `(klavier)`
+the app can't read stays exactly as it is.
 
 ## 6. What repeats itself, and what doesn't
 
