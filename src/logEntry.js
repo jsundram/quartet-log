@@ -357,12 +357,14 @@ export function partLabel(key) {
  * Which part an annotation names, or null when it says something this form
  * cannot say back — `(hn)`, `(klavier)`, `(vc Shadow)`, `(va3)`.
  *
- * **Looked up, never inferred.** Every caller here uses the answer to REWRITE
- * a cell: a seat writes its part back as a code, and an `Others?` row on a
- * column's part is moved into that column with the tag dropped. So the only
- * safe answer is one where the key says everything the text did, and the way
- * to be sure of that is to have written the spelling down (`reads`, above)
- * rather than to work it out.
+ * **Looked up, never inferred.** The callers that ACT on the answer rewrite a
+ * cell with it — a seat writes its part back as a code, and an `Others?` row
+ * on a column's part is moved into that column with the tag dropped — so the
+ * only safe answer is one where the key says everything the text did, and the
+ * way to be sure of that is to have written the spelling down (`reads`, above)
+ * rather than to work it out. The confirmation line reads it too, for display
+ * alone; an exact answer is as good for that, which it was not when the
+ * patterns over-read.
  *
  * This replaced a list of prefix-matching patterns, which is where four
  * separate defects came from and every one of them silently rewrote a cell:

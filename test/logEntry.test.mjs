@@ -259,10 +259,13 @@ test('slotPartKey folds the codes the app folds, and keeps the ones it does not'
     assert.equal(slotPartKey('cb'), 'BASS');
     assert.equal(slotPartKey('flute'), null);
     assert.equal(slotPartKey('oboe'), null);
-    // "cb" must not read as the cello: the (?![a-z]) guard is what stops it,
-    // the same way it stops "c" matching clarinet.
-    // The (?![a-z]) guards still hold: "c" is cello, "cl" is not.
+    // Near neighbours stay apart because each list names its own words, not
+    // because a pattern was guarded into place: "c" is the cello, "cl" the
+    // clarinet, "cb" the bass, and "bassoon" is none of them.
     assert.equal(slotPartKey('c'), 'VC');
+    assert.equal(slotPartKey('cl'), 'CL');
+    assert.equal(slotPartKey('cb'), 'BASS');
+    assert.equal(slotPartKey('bassoon'), null);
 });
 
 test('an extra is offered every part but your own', () => {
@@ -323,6 +326,19 @@ test('a player column offers the string chairs, and nothing else', () => {
     // Both lists are views of one catalog, so a key writes the same code
     // whichever dropdown it came from.
     for (const p of seatParts('V1')) assert.equal(partCode(p.key), p.code);
+});
+
+test('every part reads back the code it writes', () => {
+    // The invariant the lookup rests on: slotCell writes partCode(key) into
+    // the cell, and defaultSlotParts and othersKey read it back with
+    // slotPartKey. The patterns this replaced matched a part's own code by
+    // construction; a written-down list of spellings does not, so a part whose
+    // `reads` forgets its own code would write a tag the form then cannot
+    // read -- the dropdown falls back to raw text and the row is never
+    // promoted, all of it green until somebody logs one.
+    for (const p of rosterParts('')) {
+        assert.equal(slotPartKey(p.code), p.key, `${p.key} writes ${p.code}`);
+    }
 });
 
 test('rosterParts hands out a fresh array, never the module constant', () => {
@@ -595,10 +611,10 @@ test('an extra a seat supersedes is reported, not just removed', () => {
 });
 
 test('a numbered part the catalog does not write is never promoted', () => {
-    // slotPartKey prefix-matches, so `va3` reads as VA and `cello2` as VC.
-    // Promoting one rewrites the cell as a bare name in the viola column: a
-    // third violist recorded as the first, with the 3 gone. A bare word has no
-    // number to lose, and a code the catalog writes keeps its own.
+    // A spelling nobody wrote down names no part, so it cannot be acted on.
+    // These all used to resolve by prefix -- `va3` as VA, `vc shadow` as VC --
+    // and promoting one rewrote the cell as a bare name in the viola column: a
+    // third violist recorded as the first, with the 3 gone.
     // Every seat empty, so nothing but the tag can keep Bob out of a column:
     // leaving the cello seat occupied made this test pass for the wrong
     // reason -- the seat won the tie-break whatever the tag said.
@@ -630,9 +646,9 @@ test('a numbered part the catalog does not write is never promoted', () => {
 
 test('a seat reads its carried tag by the same rule an extra does', () => {
     // The looser half of the same bug, and the more damaging one: this path
-    // rewrites a cell that already exists. `slotPartKey` prefix-matches, so a
-    // carried `(va3)` read as VA, matched the seat's own part, and the cell
-    // was written out as a bare name with the 3 gone.
+    // rewrites a cell that already exists. A carried `(va3)` used to resolve
+    // by prefix to VA, match the seat's own part, and be written out as a bare
+    // name with the 3 gone.
     const carried = carriedForward(row({
         player2: 'Bob Bek', playerInstruments: [null, 'va3', null],
     }));
@@ -641,10 +657,30 @@ test('a seat reads its carried tag by the same rule an extra does', () => {
         carried: [carried.player1, carried.player2, carried.player3],
         chosen: defaultSlotParts(carried, 'V1'), implied: ['V2', 'VA', 'VC'],
     }), ['', '', '']);
-    // A spelling the key accounts for still reads as the key, so the seat goes
-    // on offering it as an option rather than as raw text.
+    // A spelling the table knows still reads as the key, so the seat goes on
+    // offering it as an option rather than as raw text.
     const known = carriedForward(row({ playerInstruments: [null, 'vla2', null] }));
     assert.deepEqual(defaultSlotParts(known, 'V1'), ['V2', 'VA2', 'VC']);
+});
+
+test('a carried tag the table now reads moves that player out of the column', () => {
+    // `cello2` and `viola1` used to fall through as raw text, so the cell was
+    // left alone. They name a part the columns cannot hold, so reading them
+    // puts that player where the convention puts them -- in Others?, with the
+    // column written out as empty. It is the same policy a carried `(vc2)`
+    // already followed, now reached by two more spellings, and it respells the
+    // tag to the code the catalog writes.
+    for (const [annotation, code] of [['cello2', 'vc2'], ['viola1', 'va1']]) {
+        const carried = carriedForward(row({
+            player2: 'Bob Bek', playerInstruments: [null, annotation, null],
+        }));
+        const got = plan({
+            carried: [carried.player1, carried.player2, carried.player3],
+            chosen: defaultSlotParts(carried, 'V1'), implied: ['V2', 'VA', 'VC'],
+        });
+        assert.deepEqual(got.cells, ['', '-', ''], annotation);
+        assert.equal(serializeOthersRows(got.others), `Bob Bek (${code})`);
+    }
 });
 
 test('a swap plus a second claim on one of the swapped parts keeps the swap', () => {
