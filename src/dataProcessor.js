@@ -918,6 +918,12 @@ export function fillForward(data, abbreviations, onDecision) {
     if (!abbreviations) throw new TypeError('fillForward: pass an abbreviation table (use {} for none)');
     if (!data.length) return data;
     ["player1", "player2", "player3", "location"].forEach(column => {
+        // The prefix rule abbreviates NAMES, and a venue is not written that
+        // way: over this log it rewrote a location twelve times and was wrong
+        // every time. It also makes naming a place a trap, since a venue
+        // inside another one captures its parent. Blanks still ditto, which
+        // is the branch locations actually need.
+        const shorthandApplies = column !== "location";
         let prev = data[0];
         let prevEntry = prev[column];
 
@@ -945,7 +951,7 @@ export function fillForward(data, abbreviations, onDecision) {
                     // and that empty value then anchored every row after it.
                     row[column] = prevEntry;
                     branch = 'ditto';
-                } else if (sameSession && refersToPrevEntry(entry, prevEntry)) {
+                } else if (shorthandApplies && sameSession && refersToPrevEntry(entry, prevEntry)) {
                     // A written-out shorthand IS gated, because it is an
                     // inference rather than a ditto: "Peter" abbreviates the
                     // "Peter Ouyang" from an hour ago, but next month it is
