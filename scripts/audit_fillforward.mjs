@@ -25,9 +25,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import {
-    refersToPrevEntry, SESSION_WINDOW_HOURS, splitOutsideParens,
-} from '../src/dataProcessor.js';
+import { refersToPrevEntry, SESSION_WINDOW_HOURS, splitOutsideParens, hasNameRules } from '../src/dataProcessor.js';
 import { loadViews, viewsHeader } from './lib/views.mjs';
 import { readNameTables, runAudit, warnIfStub } from './lib/cli.mjs';
 
@@ -186,9 +184,11 @@ export function sessionWindowReport({ fillDecisions }) {
     /** @type {{ gap: number, row: Row, full: string, verdict: string }[]} */
     const prefixGaps = [];
     for (const { row, column, branch, entry, reference, gap, result } of fillDecisions) {
-        // Neither name rule runs on this column, so the window has no say
-        // over it and every entry here would read as "left as typed".
-        if (column === 'location') continue;
+        // Asked of the app rather than answered again here: a second copy of
+        // "which columns do the name rules govern" is the drift this trace
+        // exists to end. Where they do not run, the window has no say and
+        // every entry would read as "left as typed".
+        if (!hasNameRules(column)) continue;
         // A blank is a ditto mark: it repeats however long the gap, so it is
         // not what the window decides. Only a WRITTEN short form is.
         if (branch === 'ditto') continue;

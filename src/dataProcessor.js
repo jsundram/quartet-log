@@ -917,6 +917,30 @@ export function refersToPrevEntry(entry, prevEntry) {
  * @property {string} result - what the cell now holds
  */
 
+/** The columns fillForward walks. */
+export const FILL_COLUMNS = ["player1", "player2", "player3", "location"];
+
+/**
+ * Do the two abbreviation rules — the same-session prefix and the
+ * PLAYER_ABBREVIATIONS table — apply to this column?
+ *
+ * Both are about NAMES, and a venue is not written the way a name is. The
+ * prefix rule rewrote a location twelve times over this log and was wrong
+ * every time, and it made naming a place a trap, since a venue inside another
+ * one captures its parent. PLAYER_ABBREVIATIONS is a table of people, so a
+ * location equal to one of its single-letter keys would become somebody's
+ * first name. Locations keep the ditto rule, which is the one they need.
+ *
+ * Exported because audit_fillforward has to agree with this, and a second
+ * copy of the answer is exactly the drift its decision trace exists to end:
+ * "it disagreed with the app about which columns the rule governs" is already
+ * on that file's list of past mirror bugs.
+ * @param {string} column
+ */
+export function hasNameRules(column) {
+    return column !== "location";
+}
+
 /**
  * @param {Row[]} data - MUST be in chronological order (see prepareRows)
  * @param {Record<string, string>} abbreviations
@@ -928,16 +952,8 @@ export function refersToPrevEntry(entry, prevEntry) {
 export function fillForward(data, abbreviations, onDecision) {
     if (!abbreviations) throw new TypeError('fillForward: pass an abbreviation table (use {} for none)');
     if (!data.length) return data;
-    ["player1", "player2", "player3", "location"].forEach(column => {
-        // Both abbreviation rules are about NAMES, and a venue is not written
-        // the way a name is. The prefix rule rewrote a location twelve times
-        // over this log and was wrong every time, and it made naming a place
-        // a trap, since a venue inside another one captures its parent.
-        // PLAYER_ABBREVIATIONS is a table of people, so a location that
-        // happened to equal one of its single-letter keys would become a
-        // person's first name — latent today, and the same mistake.
-        // Locations keep the ditto rule, which is the one they need.
-        const nameRules = column !== "location";
+    FILL_COLUMNS.forEach(column => {
+        const nameRules = hasNameRules(column);
         let prev = data[0];
         let prevEntry = prev[column];
 

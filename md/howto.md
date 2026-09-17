@@ -285,11 +285,15 @@ last time", because leaving names out is never how you'd start a group. When
 a seat is genuinely empty, write `-` rather than leaving it blank; that's how
 the sheet tells "nobody here" apart from "same as above".
 
-**A short form only reaches back a few hours.** Typing `Alice` to mean the
-`Alice Hart` above works within the same sitting. Weeks later it's read as a
-name in its own right, because by then it's just as likely to be a different
-Alice — so when you come back to someone after a long time, type the name in
-full.
+**A short form only reaches back a few hours — and only for names.** Typing
+`Alice` to mean the `Alice Hart` above works within the same sitting. Weeks
+later it's read as a name in its own right, because by then it's just as
+likely to be a different Alice — so when you come back to someone after a long
+time, type the name in full.
+
+**A location is always taken exactly as you typed it.** Only a blank repeats.
+That's what lets a room inside a larger place be its own entry: type `AKM`
+after `AKM (chapel)` and you get `AKM`, not the chapel again.
 
 ## 7. Naming people
 
