@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks 2>/dev/null; exit 0",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/scripts/claudemd_overlap.mjs\" --hook",
+            "timeout": 20,
+            "statusMessage": "Screening CLAUDE.md prose against source comments"
+          }
+        ]
+      }
+    ]
+  }
+}

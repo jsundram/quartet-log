@@ -6,6 +6,7 @@
         "node": ">=26"
     },
     "scripts": {
+        "prepare": "git config core.hooksPath .githooks || true",
         "pretest": "node scripts/ensure_aliases.mjs",
         "test": "TZ=America/New_York node --test test/*.mjs",
         "lint": "eslint .",
@@ -13,6 +14,7 @@
         "typecheck": "tsc --noEmit",
         "test:e2e": "playwright test",
         "audit": "./scripts/audit_all.sh",
+        "overlap": "node scripts/claudemd_overlap.mjs",
         "attribution": "node scripts/ensure_aliases.mjs && node scripts/attribution.mjs"
     },
     "config": {

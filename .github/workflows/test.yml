@@ -70,3 +70,34 @@ jobs:
 
       - name: Playwright smoke test
         run: npm run test:e2e
+
+  prose:
+    # A report, never a gate. The overlap screen's judgement is human and about
+    # one flag in five is a claim worth keeping, so it lands on the checks page
+    # where a reviewer already looks rather than failing the build. It is also
+    # the only one of the three callers that still runs when nobody installed
+    # the git hooks — see scripts/claudemd_overlap.mjs.
+    name: CLAUDE.md overlap report
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The screen scores only the claims this branch adds, which needs the
+          # merge base. checkout's default shallow clone does not have it, and
+          # without it every inherited claim would be reported as new.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.nvmrc'
+
+      # No npm ci: the screen imports nothing outside node's standard library.
+      - name: Screen new CLAUDE.md prose
+        continue-on-error: true
+        run: |
+          node scripts/claudemd_overlap.mjs --check --markdown --quiet \
+            --base "origin/${{ github.base_ref }}" >> "$GITHUB_STEP_SUMMARY"
