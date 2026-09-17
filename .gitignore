@@ -5,7 +5,10 @@ wrapped/
 .playwright-mcp/
 md/*.html
 !md/_pandoc_template.html
-archive/*.csv
+# Nothing in archive/ is tracked, and everything that lands there carries
+# real names: the sheet snapshots, and the location cleanup's proposal and
+# generated Apps Script (issue #39).
+archive/
 alias-output.txt
 .dev-data-url
 node_modules/
