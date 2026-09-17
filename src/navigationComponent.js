@@ -3,6 +3,13 @@ import { clearDataUrl } from './urlConfig.js';
 import { DateFilterWidget } from './dateFilterWidget.js';
 import { getTheme, cycleTheme } from './themeManager.js';
 
+// Breathing room under an open Player dropdown, and the height below which
+// fitting it to the viewport stops helping — a landscape phone leaves little
+// room under the toolbar, and a 40px sliver is worse to scroll than a short
+// list that overhangs it.
+const DROPDOWN_VIEWPORT_MARGIN = 8;
+const DROPDOWN_MIN_HEIGHT = 180;
+
 const THEME_LABEL = { auto: 'Theme: Auto', light: 'Theme: Light', dark: 'Theme: Dark' };
 
 function updateThemeLabel() {
@@ -152,6 +159,14 @@ export class NavigationComponent {
         if (!rewireOnly) {
             this._onHashChange = () => this.applyView(viewFromHash());
             window.addEventListener("hashchange", this._onHashChange);
+            // An open Player list is sized to a viewport that rotation or a
+            // software keyboard can take away underneath it, and it would
+            // keep the taller height until closed and reopened.
+            this._onResize = () => {
+                const dropdown = document.querySelector("#playerSelect .player-dropdown");
+                if (dropdown?.classList.contains("open")) this.fitDropdownHeight();
+            };
+            window.addEventListener("resize", this._onResize);
         }
         this._menuWired = true;
     }
@@ -224,15 +239,10 @@ export class NavigationComponent {
         return Array.from(this.selectedPlayers);
     }
 
+    // No selection is dropped here: extractUniquePlayers is passed the
+    // current one and lists it whether or not the window ranks it on.
     populatePlayerDropdown(players) {
         this.availablePlayers = players;
-
-        // Remove selected players that are no longer in the available list
-        for (const selected of this.selectedPlayers) {
-            if (!players.includes(selected)) {
-                this.selectedPlayers.delete(selected);
-            }
-        }
 
         this.renderDropdown();
         this.updateTriggerText();
@@ -343,9 +353,25 @@ export class NavigationComponent {
         }
     }
 
+    // How tall the open list may be: the room between the trigger and the
+    // bottom of the window. A CSS constant cannot ask that question — the
+    // trigger's distance from the bottom depends on the viewport AND on how
+    // far the page is scrolled — and the 300px it used to be showed 11 names
+    // on a phone with room for 30. Measured on open rather than on populate,
+    // since scrolling moves the trigger between the two.
+    fitDropdownHeight() {
+        const trigger = document.querySelector("#playerSelect .player-select-trigger");
+        const dropdown = document.querySelector("#playerSelect .player-dropdown");
+        if (!trigger || !dropdown) return;
+        const below = window.innerHeight - trigger.getBoundingClientRect().bottom;
+        dropdown.style.maxHeight =
+            Math.max(DROPDOWN_MIN_HEIGHT, below - DROPDOWN_VIEWPORT_MARGIN) + "px";
+    }
+
     toggleDropdown() {
         const dropdown = d3.select("#playerSelect .player-dropdown");
         const isOpen = dropdown.classed("open");
+        if (!isOpen) this.fitDropdownHeight();
         dropdown.classed("open", !isOpen);
     }
 

@@ -19,6 +19,7 @@ import {
     computeEdgeCounts,
     buildNetworkData,
     defaultMinPiecesForGraph,
+    minCountForCap,
     disambiguateLabels,
     fitText,
     partFromInstrument,
@@ -30,7 +31,8 @@ import {
     processRow,
     parseWork,
     extractUniquePlayers,
-    PLAYER_DROPDOWN_MIN_ENTRIES,
+    checkPlayersMatch,
+    PLAYER_DROPDOWN_MAX_ENTRIES,
 } from '../src/dataProcessor.js';
 
 // Hand-built rows for the network helpers. Reflects the real data model:
@@ -767,6 +769,48 @@ describe('defaultMinPiecesForGraph', () => {
     });
 });
 
+describe('minCountForCap', () => {
+    it('keeps everything when there are fewer entries than the cap', () => {
+        assert.equal(minCountForCap([9, 4, 1], 5), 1);
+        assert.equal(minCountForCap([], 5), 1);
+    });
+
+    it('keeps exactly the cap when the boundary counts are distinct', () => {
+        assert.equal(minCountForCap([5, 4, 3, 2, 1], 3), 3);
+    });
+
+    it('bumps past a tie straddling the boundary', () => {
+        // [5, 3, 3, 1] at cap 2: a cut of 3 would keep three entries.
+        assert.equal(minCountForCap([5, 3, 3, 1], 2), 4);
+    });
+
+    it('keeps a whole all-tied list rather than emptying it', () => {
+        // Bumping past the tie leaves nothing, so the cap yields instead.
+        assert.equal(minCountForCap([1, 1, 1, 1], 2), 1);
+    });
+
+    it('yields to a wide tie rather than undershoot the cap by its width', () => {
+        // 12 people above the boundary and 60 tied on it. Bumping lists 12
+        // of 72 and leaves 33 slots empty; keeping the tie lists all 72,
+        // which overshoots by 27 -- the nearer of the two to the cap.
+        const counts = [12, 10, 9, 8, 7, 6, 5, 5, 4, 4, 3, 3, ...Array(60).fill(2)];
+        assert.equal(minCountForCap(counts, 45), 2);
+    });
+
+    it('still bumps when bumping is the nearer of the two', () => {
+        // [5, 3, 3, 1] at cap 2: keeping lists 3, bumping lists 1. Equally
+        // far, and a tie goes to the cap.
+        assert.equal(minCountForCap([5, 3, 3, 1], 2), 4);
+    });
+
+    it('yields only as far as the tie, not past everyone below it', () => {
+        // The tie reaches the top, so there is no cut that honours the cap.
+        // Keeping the five tied at 5 overshoots by two; falling back to 1
+        // would also admit the entry at 1, which is not a close call.
+        assert.equal(minCountForCap([5, 5, 5, 5, 5, 1], 3), 5);
+    });
+});
+
 // Character-count stand-in for getComputedTextLength: every glyph is 1 unit
 // wide, so a maxWidth is just a character budget.
 const measureChars = s => s.length;
@@ -1382,10 +1426,34 @@ describe('parseWork', () => {
     });
 });
 
+describe('player-filter token parsing', () => {
+    // A name may hold a period and an instrument never does, so the token is
+    // split on its LAST one. Splitting on the first read "Peter O..v2" as the
+    // person "Peter O" playing "", which matched no row: the dropdown offered
+    // a name that blanked the page when ticked.
+    const row = { part: 'V1', player1: 'Peter O.', player2: 'Bob', player3: 'Carol' };
+
+    it('offers an initialled name and matches the row it came from', () => {
+        const keys = extractUniquePlayers([row]);
+        assert.ok(keys.includes('Peter O..v2'));
+        assert.equal(checkPlayersMatch(row, ['Peter O..v2']), true);
+    });
+
+    it('does not match a different person on the same row', () => {
+        assert.equal(checkPlayersMatch(row, ['Peter O..va']), false);
+        assert.equal(
+            checkPlayersMatch({ ...row, player1: 'Peter Q.' }, ['Peter O..v2']), false);
+    });
+
+    it('still splits a plain name on its only period', () => {
+        assert.equal(checkPlayersMatch(row, ['Bob.va']), true);
+        assert.equal(checkPlayersMatch(row, ['Bob.vc']), false);
+    });
+});
+
 describe('extractUniquePlayers', () => {
-    // Enough identical rows to clear the dropdown's regulars floor.
-    const many = (part, p1, p2, p3) =>
-        Array.from({ length: PLAYER_DROPDOWN_MIN_ENTRIES },
+    const many = (part, p1, p2, p3, n = 5) =>
+        Array.from({ length: n },
             () => ({ part, player1: p1, player2: p2, player3: p3 }));
 
     it('keys slot players by the part they played, per the user part table', () => {
@@ -1398,14 +1466,77 @@ describe('extractUniquePlayers', () => {
         assert.deepEqual(players, ['Alice.v1', 'Bob.v2', 'Carol.vc']);
     });
 
-    it('drops sub-floor players and rows with unknown parts', () => {
+    it('drops rows with unknown parts', () => {
         const rows = [
             ...many('VA', 'Alice', 'Bob', 'Carol'),
-            { part: 'VA', player1: 'Zoe', player2: null, player3: null },
-            { part: null, player1: 'Alice', player2: 'Bob', player3: 'Carol' },
+            { part: null, player1: 'Dana', player2: 'Erin', player3: 'Fred' },
         ];
         const players = extractUniquePlayers(rows);
         assert.deepEqual(players, ['Alice.v1', 'Bob.v2', 'Carol.vc']);
+    });
+
+    // The point of the cap: a log with only a handful of entries still fills
+    // its dropdown, where the floor it replaced left one empty for months.
+    it('lists everyone when there are fewer players than the cap', () => {
+        const players = extractUniquePlayers(
+            [{ part: 'V1', player1: 'Alice', player2: 'Bob', player3: 'Carol' }]);
+        assert.deepEqual(players, ['Alice.v2', 'Bob.va', 'Carol.vc']);
+    });
+
+    it('keeps the busiest players when there are more than the cap', () => {
+        const rows = [
+            ...many('V1', 'Alice', 'Bob', 'Carol', 3),
+            ...many('V1', 'Dana', 'Erin', 'Fred', 1),
+        ];
+        // cap=3 admits the three played 3 times, not the three played once.
+        assert.deepEqual(extractUniquePlayers(rows, { maxEntries: 3 }),
+            ['Alice.v2', 'Bob.va', 'Carol.vc']);
+    });
+
+    // The selection is what the page is filtered by, so the list has to keep
+    // offering it back — including a player the window ranks off the list, or
+    // one it holds no rows for at all.
+    it('lists a pinned player the cap would otherwise cut', () => {
+        const rows = [
+            ...many('V1', 'Alice', 'Bob', 'Carol', 3),
+            ...many('V1', 'Dana', null, null, 1),
+        ];
+        const players = extractUniquePlayers(rows, { maxEntries: 3, pinned: ['Dana.v2'] });
+        assert.deepEqual(players, ['Alice.v2', 'Bob.va', 'Carol.vc', 'Dana.v2']);
+    });
+
+    it('lists a pinned player absent from the data entirely', () => {
+        const players = extractUniquePlayers(many('V1', 'Alice', 'Bob', 'Carol'),
+            { pinned: ['Zoe.vc'] });
+        assert.deepEqual(players, ['Alice.v2', 'Bob.va', 'Carol.vc', 'Zoe.vc']);
+    });
+
+    it('does not list a pinned player twice', () => {
+        const players = extractUniquePlayers(many('V1', 'Alice', 'Bob', 'Carol'),
+            { pinned: ['Alice.v2'] });
+        assert.deepEqual(players, ['Alice.v2', 'Bob.va', 'Carol.vc']);
+    });
+
+    it('defaults to the dropdown cap', () => {
+        // Distinct counts, so the cap has a rank to cut on.
+        const rows = [];
+        const n = PLAYER_DROPDOWN_MAX_ENTRIES + 10;
+        for (let i = 0; i < n; i++) {
+            for (let k = 0; k <= i; k++) {
+                rows.push({ part: 'V1', player1: `P${i}`, player2: null, player3: null });
+            }
+        }
+        assert.equal(extractUniquePlayers(rows).length, PLAYER_DROPDOWN_MAX_ENTRIES);
+    });
+
+    // Nobody outranks anybody, so there is no cut to make. A young log gets
+    // its whole list rather than the empty dropdown a bump would leave.
+    it('lists everyone when the cap cannot separate them', () => {
+        const rows = Array.from({ length: PLAYER_DROPDOWN_MAX_ENTRIES + 10 }, (_, i) => ({
+            part: 'V1', player1: `P${i}`, player2: null, player3: null,
+        }));
+        assert.equal(extractUniquePlayers(rows).length,
+            PLAYER_DROPDOWN_MAX_ENTRIES + 10);
     });
 
     it('never lists "-" (empty slot), no matter how often it appears', () => {
@@ -1514,7 +1645,7 @@ describe('instrument annotations on player slots', () => {
         // The dropdown must agree with the breakdown above: listing the
         // pianist as "Alice Hart.vc" would let the VC part button claim she
         // played cello on the very row the charts call OTHER.
-        const data = Array.from({ length: PLAYER_DROPDOWN_MIN_ENTRIES }, () =>
+        const data = Array.from({ length: 5 }, () =>
             mkRow({ part: 'V1', player2: 'Bob', player3: 'Alice Hart (p)' }));
         normalizePlayerNames(data, ALIASES);
         const players = extractUniquePlayers(data);

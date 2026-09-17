@@ -347,7 +347,8 @@ export class App {
 
         // Only update player dropdown if date or part changed, not player
         if (filterType === "date" || filterType === "part") {
-            this.navigationComponent.populatePlayerDropdown(extractUniquePlayers(datePartFiltered));
+            this.navigationComponent.populatePlayerDropdown(
+                extractUniquePlayers(datePartFiltered, { pinned: players }));
         }
 
         // Render ONLY the visible tab now; mark the rest dirty and render

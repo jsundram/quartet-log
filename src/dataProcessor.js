@@ -486,24 +486,49 @@ export function buildNetworkData(rows, minCount = 1) {
     return { nodes, edges };
 }
 
-// Smallest piece-count threshold that keeps the rendered node set under
-// `maxNodes`. Used as the initial slider value so the graph opens at a
-// density the layout can handle. Returns 1 (= include everyone) when there
-// are fewer musicians than the cap. When there are ties at the cap boundary,
-// bumps the threshold by one so we stay at or under the cap.
+// Smallest count that keeps a descending count list at or under `cap`
+// entries. Returns 1 (= keep everything) when there are fewer entries than
+// the cap, and bumps past a tie straddling the boundary rather than
+// overshooting it.
+//
+// A cap rather than an absolute floor, because both callers slice their rows
+// before asking: a floor then means something different in every slice, while
+// a cap means the same thing in all of them. The dropdown's floor of 20 let
+// through 54 names over the whole log, 3 over the last month, and none at all
+// until roughly the 50th row ever logged.
+/**
+ * @param {number[]} counts - descending
+ * @param {number} cap
+ * @returns {number}
+ */
+export function minCountForCap(counts, cap) {
+    if (counts.length <= cap) return 1;
+    const cutoff = counts[cap - 1];
+    if (counts[cap] !== cutoff) return cutoff;
+
+    // A tie straddles the boundary, so no threshold lands on the cap exactly:
+    // keeping the tie overshoots, bumping past it undershoots. Take whichever
+    // lands NEARER the cap rather than always bumping, because a tie can be
+    // wide and always bumping undershoots by however wide it is — 60 people
+    // on exactly two plays each (a log a week after a camp) left a 45-slot
+    // list holding 12 names, with the other 60 unreachable. Overshooting
+    // costs a longer scroll; undershooting hides people from their own log.
+    // Ties go to the cap, and an empty list is never the answer.
+    const kept = counts.filter(c => c >= cutoff).length;
+    const bumped = counts.filter(c => c > cutoff).length;
+    if (bumped === 0) return cutoff;
+    return Math.abs(bumped - cap) <= Math.abs(kept - cap) ? cutoff + 1 : cutoff;
+}
+
+// Initial slider value for the musician network, so the graph opens at a
+// density a force layout can handle.
 /**
  * @param {Row[]} rows
  * @param {number} [maxNodes]
  * @returns {number}
  */
 export function defaultMinPiecesForGraph(rows, maxNodes = 50) {
-    const counts = computeNodeCounts(rows).map(n => n.count);
-    if (counts.length <= maxNodes) return 1;
-    const cutoff = counts[maxNodes - 1];
-    // If the next musician past the cap is tied, bump to exclude the tie
-    // so we don't overshoot.
-    if (counts[maxNodes] === cutoff) return cutoff + 1;
-    return cutoff;
+    return minCountForCap(computeNodeCounts(rows).map(n => n.count), maxNodes);
 }
 
 // What part did the person in this row's player slot play? The user's own
@@ -1031,16 +1056,31 @@ export function createEmptyRow(composer, title) {
     };
 }
 
-// Minimum entries for a player to appear in the Player filter dropdown: the
-// dropdown is for filtering by the people you play with REGULARLY; below
-// this floor it fills up with one-off guests and reading-party stands.
-export const PLAYER_DROPDOWN_MIN_ENTRIES = 20;
+// How many names the Player filter dropdown will show. A cap on the list
+// rather than a floor under each name: the number answers "how many rows fit
+// in a dropdown", which is a fact about the widget and true in every window,
+// where "played 20 times" is a claim about the data that was right only for
+// the window it was tuned on. See minCountForCap.
+//
+// 45 rather than a screenful, because the list scrolls and the widget is
+// sized to the space under it (fitDropdownHeight): a phone shows about 30 of
+// these at once, so the last third costs a short scroll and buys everyone
+// down to ~24 plays over the whole log. It was 30 for as long as the
+// dropdown was a fixed 300px tall and showed 11 of them.
+export const PLAYER_DROPDOWN_MAX_ENTRIES = 45;
 
+// `pinned` is whoever is selected right now, and they are listed whether or
+// not the current window ranks them onto it — otherwise narrowing the date
+// range clears the selection and widens the results in the same moment, with
+// nothing on screen saying so. An empty result is the honest outcome, and it
+// is one the user can see and undo.
 /**
  * @param {Row[]} data
+ * @param {{ maxEntries?: number, pinned?: Iterable<string> }} [opts]
  * @returns {string[]} "Name.part" keys (e.g. "Alice.v1") for the dropdown
  */
-export function extractUniquePlayers(data) {
+export function extractUniquePlayers(data, opts = {}) {
+    const { maxEntries = PLAYER_DROPDOWN_MAX_ENTRIES, pinned = [] } = opts;
     /** @type {Map<string, number>} */
     const playerCounts = new Map();
 
@@ -1056,13 +1096,16 @@ export function extractUniquePlayers(data) {
         });
     });
 
-    // Filter to the dropdown-worthy regulars only
-    const filteredPlayers = Array.from(playerCounts.entries())
-        .filter(([, count]) => count >= PLAYER_DROPDOWN_MIN_ENTRIES)
-        .map(([player]) => player)
-        .sort();
+    // The busiest `maxEntries` of them, listed by name: the cut is by how
+    // often someone played, the order is what you scan the list by.
+    const counts = Array.from(playerCounts.values()).sort((a, b) => b - a);
+    const min = minCountForCap(counts, maxEntries);
 
-    return filteredPlayers;
+    const listed = new Set(pinned);
+    playerCounts.forEach((count, player) => {
+        if (count >= min) listed.add(player);
+    });
+    return Array.from(listed).sort();
 }
 
 // Stacked-bar segments for a ranked row's part breakdown, in PART_ORDER.
@@ -1091,6 +1134,21 @@ export function stackedPartSegments(d) {
 // instruments). Instrument slots are relative to the user's own part: e.g.
 // when the user played V1, player1 is the V2 chair — unless the slot says
 // otherwise (slotPartsFor), which is the same rule the charts read.
+//
+// The split is on the LAST period, because a NAME may hold one and an
+// instrument never does: an initialled name ("Peter O.", a shape nameShape
+// in scripts/lib/people.mjs says this log holds) keyed "Peter O..v2", which
+// a leading split read as the person "Peter O" on the instrument "", so
+// ticking them matched no row at all and Home went blank with no way to see
+// why. Latent while the old 20-entry floor kept such names off the list.
+/**
+ * @param {string} token
+ * @returns {[string, string]} [name, instrument]
+ */
+function splitPlayerToken(token) {
+    const i = token.lastIndexOf(".");
+    return i < 0 ? [token, ""] : [token.slice(0, i), token.slice(i + 1)];
+}
 
 export function checkSinglePlayerMatch(d, playerName, instrument) {
     const slotParts = slotPartsFor(d);
@@ -1106,7 +1164,7 @@ export function checkPlayersMatch(d, selectedPlayers) {
     //   => { Alice: ["v1","v2"], Bob: ["va"] }
     const playerGroups = new Map();
     for (const p of selectedPlayers) {
-        const [name, instrument] = p.split(".");
+        const [name, instrument] = splitPlayerToken(p);
         if (!playerGroups.has(name)) playerGroups.set(name, []);
         playerGroups.get(name).push(instrument);
     }

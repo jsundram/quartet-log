@@ -1328,6 +1328,9 @@ body.network-fullscreen-open {
     left: 0;
     background: var(--color-bg-primary);
     border: 1px solid var(--color-border-strong);
+    /* max-height is set on open by NavigationComponent.fitDropdownHeight --
+       the room under the trigger is not something CSS can ask about. This is
+       the fallback for the first paint and for a JS-less render. */
     max-height: 300px;
     overflow-y: auto;
     z-index: 100;
@@ -1340,12 +1343,24 @@ body.network-fullscreen-open {
 }
 
 .player-option {
-    padding: 4px 8px;
+    /* Matched to the work rows on Home (.work-row, 14px at the same 12px
+       font): this list is read the same way and sat 10px taller per row. The
+       floor is the checkbox's own 13px box, so 2px is most of what is left
+       to give. */
+    padding: 2px 8px;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 6px;
     white-space: nowrap;
+}
+
+/* The row's height was set by the checkbox's UA margin (3px top and bottom)
+   rather than by the padding above it, which made every row 3px taller than
+   the rule here claimed and left no way to tighten it from the rule. */
+.player-option input[type="checkbox"] {
+    margin: 0;
+    flex: none;
 }
 
 .player-option:hover {
