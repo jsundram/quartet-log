@@ -18,3 +18,7 @@ src/aliases*.js
 !src/aliases.stub.js
 test-results/
 playwright-report/
+
+# Personal Claude Code overrides; .claude/settings.json (the shared hook) is tracked.
+.claude/settings.local.json
+.claude/.cc-writes/

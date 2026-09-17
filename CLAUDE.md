@@ -21,7 +21,16 @@ npm run typecheck             # tsc --noEmit over // @ts-check'd files
 npm run test:e2e              # Playwright; build with ./build.sh --prod first
 npm run audit                 # data-quality audits (see scripts/CLAUDE.md)
 npm run attribution           # just the decaying findings
+npm run overlap               # score this file's claims against source comments
 ```
+
+Three callers screen new `CLAUDE.md` prose against the comments it may be
+restating: a `PostToolUse` hook at the edit, a pre-commit hook, and a PR job
+that writes the same report to the checks page. None of them blocks anything.
+**When one flags a claim, open the file it names before writing more**: drop the
+claim if that comment already makes it, move it to the line if it belongs there,
+and keep it only when it says something no single file can. The percentages look
+low by design; `scripts/claudemd_overlap.mjs` carries the measurement.
 
 Push to `main` deploys to <https://log.quartetroulette.com> via GitHub Actions.
 PR CI runs test, lint, typecheck and Playwright; all actions in both workflows
@@ -218,6 +227,7 @@ Anonymize every example (Alice/Bob, never a real collaborator).
 - `archive/data.csv` — the processed export, mirroring the "Download Data"
   button. No audit reads it. Personal data.
 - `.dev-data-url`, `last_deploy/`, `alias-output.txt`, `archive/*.zip`.
+
 - `md/*.html` — pandoc used to write here and now writes straight to
   `last_deploy/`; the glob stays ignored as a safety net, with
   `!md/_pandoc_template.html`.

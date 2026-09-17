@@ -1,0 +1,12 @@
+#!/bin/sh
+# Screens the CLAUDE.md prose this commit adds against the comment prose it may
+# be restating. Warn-only by design — see THRESHOLD in the script — so this
+# hook must never be the reason a commit fails. Nothing else in the repo is
+# hooked. `npm install` points core.hooksPath here (package.json "prepare"), as
+# does starting a Claude Code session (.claude/settings.json); a clone that does
+# neither has no hook at all, which is why the PR job reports too. `git commit
+# --no-verify` skips it.
+command -v node >/dev/null 2>&1 || exit 0
+git diff --cached --name-only | grep -q 'CLAUDE\.md$' || exit 0
+node "$(git rev-parse --show-toplevel)/scripts/claudemd_overlap.mjs" --check || true
+exit 0
