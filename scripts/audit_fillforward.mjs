@@ -25,9 +25,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import {
-    refersToPrevEntry, SESSION_WINDOW_HOURS, splitOutsideParens,
-} from '../src/dataProcessor.js';
+import { refersToPrevEntry, SESSION_WINDOW_HOURS, splitOutsideParens, hasNameRules } from '../src/dataProcessor.js';
 import { loadViews, viewsHeader } from './lib/views.mjs';
 import { readNameTables, runAudit, warnIfStub } from './lib/cli.mjs';
 
@@ -169,9 +167,15 @@ export function label(row) {
  * rows are blank continuation rows, so the two numbers differ on exactly the
  * sessions this section describes); it took the prefix branch ungated, so a
  * cell the app rewrote from the abbreviation table was reported "left as
- * typed"; and it walked only the three player columns while the app applies
- * the same rule to `location`. None of the three can recur: there is one
- * loop now, in fillForward, and this reads what it did.
+ * typed"; and it disagreed with the app about which columns the rule governs.
+ * None of the three can recur: there is one loop now, in fillForward, and
+ * this reads what it did.
+ *
+ * `location` is skipped because fillForward applies neither name rule to it:
+ * that column can only ditto, and a ditto is not what the window decides.
+ * Reporting it would be worse than saying nothing -- every location prefix
+ * would print as "left as typed", which reads as "the window excluded it" and
+ * would send someone to widen a window that has no say over it.
  *
  * @param {{ fillDecisions: FillDecision[] }} views
  * @returns {string[]}
@@ -179,7 +183,12 @@ export function label(row) {
 export function sessionWindowReport({ fillDecisions }) {
     /** @type {{ gap: number, row: Row, full: string, verdict: string }[]} */
     const prefixGaps = [];
-    for (const { row, branch, entry, reference, gap, result } of fillDecisions) {
+    for (const { row, column, branch, entry, reference, gap, result } of fillDecisions) {
+        // Asked of the app rather than answered again here: a second copy of
+        // "which columns do the name rules govern" is the drift this trace
+        // exists to end. Where they do not run, the window has no say and
+        // every entry would read as "left as typed".
+        if (!hasNameRules(column)) continue;
         // A blank is a ditto mark: it repeats however long the gap, so it is
         // not what the window decides. Only a WRITTEN short form is.
         if (branch === 'ditto') continue;

@@ -792,19 +792,38 @@ test('a prefix that is also an abbreviation follows the app outside the window',
 });
 
 
-test('the session-window report measures the location column too', () => {
-    // fillForward applies the same window-gated prefix rule to all four
-    // columns it walks. A report measuring only the players would say a
-    // window change was free while it silently stopped a location shorthand
-    // from expanding.
+test('a location is never read as shorthand for the one above it', () => {
+    // The prefix rule abbreviates NAMES and is not applied to `location`:
+    // over the real log it rewrote a location cell twelve times and was wrong
+    // every time. "Oak" an hour after "Oak Hall" is a place of its own, and a
+    // venue named for a building inside another one ("AKM (chapel)" beside
+    // "AKM") has to survive being typed next to its parent.
     const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice', location: 'Oak Hall' }),
+        // 3.5h: inside the window, so only the column check keeps them apart.
         raw({ ts: '1/1/2024 13:30:00', p1: 'Alice', location: 'Oak' })];
     const views = buildViews(rows, NO_TABLES);
-    // The app really does expand it — 3.5h is inside the 4h window.
+    assert.equal(views.filled[1].location, 'Oak');
+    // ...and the report says nothing about it, rather than calling it a
+    // shorthand the window declined to expand.
+    assert.match(sessionWindowReport(views).join('\n'), /No shorthand entries in this file/);
+});
+
+test('a blank location still dittos, however long the gap', () => {
+    // The guard above must not reach the ditto branch: blanks are how the
+    // sheet says "same place", and they carry across a break of any length.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice', location: 'Oak Hall' }),
+        raw({ ts: '1/3/2024 21:00:00', p1: 'Alice', location: '' })];
+    const views = buildViews(rows, NO_TABLES);
     assert.equal(views.filled[1].location, 'Oak Hall');
-    const out = sessionWindowReport(views).join('\n');
-    assert.match(out, /1 shorthand entries; 1 inside the window/);
-    assert.match(out, /3\.50h.*-> 'Oak Hall'\s+\[expanded\]/);
+});
+
+test('a player shorthand still expands inside the window', () => {
+    // The counterpart: restricting the rule to the player columns must leave
+    // those columns alone.
+    const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Alice Hart', location: 'Oak Hall' }),
+        raw({ ts: '1/1/2024 13:30:00', p1: 'Alice', location: 'Oak Hall' })];
+    const views = buildViews(rows, NO_TABLES);
+    assert.equal(views.filled[1].player1, 'Alice Hart');
 });
 
 test('extra-string parts are the ones a quartet cannot seat', () => {
