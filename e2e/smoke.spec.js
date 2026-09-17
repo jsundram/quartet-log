@@ -114,6 +114,38 @@ test('dashboard musician names stay inside the chart at a narrow width', async (
     expect(labels.filter(l => l.full)).toEqual([{ shown: 'Frank', full: 'Frank Vandermeer' }]);
 });
 
+test('the Player dropdown opens to the room under it, not a fixed 300px', async ({ page }) => {
+    // The dropdown's height is the one thing about it that CSS cannot decide:
+    // how far the trigger sits from the bottom of the window depends on the
+    // viewport AND on the scroll position. It was a hardcoded 300px, which on
+    // a phone showed 11 names out of a list that had room for 30. Nothing
+    // below the DOM can see this, so it is pinned here.
+    await page.setViewportSize({ width: 390, height: 900 });
+    const trigger = page.locator('#playerSelect .player-select-trigger');
+    const dropdown = page.locator('#playerSelect .player-dropdown');
+    await trigger.click();
+    await expect(dropdown).toHaveClass(/open/);
+
+    const m = await page.evaluate(() => {
+        const dd = document.querySelector('#playerSelect .player-dropdown');
+        const tr = document.querySelector('#playerSelect .player-select-trigger');
+        return {
+            maxHeight: parseFloat(getComputedStyle(dd).maxHeight),
+            below: innerHeight - tr.getBoundingClientRect().bottom,
+            bottom: dd.getBoundingClientRect().bottom,
+            innerHeight,
+        };
+    });
+    // The rule itself: the space under the trigger, less a margin, floored
+    // so a short viewport gets a list rather than a sliver. Asserting only
+    // "<= below" would call the floor a failure the moment a wrapped toolbar
+    // leaves less than 188px underneath.
+    expect(m.maxHeight).toBe(Math.max(180, m.below - 8));
+    // ...which here is well past the 300px CSS fallback, and stays on screen.
+    expect(m.maxHeight).toBeGreaterThan(300);
+    expect(m.bottom).toBeLessThanOrEqual(m.innerHeight);
+});
+
 // The log form. Unit tests cover the model (test/logEntry.test.mjs), the
 // transport (test/formConfig.test.mjs) and the outbox
 // (test/logStore.test.mjs); what only a browser can pin is the wiring between
