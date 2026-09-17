@@ -112,6 +112,23 @@ function briefingPaths() {
         .sort((a, b) => a.split('/').length - b.split('/').length);
 }
 
+/**
+ * Does this ref exist here? Asked before diffing against it, because the answer
+ * in CI is not always yes: checkout clones shallow by default, and a diff
+ * against a merge base it does not have would abort. A screen that dies there
+ * writes nothing to the step summary, which reads exactly like prose with
+ * nothing wrong with it.
+ * @param {string} ref
+ */
+function resolvable(ref) {
+    try {
+        git('rev-parse', '--verify', '--quiet', `${ref}^{commit}`);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 /** @param {string} path */
 function isTracked(path) {
     return git('ls-files', '--', path).trim() !== '';
@@ -223,6 +240,12 @@ function trim(text, n) {
  * @returns {string|null} the report, or null when there is nothing to say
  */
 function run(opts) {
+    if (opts.base && !resolvable(opts.base)) {
+        const note = `Could not resolve \`${opts.base}\`, so nothing was screened. `
+            + 'The PR job needs `fetch-depth: 0` on checkout — the default shallow '
+            + 'clone has no merge base to diff against.';
+        return opts.markdown ? asMarkdown(note, { fenced: false }) : note;
+    }
     const briefings = briefingPaths();
     /** @type {Flag[]} */
     const flagged = [];
@@ -286,16 +309,17 @@ function run(opts) {
 /**
  * The same report, for a GitHub step summary. Fenced rather than tabulated:
  * the claim and the comment it matched are what make a flag decidable, and
- * they are prose, which a Markdown table would rewrap into nonsense.
+ * they are prose, which a Markdown table would rewrap into nonsense. A note
+ * about the screen itself is not fenced — it is a sentence, and its backticks
+ * are meant to render.
  * @param {string} report
+ * @param {{fenced?: boolean}} [opts]
  */
-export function asMarkdown(report) {
+export function asMarkdown(report, { fenced = true } = {}) {
     return [
         '## CLAUDE.md overlap screen',
         '',
-        '```',
-        report,
-        '```',
+        ...(fenced ? ['```', report, '```'] : [report]),
         '',
         '_A report, not a gate. Nothing here fails the build._',
         '',
@@ -360,6 +384,20 @@ function calibrate(ref) {
         console.log(`   ${pct(t).padStart(4)}           ${rate(cutScores, t).padStart(4)}`
             + `                 ${rate(keptScores, t).padStart(4)}`
             + (t === THRESHOLD ? '   <- THRESHOLD' : ''));
+    }
+}
+
+/**
+ * Run `fn`, reporting a failure in one line rather than a stack trace.
+ * @param {() => string|null} fn
+ * @returns {string|null}
+ */
+function guarded(fn) {
+    try {
+        return fn();
+    } catch (err) {
+        console.error(`claudemd_overlap: ${err instanceof Error ? err.message.split('\n')[0] : err}`);
+        return null;
     }
 }
 
@@ -429,7 +467,9 @@ if (invokedDirectly()) {
         process.exit(0);
     }
     const baseArg = argv.indexOf('--base');
-    const report = run({
+    // Never a stack trace: this runs in a commit hook and in CI, and in both
+    // the contract is that it cannot be the reason something failed.
+    const report = guarded(() => run({
         check: argv.includes('--check'),
         worktree: argv.includes('--worktree'),
         base: baseArg === -1 ? '' : (argv[baseArg + 1] ?? ''),
@@ -439,7 +479,7 @@ if (invokedDirectly()) {
         top: topArg !== -1 && Number.isFinite(Number(argv[topArg + 1]))
             ? Number(argv[topArg + 1])
             : 16,
-    });
+    }));
     if (report) console.log(report);
     // Warn-only, always. The judgement is human and roughly one flag in five is
     // a keep; a check that misfires at that rate gets disabled, and then it

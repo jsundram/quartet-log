@@ -7,6 +7,6 @@
 # neither has no hook at all, which is why the PR job reports too. `git commit
 # --no-verify` skips it.
 command -v node >/dev/null 2>&1 || exit 0
-git diff --cached --name-only | grep -q 'CLAUDE\.md$' || exit 0
+git diff --cached --name-only | grep -qE '(^|/)CLAUDE\.md$' || exit 0
 node "$(git rev-parse --show-toplevel)/scripts/claudemd_overlap.mjs" --check || true
 exit 0

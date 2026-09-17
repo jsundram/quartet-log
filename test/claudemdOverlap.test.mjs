@@ -399,6 +399,12 @@ test("asMarkdown", async (t) => {
     await t.test("says on the page that it is not a gate", () => {
         assert.match(out, /not a gate/);
     });
+
+    await t.test("leaves a note about the screen itself unfenced, so its code spans render", () => {
+        const note = asMarkdown("Could not resolve `origin/main`.", { fenced: false });
+        assert.ok(!note.includes("```"));
+        assert.ok(note.includes("Could not resolve `origin/main`."));
+    });
 });
 
 test("THRESHOLD stays in the range the measurement covers", () => {
