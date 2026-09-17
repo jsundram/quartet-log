@@ -625,6 +625,11 @@ export function setSlotPart({ chosen, implied, seat, key }) {
  * the carried cell says, falling back to the seat's own implication. Reading
  * the carried annotation is what makes a role stick across a session — a
  * violinist moved to V2 stays on V2 for the next piece, like their name does.
+ *
+ * Review has twice proposed scoping that inheritance to SESSION_WINDOW_HOURS,
+ * and the answer is no: outside the window a blank cell still dittos the row
+ * above, so dropping the annotation would write the bare name and silently
+ * move that player from v2 to v1.
  * @param {Entry} carried carriedForward() output, annotations attached
  * @param {string} part your own part
  * @returns {(string|null)[]}
