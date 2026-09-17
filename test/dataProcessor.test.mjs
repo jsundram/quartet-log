@@ -1247,13 +1247,40 @@ describe('fillForward', () => {
         assert.equal(data[1].player1, 'Fred');
     });
 
-    it('fills the location column with the same rules', () => {
+    it('dittos a blank location, which is the only rule that column gets', () => {
         const data = [
             ffRow(0, { location: 'Home' }),
             ffRow(1, { location: '' }),
         ];
         fillForward(data, {});
         assert.equal(data[1].location, 'Home');
+    });
+
+    it('never reads a location as shorthand for the one above it', () => {
+        // The prefix rule abbreviates names; a venue is not written that way,
+        // and a venue inside another one has to survive being typed next to
+        // its parent ("AKM" after "AKM (chapel)").
+        const data = [
+            ffRow(0, { location: 'Oak Hall' }),
+            ffRow(1, { location: 'Oak' }),   // 1h apart: inside the window
+        ];
+        fillForward(data, {});
+        assert.equal(data[1].location, 'Oak');
+    });
+
+    it('never expands a PLAYER_ABBREVIATIONS key found in the location column', () => {
+        // That table maps a letter to a PERSON, so honouring it here would
+        // put someone's first name in the venue column.
+        const data = [
+            ffRow(0, { location: 'Oak Hall' }),
+            ffRow(1, { location: 'Z' }),
+        ];
+        fillForward(data, { Z: 'Zoe Adams' });
+        assert.equal(data[1].location, 'Z');
+        // ...while the same key in a player slot still expands.
+        const players = [ffRow(0, { player1: 'Alice Hart' }), ffRow(1, { player1: 'Z' })];
+        fillForward(players, { Z: 'Zoe Adams' });
+        assert.equal(players[1].player1, 'Zoe Adams');
     });
 });
 

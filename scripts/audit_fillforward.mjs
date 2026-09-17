@@ -173,10 +173,11 @@ export function label(row) {
  * None of the three can recur: there is one loop now, in fillForward, and
  * this reads what it did.
  *
- * `location` is skipped because fillForward no longer applies the prefix rule
- * to it. Reporting it would be worse than saying nothing: every location
- * prefix would show up as "left as typed", which reads as "the window
- * excluded it" and would send someone to widen a window that has no say.
+ * `location` is skipped because fillForward applies neither name rule to it:
+ * that column can only ditto, and a ditto is not what the window decides.
+ * Reporting it would be worse than saying nothing -- every location prefix
+ * would print as "left as typed", which reads as "the window excluded it" and
+ * would send someone to widen a window that has no say over it.
  *
  * @param {{ fillDecisions: FillDecision[] }} views
  * @returns {string[]}
@@ -185,7 +186,8 @@ export function sessionWindowReport({ fillDecisions }) {
     /** @type {{ gap: number, row: Row, full: string, verdict: string }[]} */
     const prefixGaps = [];
     for (const { row, column, branch, entry, reference, gap, result } of fillDecisions) {
-        // The window has no say over this column; see the note above.
+        // Neither name rule runs on this column, so the window has no say
+        // over it and every entry here would read as "left as typed".
         if (column === 'location') continue;
         // A blank is a ditto mark: it repeats however long the gap, so it is
         // not what the window decides. Only a WRITTEN short form is.

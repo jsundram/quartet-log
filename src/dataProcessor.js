@@ -863,7 +863,7 @@ export function refersToPrevEntry(entry, prevEntry) {
     return prevEntry.startsWith(entry) && /\s/.test(prevEntry[entry.length]);
 }
 
-// Expand shorthand in the player/location columns. The sheet convention is to
+// Fill the player and location columns forward. The sheet convention is to
 // write a value in full once, then abbreviate while the session continues:
 // a blank cell or a leading-prefix of the previous entry (e.g. "Fred" after
 // "Fred Brown") repeats it, and the single-letter PLAYER_ABBREVIATIONS
@@ -871,12 +871,18 @@ export function refersToPrevEntry(entry, prevEntry) {
 // "nobody in this slot": it is left as-is and does not advance the session
 // anchor, so shorthand can still refer past it to the last real entry.
 //
+// The two abbreviation rules are for NAMES and run on the player columns
+// only; `location` gets the ditto rule and nothing else. See the note at the
+// top of the loop for why, and do not widen them back without reading it.
+//
 // Cell semantics, pinned by tests:
 //   "-"    → no player; untouched.
 //   ""     → a ditto mark: always filled from the previous entry, however
 //            long the gap. It never becomes the reference entry itself.
-//   prefix → same-session prefix-at-a-word-boundary of the previous entry:
-//            expanded to it. Otherwise treated as a new value.
+//   prefix → PLAYER COLUMNS ONLY. Same-session prefix-at-a-word-boundary of
+//            the previous entry: expanded to it. Otherwise a new value.
+//   table  → PLAYER COLUMNS ONLY. A PLAYER_ABBREVIATIONS key, expanded
+//            regardless of the window.
 //
 // Rows must be in chronological order (prepareRows guarantees this). A
 // negative time delta would mean unsorted input; it is deliberately treated
@@ -892,6 +898,11 @@ export function refersToPrevEntry(entry, prevEntry) {
  * row, a branch taken ungated, the location column missing). A trace makes
  * the divergence impossible instead of testable: there is one loop, and the
  * reader of the report sees what the app did.
+ *
+ * The list above is history, not a spec: "the location column missing" was a
+ * bug when the mirror walked three columns and the app walked four. The app
+ * now applies the two name rules to the player columns only, so a reader that
+ * omits `location` agrees with it.
  *
  * `reference` is the entry this cell was compared against, captured before
  * the branch could advance it — the `new` branch leaves the cell as typed and
@@ -918,12 +929,15 @@ export function fillForward(data, abbreviations, onDecision) {
     if (!abbreviations) throw new TypeError('fillForward: pass an abbreviation table (use {} for none)');
     if (!data.length) return data;
     ["player1", "player2", "player3", "location"].forEach(column => {
-        // The prefix rule abbreviates NAMES, and a venue is not written that
-        // way: over this log it rewrote a location twelve times and was wrong
-        // every time. It also makes naming a place a trap, since a venue
-        // inside another one captures its parent. Blanks still ditto, which
-        // is the branch locations actually need.
-        const shorthandApplies = column !== "location";
+        // Both abbreviation rules are about NAMES, and a venue is not written
+        // the way a name is. The prefix rule rewrote a location twelve times
+        // over this log and was wrong every time, and it made naming a place
+        // a trap, since a venue inside another one captures its parent.
+        // PLAYER_ABBREVIATIONS is a table of people, so a location that
+        // happened to equal one of its single-letter keys would become a
+        // person's first name — latent today, and the same mistake.
+        // Locations keep the ditto rule, which is the one they need.
+        const nameRules = column !== "location";
         let prev = data[0];
         let prevEntry = prev[column];
 
@@ -951,14 +965,14 @@ export function fillForward(data, abbreviations, onDecision) {
                     // and that empty value then anchored every row after it.
                     row[column] = prevEntry;
                     branch = 'ditto';
-                } else if (shorthandApplies && sameSession && refersToPrevEntry(entry, prevEntry)) {
+                } else if (nameRules && sameSession && refersToPrevEntry(entry, prevEntry)) {
                     // A written-out shorthand IS gated, because it is an
                     // inference rather than a ditto: "Peter" abbreviates the
                     // "Peter Ouyang" from an hour ago, but next month it is
                     // just as likely to be a different Peter.
                     row[column] = prevEntry;
                     branch = 'shorthand';
-                } else if (Object.prototype.hasOwnProperty.call(abbreviations, entry)) {
+                } else if (nameRules && Object.prototype.hasOwnProperty.call(abbreviations, entry)) {
                     prevEntry = abbreviations[entry];
                     row[column] = prevEntry;
                     branch = 'table';
