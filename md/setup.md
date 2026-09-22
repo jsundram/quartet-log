@@ -1,6 +1,7 @@
 # How to Publish Your Google Sheet as CSV
 
 This guide explains how to publish an existing Google Sheet so that Quartet Log can access the data.
+Don't have one yet? **[How to make a chamber music log](./howto.html)** starts from an empty Google Form.
 
 ## Step-by-Step Instructions
 
