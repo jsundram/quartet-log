@@ -76,7 +76,7 @@ test('resolveCarry trims, so the remembered copy matches the row the sheet holds
 });
 
 test('resolveCarry leaves an explicitly empty seat empty', () => {
-    // "-" is a seat the work does not have (howto section 5). It is a written
+    // "-" is a seat the work does not have (howto, "Who goes in which column"). It is a written
     // value, so it must survive rather than be dittoed over.
     const resolved = resolveCarry(blankEntry({ player2: '-' }), carriedForward(row()));
     assert.equal(resolved.player2, '-');
@@ -203,7 +203,7 @@ test('a typed name takes the chosen part, and an empty seat stays empty', () => 
     assert.equal(
         slotCell({ typed: 'Erin Fry', carried: 'Alice Hart', chosen: 'VA2', implied: 'V2' }),
         'Erin Fry (va2)');
-    // "-" is "this work has no such seat" (howto section 5), not a person.
+    // "-" is "this work has no such seat" (howto, "Who goes in which column"), not a person.
     assert.equal(slotCell({ typed: '-', carried: 'Alice Hart', chosen: 'VC2', implied: 'VC' }), '-');
     // And a CARRIED "-": the previous row was a trio, so seat 3 holds "-".
     // Picking VC2 on that empty seat fires the materialise-the-carried-name
@@ -495,7 +495,7 @@ test('the fifth player arriving is two dropdowns, not four retyped names', () =>
 });
 
 test('a part no column holds moves that person into Others?', () => {
-    // The rule the columns have always had (howto section 5): the three are
+    // The rule the columns have always had (howto, "Who goes in which column"): the three are
     // the quartet's parts and everyone past them is an extra with a tag. A
     // column never gains a tag for a part it cannot hold -- the form moves the
     // person instead, which is the whole difference between this and writing

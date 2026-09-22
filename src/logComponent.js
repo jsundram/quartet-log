@@ -659,9 +659,10 @@ export class LogComponent {
     /**
      * The extras to start the next piece with. `Others?` cannot ditto in the
      * sheet — every row that had a fifth player has to name them again, and
-     * howto section 6 calls forgetting to the single most common way a person
-     * goes missing from the log. So the form carries them instead and writes
-     * them out each time; the x on a row is how you say someone left.
+     * howto's "What repeats itself" calls forgetting to the single most
+     * common way a person goes missing from the log. So the form carries them
+     * instead and writes them out each time; the x on a row is how you say
+     * someone left.
      *
      * Scoped to the sitting, unlike the seats: a blank seat repeats however
      * long the break, but re-adding the people from three days ago would be
@@ -730,7 +731,8 @@ export class LogComponent {
             .property('value', listed ? '' : this.entry.composer);
     }
 
-    // The carry-forward made visible rather than trusted (howto §6).
+    // The carry-forward made visible rather than trusted (howto, "What
+    // repeats itself").
     //
     // A seat shows the NAME only: the dropdown beside it already says the
     // part, and once a part moves someone to another column a placeholder

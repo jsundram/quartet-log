@@ -61,7 +61,8 @@ export function formViewUrl(formId) {
 // the last question anyone would think to enable it for. A plain value works
 // whether the question is multiple-choice or short answer, and whether or not
 // Other is on; the escape works only in the one case. So the precondition
-// stated in md/howto.md section 1 is about Composer, and only Composer.
+// stated in md/howto.md's "Create the form" is about Composer, and only
+// Composer.
 //
 // This all replaced a hardcoded list of the reference form's seven composers,
 // which sent those seven plainly and everything else through the escape: on a
