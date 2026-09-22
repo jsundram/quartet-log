@@ -132,6 +132,38 @@
             height: auto;
             border-radius: 6px;
             box-shadow: 0 1px 3px var(--color-shadow-subtle);
+            /* Two shots of one step sit side by side; baseline-aligning them
+               would hang a toolbar strip off the bottom of a tall dialog. */
+            vertical-align: top;
+        }
+
+        /* Screenshots carry their own natural width in the markdown, so none
+           is upscaled. The narrow ones float, which is the difference between
+           a step beside its picture and a column of stacked slabs. Sized in
+           %, so a float can never crowd the prose down to a word per line. */
+        .markdown-body img.shot {
+            float: right;
+            margin: 0 0 12px 24px;
+            max-width: 42%;
+        }
+
+        /* A float must not reach past the step it illustrates. */
+        .markdown-body h1,
+        .markdown-body h2,
+        .markdown-body h3 {
+            clear: both;
+        }
+
+        /* Too narrow to put anything beside anything. */
+        @media (max-width: 760px) {
+            .markdown-body img.shot {
+                float: none;
+                /* Un-floating alone leaves it inline, with the paragraph it
+                   was meant to sit beside running along its right edge. */
+                display: block;
+                max-width: 100%;
+                margin: 12px 0;
+            }
         }
 
         .markdown-body figure {
