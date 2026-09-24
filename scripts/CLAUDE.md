@@ -16,7 +16,7 @@ is why backing up `src/aliases.js` is a standing risk the audit names.
 
 New people arrive at roughly 12/month, very unevenly: 1–4 in quiet months, 20–28
 after a camp or a trip, since that is where first-name-only entry happens in
-bulk. `md/howto.md` §7 carries the upstream fix — a full name on first entry for
+bulk. `md/howto.md`'s "Naming people" carries the upstream fix — a full name on first entry for
 anyone new — which is what stops the ambiguity being created at all.
 
 ## Attribution's scope is deliberate

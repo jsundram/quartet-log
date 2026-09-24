@@ -24,9 +24,10 @@ export const FIELDS = /** @type {const} */ ([
     'others', 'location', 'comments',
 ]);
 
-// The seats a logger can say they were on — the app's own vocabulary (howto
-// section 5). It used to be formConfig's list of one user's radio options,
-// which coupled what anyone could log to how the reference form was built.
+// The seats a logger can say they were on — the app's own vocabulary (howto,
+// "Who goes in which column"). It used to be formConfig's list of one user's
+// radio options, which coupled what anyone could log to how the reference
+// form was built.
 //
 // VC is deliberately absent: a cellist logger is not supported yet, and the
 // gap is in the reader, not here. SLOT_TO_PART has no VC key and SLOT_CLASS
@@ -35,7 +36,7 @@ export const FIELDS = /** @type {const} */ ([
 // violist who would be aliased in the wrong class and counted in the wrong
 // column. Offering the button before that is fixed would write rows the reader
 // misreads; leaving it off means a cellist cannot log, which is the failure
-// worth having (howto section 1 says so out loud).
+// worth having (howto, "Create the form", says so out loud).
 export const PART_CHOICES = /** @type {const} */ (['V1', 'V2', 'VA1', 'VA2']);
 
 // The form's own required questions. Forms enforces them server-side and the
@@ -61,10 +62,11 @@ export function blankEntry(seed = {}) {
 
 /**
  * What a blank field in this entry will end up meaning. fillForward reads a
- * blank player or location cell as a ditto mark for the row above (howto §6),
- * so the honest thing to show is not a pre-filled input the user must clear
- * but the value that arrives if they type nothing — placeholder text over an
- * input that submits empty, exactly as writing the row by hand would.
+ * blank player or location cell as a ditto mark for the row above (howto,
+ * "What repeats itself"), so the honest thing to show is not a pre-filled
+ * input the user must clear but the value that arrives if they type nothing —
+ * placeholder text over an input that submits empty, exactly as writing the
+ * row by hand would.
  * @param {Row|Entry|null|undefined} last
  * @returns {Entry}
  */
@@ -213,7 +215,8 @@ export function nextInSession(entry) {
 // violin-to-viola changes in this log have names typed into the columns on the
 // row right after.
 //
-// A column never carries a tag for a part it cannot hold (issue #41, howto §5).
+// A column never carries a tag for a part it cannot hold (issue #41, howto
+// "Who goes in which column").
 
 /** @typedef {{ key: string, label: string, code: string, reads: string[] }} SlotPart */
 
@@ -359,7 +362,8 @@ export function impliedSlotParts(part) {
  */
 export function slotCell({ typed, carried = '', chosen, implied }) {
     const written = (typed ?? '').trim();
-    // "-" is "nobody in this seat" (howto section 5), not a person to annotate.
+    // "-" is "nobody in this seat" (howto, "Who goes in which column"), not
+    // a person to annotate.
     if (written === '-') return '-';
 
     // The guard has to sit BELOW the carry fallback as well as above it: a

@@ -15,7 +15,7 @@ For the longer story behind the project, see this blog post: **[Data visualizati
 
 ## How to use it
 
-The first time you visit, the site asks for the URL of your published Google Sheet — your data, your view. The setup screen links to **[How to make a chamber music log](./howto.html)** if you haven't built one yet. Once you've entered the URL, it's saved to your browser's local storage and the data loads automatically on subsequent visits (with a 5-second cache fallback so it stays usable when the network is flaky).
+The first time you visit, the site asks for the URL of your published Google Sheet — your data, your view. The setup screen links to **[How to make a chamber music log](./howto.html)** if you haven't built one yet, and to **[Publishing your sheet as CSV](./setup.html)** if you have. Once you've entered the URL, it's saved to your browser's local storage and the data loads automatically on subsequent visits (with a 5-second cache fallback so it stays usable when the network is flaky).
 
 Filters at the top of Home (date range, part, players) work in combination — they apply across every composer tab and the data table at the bottom of each tab. The Calendar and Dashboard views have their own independent date filters.
 
@@ -40,7 +40,7 @@ Traffic goes to Google and nowhere else: the browser fetches the CSV directly fr
 - **Tests**: a small `node:test` suite covering the data-processing helpers (alias normalization, partial-movement filtering, etc.).
 - **Hosting**: GitHub Pages, with automatic deployment on push to `main`.
 
-The code is open source: **[github.com/jsundram/musiclog](https://github.com/jsundram/musiclog)**.
+The code is open source: **[github.com/jsundram/quartet-log](https://github.com/jsundram/quartet-log)**.
 
 ## A bit of history
 

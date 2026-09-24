@@ -116,7 +116,7 @@ the middle two are swapped, and it has already been a source of bugs:
 3. `fillForward` copies the column string, while `normalizePlayerNames` has
    already moved the `(instrument)` annotation into the parallel
    `playerInstruments` array — so a filled slot loses its annotation, breaking
-   the carry-forward `md/howto.md` §6 promises.
+   the carry-forward `md/howto.md`'s "What repeats itself" promises.
 
 A useful consequence of the current order: a cell the sheet's own repetition
 resolves never reaches an alias at all.
@@ -145,7 +145,7 @@ Each of these looked fine and wasn't.
 ## The sheet's conventions
 
 What a blank cell means, how `(instrument)` annotations read, and why a column
-nobody is on is written `-`: `md/howto.md` §5–§7 is the user-facing statement,
+nobody is on is written `-`: `md/howto.md` part 3 is the user-facing statement,
 and `dataProcessor.js`'s `fillForward` and `logEntry.js`'s seat rules each carry
 the reasoning for their half. Read those before changing how a row is parsed —
 the app, the log form and the audits encode the same conventions separately.
