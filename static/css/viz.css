@@ -2118,6 +2118,12 @@ body.network-fullscreen-open {
     color: var(--color-text-tertiary);
 }
 
+.log-done-last {
+    grid-column: 3;
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+}
+
 /* Filled once the app's own copy of the sheet holds the row, hollow until
    then. Watching one fill in is what teaches the delay; a sentence about
    published copies never has. Both carry a text label for the same reason the

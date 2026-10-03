@@ -17,7 +17,7 @@ import {
     rosterParts, seatParts, partCode, partLabel, othersKey,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, serializeOthersRows, canonicalOthersCell,
-    sessionPeople, sessionRows, sessionPieces, countNew, slotPartKey,
+    sessionPeople, sessionRows, sessionPieces, countNew, slotPartKey, lastPlayed, lastPlayedText,
     PARTIAL_MOVEMENT_NOTE,
 } from './logEntry.js';
 
@@ -1094,6 +1094,9 @@ export class LogComponent {
         // Newest first: the piece just logged is the one being confirmed, and
         // scanning down is scanning back through the evening.
         const list = [...pieces].reverse();
+        // Before the sitting, not before each piece: a piece played twice
+        // tonight should say when it was last played, not "an hour ago".
+        const start = pieces[0]?.timestamp ?? new Date(at);
         d3.select('#logDoneSitting').text(list.length === 1
             ? 'First piece this sitting'
             : `${list.length} pieces this sitting`);
@@ -1112,6 +1115,7 @@ export class LogComponent {
                     + '<path d="M5 13l4 4L19 7"></path></svg>');
                 row.append('span').attr('class', 'log-done-when');
                 row.append('span').attr('class', 'log-done-piece');
+                row.append('span').attr('class', 'log-done-last');
                 return row;
             })
             .call(row => {
@@ -1130,6 +1134,8 @@ export class LogComponent {
                 row.select('.log-done-piece').html(null)
                     .text(d => `${d.composer} ${d.title}`.trim())
                     .append('span').attr('class', 'log-done-part').text(d => ` \u00b7 ${d.part}`);
+                row.select('.log-done-last')
+                    .text(d => lastPlayedText(lastPlayed(this.rows, d.composer, d.title, start), start));
             });
 
         const cells = d3.select('#logDoneTiles').selectAll('.stat-tile')

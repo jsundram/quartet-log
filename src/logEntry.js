@@ -856,6 +856,48 @@ const foldPart = (/** @type {string} */ part) => (part.trim() === 'VA1' ? 'VA' :
 const workKey = (/** @type {string} */ composer, /** @type {string} */ title) =>
     (title ? `${composer}|${title}` : null);
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * The last time a piece was played before the sitting began, or null for a
+ * first time. Keyed as the "Unique pieces" tile is, so the two never disagree
+ * about what counts as the same piece. A movement looks up its whole piece:
+ * `rows` holds no movements to find.
+ * @param {Row[]} rows chronological @param {string} composer
+ * @param {string} title @param {Date} before
+ * @returns {Row|null}
+ */
+export function lastPlayed(rows, composer, title, before) {
+    const wk = workKey(composer, title.split(':')[0].trim());
+    if (!wk) return null;
+    const t = before.getTime();
+    for (let i = rows.length - 1; i >= 0; i--) {
+        const d = rows[i];
+        if (!d.timestamp || d.timestamp.getTime() >= t) continue;
+        if (workKey(d.composer, d.work?.title ?? '') === wk) return d;
+    }
+    return null;
+}
+
+/**
+ * "Dec 7 (350d): Alice | Bob | Carol", or "First time". The year appears only
+ * once the date is a year or more back, where "Dec 7" alone could be either.
+ * @param {Row|null} row @param {Date} now @returns {string}
+ */
+export function lastPlayedText(row, now) {
+    if (!row?.timestamp) return 'First time';
+    const then = row.timestamp;
+    const day = (/** @type {Date} */ d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const days = Math.round((day(now) - day(then)) / 86_400_000);
+    const date = `${MONTHS[then.getMonth()]} ${then.getDate()}`
+        + (days >= 365 ? `, ${then.getFullYear()}` : '');
+    const people = [
+        ...[row.player1, row.player2, row.player3],
+        ...(row.othersList ?? []).map(o => o.name),
+    ].filter(n => n && n !== '-');
+    return `${date} (${days}d)` + (people.length ? `: ${people.join(' | ')}` : '');
+}
+
 // How a piece is recognised as "the same one" across the three records that
 // hold it. Trimmed, because they do not agree on whitespace: the outbox holds
 // the entry as TYPED (blanks left blank, so the sheet's own fillForward dittos

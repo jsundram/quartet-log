@@ -725,6 +725,24 @@ test.describe('log form', () => {
         await expect(page.locator('.log-done-row')).toHaveCount(2);
     });
 
+    test('each piece in the sitting says when it was last played, and with whom', async ({ page }) => {
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '20#2');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 20#2');
+        // The fixture played it five days ago, on VA: same piece, any part.
+        const last = page.locator('.log-done-row .log-done-last');
+        await expect(last).toHaveText(/^[A-Z][a-z]{2} \d{1,2} \(5d\): Alice \| Dave \| Carol$/);
+
+        await logAnother(page);
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+        await expect(last.first()).toHaveText('First time');
+        await expect(last.nth(1)).toContainText('(5d)');
+    });
+
     test('the sitting\'s times stay on one line at phone width', async ({ page }) => {
         // A fixed column wrapped "10:22 PM", and only a real layout can see it.
         await page.setViewportSize({ width: 390, height: 900 });

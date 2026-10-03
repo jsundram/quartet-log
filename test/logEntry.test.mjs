@@ -11,6 +11,7 @@ import {
     PART_CHOICES, rosterParts, seatParts, partCode, partLabel,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
     sessionRows, sessionPeople, sessionPieces, countNew, PARTIAL_MOVEMENT_NOTE,
+    lastPlayed, lastPlayedText,
 } from '../src/logEntry.js';
 import { SLOT_TO_PART, fillForward } from '../src/dataProcessor.js';
 
@@ -1281,4 +1282,34 @@ test('a sitting is windowed from a moment, so an old one can still be read back'
     assert.equal(asLogged.length, 1);
     const hoursLater = new Date(sub.at + 5 * 3600_000);
     assert.deepEqual(sessionPieces([], [sub], [], hoursLater), []);
+});
+
+test('last played is the newest earlier row of the same piece, in any part', () => {
+    const rows = [
+        row({ timestamp: new Date('2025-06-01T19:00'), work: { title: '74#1' }, part: 'V2' }),
+        row({ timestamp: new Date('2025-12-07T19:00'), work: { title: '74#1' }, part: 'V1' }),
+        row({ timestamp: new Date('2025-12-08T19:00'), work: { title: '76#3' } }),
+        // Tonight's own row: the sitting is not its own last time.
+        row({ timestamp: new Date('2026-11-22T19:30'), work: { title: '74#1' } }),
+    ];
+    const tonight = new Date('2026-11-22T19:00');
+    assert.equal(lastPlayed(rows, 'Haydn', '74#1', tonight)?.part, 'V1');
+    // A movement finds its whole piece.
+    assert.equal(lastPlayed(rows, 'Haydn', '74#1:II', tonight)?.part, 'V1');
+    assert.equal(lastPlayed(rows, 'Mozart', '74#1', tonight), null);
+    assert.equal(lastPlayed(rows, 'Haydn', '', tonight), null);
+});
+
+test('last played reads as a date, an age and everyone who was there', () => {
+    const now = new Date('2026-11-22T21:00');
+    const last = row({
+        timestamp: new Date('2026-01-06T19:00'), player2: '-',
+        othersList: [{ name: 'Dana Ellis', instrument: 'p' }],
+    });
+    assert.equal(lastPlayedText(last, now), 'Jan 6 (320d): Alice Hart | Carol Diaz | Dana Ellis');
+    assert.equal(lastPlayedText(row({ timestamp: new Date('2025-11-01T19:00') }), now),
+        'Nov 1, 2025 (386d): Alice Hart | Bob Bek | Carol Diaz');
+    assert.equal(lastPlayedText(row({ timestamp: new Date('2026-11-15T19:00'),
+        player1: '', player2: '', player3: '' }), now), 'Nov 15 (7d)');
+    assert.equal(lastPlayedText(null, now), 'First time');
 });
