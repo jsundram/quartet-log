@@ -351,20 +351,16 @@ export function impliedSlotParts(part) {
  *
  * Conversely a cell that would come out identical to the one above is left
  * blank, so the sheet keeps dittoing as it always has and only rows that
- * actually say something new carry text. Except on the first row of a
- * session, which writes everyone out: that is how the hand-written rows have
- * always opened a sitting, and a Player 2 column left blank for a week reads
- * as a violist who was never logged.
+ * actually say something new carry text.
  *
  * @param {object} a
  * @param {string} a.typed what is in the name field (blank means "as before")
  * @param {string} a.carried the cell this slot would ditto, annotation included
  * @param {string|null} a.chosen selected part key, or a raw code passed through
  * @param {string|null} a.implied the part the seat implies
- * @param {boolean} [a.newSession] first row of a sitting: write, never ditto
  * @returns {string} the cell to submit
  */
-export function slotCell({ typed, carried = '', chosen, implied, newSession = false }) {
+export function slotCell({ typed, carried = '', chosen, implied }) {
     const written = (typed ?? '').trim();
     // "-" is "nobody in this seat" (howto, "Who goes in which column"), not
     // a person to annotate.
@@ -382,21 +378,8 @@ export function slotCell({ typed, carried = '', chosen, implied, newSession = fa
     const code = partCode(chosen);
     const desired = annotate ? `${name} (${code})` : name;
     // Identical to the row above: leave it blank and let fillForward ditto,
-    // which is how every row inside a sitting has always been written.
-    return !newSession && desired === carried.trim() ? '' : desired;
-}
-
-/**
- * What to write in the Location column: what was typed, else — on the first
- * row of a session only — the place it would ditto, for the same reason
- * slotCell writes the names out there.
- * @param {object} a
- * @param {string} a.typed @param {string} a.carried @param {boolean} [a.newSession]
- * @returns {string}
- */
-export function locationCell({ typed, carried = '', newSession = false }) {
-    const written = (typed ?? '').trim();
-    return written || (newSession ? carried.trim() : '');
+    // which is how every row in this sheet has always been written.
+    return desired === carried.trim() ? '' : desired;
 }
 
 /**
@@ -472,7 +455,6 @@ function only(list) {
  * @param {(string|null)[]} a.chosen the part each seat is on
  * @param {(string|null)[]} a.implied the part each column holds
  * @param {OtherRow[]} [a.others] the `Others?` rows, as the editor has them
- * @param {boolean} [a.newSession] first row of a sitting (see slotCell)
  * @returns {{ cells: string[], others: OtherRow[], parts: (string|null)[], dropped: OtherRow[] }}
  *   `dropped` is the extras rows a seat of the same name superseded — said out
  *   loud, because the rule cannot tell a stale re-seed from a second person of
@@ -482,7 +464,7 @@ function only(list) {
  *   column need not be the one typed there: pairing cell i with the part field
  *   i was SET to would print a swap backwards.
  */
-export function rowPlan({ typed, carried, chosen, implied, others = [], newSession = false }) {
+export function rowPlan({ typed, carried, chosen, implied, others = [] }) {
     /** @type {Claim[]} */
     const claims = [];
     [0, 1, 2].forEach(i => {
@@ -536,7 +518,6 @@ export function rowPlan({ typed, carried, chosen, implied, others = [], newSessi
             carried: carried[i],
             chosen: c.key,
             implied: implied[i],
-            newSession,
         })
         : emptyCell(typed[i], carried[i])));
     // Published rather than re-derived: the name in a column need not be the

@@ -220,6 +220,10 @@ function sameText(a, b) {
  * established fix for a typo or a surname learned later, and the placeholder
  * has to show the correction rather than what was originally typed.
  *
+ * The clock only answers the other question: a sheet row strictly NEWER than
+ * the save is a later piece logged somewhere else, and this morning's copy
+ * must not stand in for this evening's row.
+ *
  * Returns the save time alongside the entry: callers that ask "is this still
  * the same sitting" need it, and a synthetic `now` would make a submission
  * from this morning look like one from a minute ago.
@@ -231,6 +235,7 @@ export function recent(lastRow) {
     const saved = recentList().at(-1);
     if (!saved) return null;
     if (lastRow && isSameRow(lastRow, saved.entry)) return null;
+    if (Number(lastRow?.timestamp) > saved.at) return null;
     return { entry: blankEntry(saved.entry), at: saved.at };
 }
 

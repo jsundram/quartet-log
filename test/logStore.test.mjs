@@ -181,6 +181,18 @@ test('the local copy still wins while the published CSV lags behind it', () => {
     assert.ok(Date.now() - recent(null).at < 5000);
 });
 
+test('a later row logged elsewhere beats this morning\'s local copy', () => {
+    ls.setItem('quartetlog_recent', JSON.stringify([{
+        at: Date.now() - 9 * 3600_000,
+        entry: blankEntry({ composer: 'Haydn', title: '76#3', player1: 'Alice Hart' }),
+    }]));
+    const evening = {
+        timestamp: new Date(Date.now() - 1800_000),
+        composer: 'Mozart', work: { title: 'K421' }, part: 'V1', player1: 'Bob Bek',
+    };
+    assert.equal(recent(evening), null);
+});
+
 test('every submission of the sitting is remembered, not just the last', () => {
     // The session-people offer is only as deep as this: the published CSV lags
     // by minutes and a sitting logs several pieces in that time, so one

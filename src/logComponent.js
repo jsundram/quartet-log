@@ -645,6 +645,8 @@ export class LogComponent {
         // sitting logs several pieces inside the window the published CSV
         // takes to catch up, and someone who left after the second piece
         // should still be offered back for the fourth.
+        // Sorted, because sessionRows walks back from the end: a submission
+        // from this morning must not sit after an evening row logged elsewhere.
         return (this._session = [...this.sheetRows, ...store.recentAll().map(({ at, entry }) => ({
             // The real save time, not now: a submission from this morning is
             // not part of this afternoon's sitting.
@@ -660,7 +662,7 @@ export class LogComponent {
             // would forget anyone the freeform box held.
             othersList: parseOthersRows(entry.others)
                 .map(r => ({ name: r.name, instrument: r.instrument })),
-        }))]);
+        }))].sort((a, b) => Number(a.timestamp) - Number(b.timestamp)));
     }
 
     /**

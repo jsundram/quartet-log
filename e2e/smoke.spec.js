@@ -554,6 +554,31 @@ test.describe('log form', () => {
         }
     });
 
+    test('a piece logged here this morning does not shadow tonight\'s sheet', async ({ page }) => {
+        // This device logged a morning rehearsal; tonight's first piece came
+        // from somewhere else. Tonight is the sitting, and its row is the one
+        // a blank repeats.
+        await page.evaluate(at => localStorage.setItem('quartetlog_recent', JSON.stringify([{
+            at,
+            entry: { composer: 'Haydn', title: '76#4', part: 'V1', player1: 'Bob',
+                player2: 'Erin', player3: 'Frank Vandermeer', others: '', location: 'Hall', comments: '' },
+        }])), Date.now() - 9 * 3600_000);
+        await inSitting(page, SAME_SITTING);
+        const bodies = await captureSubmits(page);
+        await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alice');
+        await expect(page.locator('#logLocation')).toHaveAttribute('placeholder', 'Home');
+
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expectLogged(page);
+        const body = new URLSearchParams(bodies.at(-1));
+        for (const id of [PLAYER1_ID, PLAYER2_ID, PLAYER3_ID, LOCATION_ID]) {
+            expect(body.has(id)).toBe(false);
+        }
+    });
+
     test('carries forward from the row just submitted, not the stale sheet', async ({ page }) => {
         await captureSubmits(page);
         await pickComposer(page, 'Haydn');
