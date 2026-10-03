@@ -161,6 +161,7 @@ const [COMPOSER_ID, TITLE_ID, PART_ID, , PLAYER2_ID] = FORM_IDS.map(id => `entry
 const PLAYER1_ID = 'entry.104';
 const PLAYER3_ID = 'entry.106';
 const OTHERS_ID = 'entry.107';
+const LOCATION_ID = 'entry.108';
 
 test('an unconfigured visitor gets the setup panel, not someone else\'s form', async ({ page }) => {
     // The whole point of per-user config: this site is public, so a visitor
@@ -395,6 +396,23 @@ test.describe('log form', () => {
         return bodies;
     }
 
+    // The fixture's newest row is days old, so a test's first submit opens a
+    // sitting. Tests about what happens inside one give it a row from an hour
+    // ago first.
+    async function inSitting(page, row) {
+        const recent = new Date(Date.now() - 3600_000);
+        const stamp = `${recent.getMonth() + 1}/${recent.getDate()}/${recent.getFullYear()}`
+            + ` ${recent.getHours()}:${String(recent.getMinutes()).padStart(2, '0')}:00`;
+        await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
+            contentType: 'text/csv',
+            body: `${FIXTURE_CSV}\n${stamp},${row}`,
+        }));
+        await page.reload();
+        await expect(page.locator('#logForm')).toBeVisible();
+    }
+    // The fixture's newest line-up, an hour ago.
+    const SAME_SITTING = 'Haydn,20#2,VA,Alice,Dave,Carol,,Home,';
+
     test.beforeEach(async ({ page }) => {
         // Configure through the setup link, which exercises consumeFormParam
         // on the way in.
@@ -481,6 +499,7 @@ test.describe('log form', () => {
     });
 
     test('shows the carried-forward seats as placeholders, and submits blanks', async ({ page }) => {
+        await inSitting(page, SAME_SITTING);
         const bodies = await captureSubmits(page);
         // The fixture's newest row is Haydn 20#2 with Alice / Dave / Carol.
         await expect(page.locator('#logPlayer1')).toHaveAttribute('placeholder', 'Alice');
@@ -507,6 +526,32 @@ test.describe('log form', () => {
         // fillForward's whole purpose.
         expect(body.has(PLAYER1_ID)).toBe(false);
         expect(body.has(PLAYER3_ID)).toBe(false);
+    });
+
+    test('the first piece of a sitting writes everyone and the place out', async ({ page }) => {
+        const bodies = await captureSubmits(page);
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.fill('#logPlayer2', 'Erin');
+        await page.click('#logSubmit');
+        await expectLogged(page);
+
+        let body = new URLSearchParams(bodies.at(-1));
+        expect(body.get(PLAYER1_ID)).toBe('Alice');
+        expect(body.get(PLAYER2_ID)).toBe('Erin');
+        expect(body.get(PLAYER3_ID)).toBe('Carol');
+        expect(body.get(LOCATION_ID)).toBe('Home');
+
+        // The next piece is inside the sitting, so it dittos again.
+        await logAnother(page);
+        await page.fill('#logTitle', '76#2');
+        await page.click('#logSubmit');
+        await expectLogged(page);
+        body = new URLSearchParams(bodies.at(-1));
+        for (const id of [PLAYER1_ID, PLAYER2_ID, PLAYER3_ID, LOCATION_ID]) {
+            expect(body.has(id)).toBe(false);
+        }
     });
 
     test('carries forward from the row just submitted, not the stale sheet', async ({ page }) => {
@@ -864,6 +909,7 @@ test.describe('log form', () => {
         // retyping: annotating instead ("Alice (v2), Dave (v1)") writes a row
         // whose columns contradict SLOT_TO_PART, which is what the sheet's own
         // reader and anyone reading the spreadsheet go by.
+        await inSitting(page, SAME_SITTING);
         const bodies = await captureSubmits(page);
         await pickComposer(page, 'Haydn');
         await page.fill('#logTitle', '76#5');
@@ -916,6 +962,7 @@ test.describe('log form', () => {
         // Nobody is retyped. The violist's dropdown says VA2, which no column
         // holds, so the form writes him into Others?; the new arrival is typed
         // once, on V2, and the form writes her into the column that holds it.
+        await inSitting(page, SAME_SITTING);
         const bodies = await captureSubmits(page);
         await pickComposer(page, 'Mozart');
         await page.fill('#logTitle', 'K515');
@@ -1032,15 +1079,7 @@ test.describe('log form', () => {
         // trade, the violas trade, the cellos trade. Half of each pair is in a
         // column and half is an extra, so every trade crosses the boundary --
         // which is the whole reason a column offers VA2 and VC2 at all.
-        const recent = new Date(Date.now() - 3600_000);
-        const stamp = `${recent.getMonth() + 1}/${recent.getDate()}/${recent.getFullYear()}`
-            + ` ${recent.getHours()}:${String(recent.getMinutes()).padStart(2, '0')}:00`;
-        await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
-            contentType: 'text/csv',
-            body: `${FIXTURE_CSV}\n${stamp},Brahms,18,VA1,Alice,Dave,Carol,Judy (va2); Karl (vc2),Home,`,
-        }));
-        await page.reload();
-        await expect(page.locator('#logForm')).toBeVisible();
+        await inSitting(page, 'Brahms,18,VA1,Alice,Dave,Carol,Judy (va2); Karl (vc2),Home,');
 
         const bodies = await captureSubmits(page);
         // A second sextet, by somebody else: the composer of the row above is
@@ -1084,6 +1123,7 @@ test.describe('log form', () => {
     });
 
     test('a quintet second viola goes in Others?, not in a column', async ({ page }) => {
+        await inSitting(page, SAME_SITTING);
         const bodies = await captureSubmits(page);
         await pickComposer(page, 'Mozart');
         await page.fill('#logTitle', 'K515');
@@ -1237,15 +1277,7 @@ test.describe('log form', () => {
         // already, and two people cannot be written in one cell. The one whose
         // column it is keeps it, the other stays where she was typed, and
         // neither cell is rewritten.
-        const recent = new Date(Date.now() - 3600_000);
-        const stamp = `${recent.getMonth() + 1}/${recent.getDate()}/${recent.getFullYear()}`
-            + ` ${recent.getHours()}:${String(recent.getMinutes()).padStart(2, '0')}:00`;
-        await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
-            contentType: 'text/csv',
-            body: `${FIXTURE_CSV}\n${stamp},Haydn,20#3,V1,Alice,Bob,Carol,Heidi (vc); Ida (vc Shadow),Home,`,
-        }));
-        await page.reload();
-        await expect(page.locator('#logForm')).toBeVisible();
+        await inSitting(page, 'Haydn,20#3,V1,Alice,Bob,Carol,Heidi (vc); Ida (vc Shadow),Home,');
 
         const bodies = await captureSubmits(page);
         await page.locator('#logOthersHere .log-chip-btn')
@@ -1275,18 +1307,8 @@ test.describe('log form', () => {
     });
 
     test('people already in the sitting are a tap, not a retype', async ({ page }) => {
-        // The second sextet of an afternoon has the first one's people. The
-        // fixture's newest row is days old, so give it one from an hour ago --
-        // otherwise there is no sitting to be in, which is itself correct.
-        const recent = new Date(Date.now() - 3600_000);
-        const stamp = `${recent.getMonth() + 1}/${recent.getDate()}/${recent.getFullYear()}`
-            + ` ${recent.getHours()}:${String(recent.getMinutes()).padStart(2, '0')}:00`;
-        await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({
-            contentType: 'text/csv',
-            body: `${FIXTURE_CSV}\n${stamp},Haydn,20#3,V1,Alice,Bob,Carol,Grace (piano),Home,`,
-        }));
-        await page.reload();
-        await expect(page.locator('#logForm')).toBeVisible();
+        // The second sextet of an afternoon has the first one's people.
+        await inSitting(page, 'Haydn,20#3,V1,Alice,Bob,Carol,Grace (piano),Home,');
 
         const bodies = await captureSubmits(page);
         const here = page.locator('#logOthersHere .log-chip-btn');
