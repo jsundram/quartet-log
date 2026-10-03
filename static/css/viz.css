@@ -2072,24 +2072,31 @@ body.network-fullscreen-open {
     color: var(--color-text-secondary);
 }
 
+/* One grid for the whole list, so the time column is as wide as its widest
+   entry: a fixed width wrapped "10:22 PM" onto two lines on a phone. */
+#logDoneList {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    column-gap: 9px;
+}
+
 .log-done-row {
-    display: flex;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: center;
-    gap: 9px;
     padding: 4px 0;
     font-size: 14px;
 }
 
 .log-done-when {
-    flex-shrink: 0;
-    width: 50px;
+    white-space: nowrap;
     font-size: 13px;
+    font-variant-numeric: tabular-nums;
     color: var(--color-text-tertiary);
 }
 
 .log-done-piece {
-    flex: 1;
-    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
