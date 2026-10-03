@@ -11,7 +11,7 @@ import { buildAggregateStatDefs } from './statDefs.js';
 import { tooltip } from './tooltip.js';
 import * as store from './logStore.js';
 import {
-    blankEntry, carriedForward, resolveCarry, missingFields,
+    blankEntry, carriedForward, sheetCarry, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
     impliedSlotParts, defaultSlotParts, rowPlan, setSlotPart, PART_CHOICES,
     rosterParts, seatParts, partCode, partLabel, othersKey,
@@ -586,6 +586,11 @@ export class LogComponent {
         });
     }
 
+    // Nothing in the window yet: this row opens the sitting.
+    opensSession() {
+        return sessionRows(this.sessionSource()).length === 0;
+    }
+
     renderSlotParts() {
         const chosen = this.slotParts();
         SEATS.forEach((_, i) => {
@@ -638,6 +643,8 @@ export class LogComponent {
         // sitting logs several pieces inside the window the published CSV
         // takes to catch up, and someone who left after the second piece
         // should still be offered back for the fourth.
+        // Sorted, because sessionRows walks back from the end: a submission
+        // from this morning must not sit after an evening row logged elsewhere.
         return (this._session = [...this.sheetRows, ...store.recentAll().map(({ at, entry }) => ({
             // The real save time, not now: a submission from this morning is
             // not part of this afternoon's sitting.
@@ -653,7 +660,7 @@ export class LogComponent {
             // would forget anyone the freeform box held.
             othersList: parseOthersRows(entry.others)
                 .map(r => ({ name: r.name, instrument: r.instrument })),
-        }))]);
+        }))].sort((a, b) => Number(a.timestamp) - Number(b.timestamp)));
     }
 
     /**
@@ -1273,12 +1280,13 @@ export class LogComponent {
         // next piece of this session carries forward from what this row will
         // hold rather than from the row above it.
         const resolved = resolveCarry(entry, carried);
+        const sent = this.opensSession() ? resolveCarry(entry, sheetCarry(this.carrySource())) : entry;
 
         // Always through the queue, even online: anything already waiting has
         // to reach the sheet first, since fillForward reads each row against
         // the one above it and a jumped queue points a blank seat at the wrong
         // previous row.
-        const queued = store.enqueue(entry);
+        const queued = store.enqueue(sent);
         const button = d3.select('#logSubmit').property('disabled', true);
         await store.flush(e => postEntry(e, this.config));
         // A browser that won't write localStorage (private-mode Safari, a full
@@ -1290,7 +1298,7 @@ export class LogComponent {
         // to hold it and no later attempt coming.
         let lost = false;
         if (!queued) {
-            try { await postEntry(entry, this.config); }
+            try { await postEntry(sent, this.config); }
             catch { lost = true; }
         }
         button.property('disabled', false);

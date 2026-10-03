@@ -264,6 +264,13 @@ describe('normalizePlayerNames', () => {
         assert.equal(data[0].player2, 'Jo Alpha');
     });
 
+    it('keeps the cells as the sheet holds them, before aliasing', () => {
+        const data = [mkRow({ player1: 'Jo (va)', player2: 'Ned', player3: 'Jo' })];
+        normalizePlayerNames(data, ALIASES);
+        assert.equal(data[0].player3, 'Jo Beta');
+        assert.deepEqual(data[0].sheetPlayers, ['Jo (va)', 'Ned', 'Jo']);
+    });
+
     it('attaches a parsed, canonicalized othersList', () => {
         const data = [mkRow({ others: 'Jo (vc2); Margot (va2)' })];
         normalizePlayerNames(data, ALIASES);

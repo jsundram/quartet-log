@@ -86,6 +86,25 @@ export function carriedForward(last) {
 }
 
 /**
+ * What the first row of a session writes out. Hand-written sittings have
+ * always opened with everyone named, and a column left blank for a week reads
+ * as a player who was never logged. The text is the sheet's own, not the alias
+ * tables' reading of it: that is what a blank would have repeated, and a name
+ * the tables expanded is a guess no later fix to them could take back.
+ * @param {Row|Entry|null} last @returns {Entry}
+ */
+export function sheetCarry(last) {
+    const cells = /** @type {Row} */ (last)?.sheetPlayers;
+    if (!cells) return carriedForward(last);
+    return blankEntry({
+        player1: cells[0] ?? '',
+        player2: cells[1] ?? '',
+        player3: cells[2] ?? '',
+        location: /** @type {Record<string, string>} */ (last).location ?? '',
+    });
+}
+
+/**
  * What the sheet will hold once fillForward has run: a blank seat takes the
  * carried value, a written one replaces it. The app needs this to keep its own
  * placeholders honest between a submit and the sheet catching up — the
