@@ -241,7 +241,9 @@ the app has your whole log loaded and Google Forms doesn't:
 - **Names you've used autocomplete.** Picking one beats retyping it — that's
   what keeps a second Alice from blurring into the first (section 8).
 - **Empty seats show who they'll repeat**, greyed in, so the carry-forward is
-  something you see rather than trust (section 7).
+  something you see rather than trust (section 7). The first piece of a sitting
+  writes every name and the location out anyway, so each session in the sheet
+  opens with its full line-up and where it was.
 - **Each name has its part beside it**, so you never work out which column
   someone belongs in. That one is worth its own paragraph, below.
 - **Extra players stay for the session** and go onto every piece, so the **x**

@@ -7,7 +7,7 @@ import {
     blankEntry, carriedForward, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts, canonicalOthersCell,
-    rowPlan, setSlotPart,
+    rowPlan, locationCell, setSlotPart,
     PART_CHOICES, rosterParts, seatParts, partCode, partLabel,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
     sessionRows, sessionPeople, sessionPieces, countNew, PARTIAL_MOVEMENT_NOTE,
@@ -189,6 +189,34 @@ test('a slot that would repeat the row above stays blank', () => {
     assert.equal(slotCell({ typed: '', carried: 'Alice Hart', chosen: 'V1', implied: 'V1' }), '');
     assert.equal(slotCell({ typed: '', carried: 'Alice Hart (v2)', chosen: 'V2', implied: 'V1' }), '');
     assert.equal(slotCell({ typed: 'Alice Hart', carried: 'Alice Hart', chosen: 'V1', implied: 'V1' }), '');
+});
+
+test('the first row of a session writes the repeated name out', () => {
+    // Hand-written sittings have always opened with everyone named; a blank
+    // there leaves a column empty for days and the player looks unlogged.
+    const first = { carried: 'Alice Hart', chosen: 'V1', implied: 'V1', newSession: true };
+    assert.equal(slotCell({ ...first, typed: '' }), 'Alice Hart');
+    assert.equal(slotCell({ ...first, typed: 'Alice Hart' }), 'Alice Hart');
+    assert.equal(slotCell({ typed: '', carried: 'Alice Hart (v2)', chosen: 'V2', implied: 'V1', newSession: true }),
+        'Alice Hart (v2)');
+    // "-" and a seat with nobody above are untouched.
+    assert.equal(slotCell({ typed: '', carried: '-', chosen: 'VC', implied: 'VC', newSession: true }), '');
+    assert.equal(slotCell({ typed: '', carried: '', chosen: 'V1', implied: 'V1', newSession: true }), '');
+});
+
+test('the first row of a session writes the carried location out', () => {
+    assert.equal(locationCell({ typed: '', carried: 'Hall A', newSession: true }), 'Hall A');
+    assert.equal(locationCell({ typed: '', carried: 'Hall A' }), '');
+    assert.equal(locationCell({ typed: ' Hall B ', carried: 'Hall A' }), 'Hall B');
+    assert.equal(locationCell({ typed: '', carried: '', newSession: true }), '');
+});
+
+test('rowPlan names every seat on the first row of a session', () => {
+    const carried = ['Alice Hart', 'Bob Lane', 'Carol Diaz'];
+    const base = { typed: ['', 'Bob Lane', ''], carried,
+        chosen: ['V1', 'V2', 'VC'], implied: ['V1', 'V2', 'VC'] };
+    assert.deepEqual(rowPlan({ ...base, newSession: true }).cells, carried);
+    assert.deepEqual(rowPlan(base).cells, ['', '', '']);
 });
 
 test('going back to the implied part writes the bare name, clearing the annotation', () => {
