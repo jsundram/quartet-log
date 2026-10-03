@@ -860,8 +860,8 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 /**
  * The last time a piece was played before the sitting began, or null for a
- * first time. Keyed as the "Unique pieces" tile is, so the two never disagree
- * about what counts as the same piece. A movement looks up its whole piece:
+ * first time. Keyed as the "Unique pieces" tile is, so the two agree on what
+ * counts as the same piece; the tile only looks back a year, this the whole log. A movement looks up its whole piece:
  * `rows` holds no movements to find.
  * @param {Row[]} rows chronological @param {string} composer
  * @param {string} title @param {Date} before
@@ -895,7 +895,9 @@ export function lastPlayedText(row, now) {
         ...[row.player1, row.player2, row.player3],
         ...(row.othersList ?? []).map(o => o.name),
     ].filter(n => n && n !== '-');
-    return `${date} (${days}d)` + (people.length ? `: ${people.join(' | ')}` : '');
+    // "(0d)" reads like a glitch for a piece played this afternoon.
+    const ago = days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days}d`;
+    return `${date} (${ago})` + (people.length ? `: ${people.join(' | ')}` : '');
 }
 
 // How a piece is recognised as "the same one" across the three records that

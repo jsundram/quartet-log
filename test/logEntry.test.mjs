@@ -1312,4 +1312,9 @@ test('last played reads as a date, an age and everyone who was there', () => {
     assert.equal(lastPlayedText(row({ timestamp: new Date('2026-11-15T19:00'),
         player1: '', player2: '', player3: '' }), now), 'Nov 15 (7d)');
     assert.equal(lastPlayedText(null, now), 'First time');
+    const bare = { player1: '', player2: '', player3: '' };
+    assert.equal(lastPlayedText(row({ ...bare, timestamp: new Date('2026-11-22T14:00') }), now),
+        'Nov 22 (today)');
+    assert.equal(lastPlayedText(row({ ...bare, timestamp: new Date('2026-11-21T23:30') }), now),
+        'Nov 21 (yesterday)');
 });

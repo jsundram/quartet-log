@@ -732,15 +732,24 @@ test.describe('log form', () => {
         await page.click('#logSubmit');
         await expectLogged(page, 'Haydn 20#2');
         // The fixture played it five days ago, on VA: same piece, any part.
+        // The day count is the unit test's; around midnight and DST, 5x24h
+        // back is not always five calendar days.
         const last = page.locator('.log-done-row .log-done-last');
-        await expect(last).toHaveText(/^[A-Z][a-z]{2} \d{1,2} \(5d\): Alice \| Dave \| Carol$/);
+        await expect(last).toHaveText(/^[A-Z][a-z]{2} \d{1,2} \(\d+d\): Alice \| Dave \| Carol$/);
 
         await logAnother(page);
         await page.fill('#logTitle', '76#1');
         await page.click('#logSubmit');
         await expectLogged(page, 'Haydn 76#1');
         await expect(last.first()).toHaveText('First time');
-        await expect(last.nth(1)).toContainText('(5d)');
+        await expect(last.nth(1)).toContainText('Alice | Dave | Carol');
+        // It sits under the piece name, not under the time.
+        const lefts = await page.locator('.log-done-row').first().evaluate(row =>
+            ['.log-done-piece', '.log-done-last'].map(c => {
+                const n = row.querySelector(c);
+                return n.getBoundingClientRect().left + parseFloat(getComputedStyle(n).paddingLeft);
+            }));
+        expect(lefts[1]).toBeCloseTo(lefts[0], 0);
     });
 
     test('the sitting\'s times stay on one line at phone width', async ({ page }) => {

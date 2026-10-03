@@ -2072,24 +2072,40 @@ body.network-fullscreen-open {
     color: var(--color-text-secondary);
 }
 
-/* One grid for the whole list, so the time column is as wide as its widest
-   entry: a fixed width wrapped "10:22 PM" onto two lines on a phone. */
-#logDoneList {
-    display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr);
-    column-gap: 9px;
-}
-
 .log-done-row {
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: subgrid;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    gap: 0 9px;
     padding: 4px 0;
     font-size: 14px;
 }
 
+/* One grid for the whole list, so the time column is as wide as its widest
+   entry: a fixed width wrapped "10:22 PM" onto two lines on a phone. Without
+   subgrid each row would collapse to one column, so the flex rows above stay
+   as the fallback. */
+@supports (grid-template-columns: subgrid) {
+    #logDoneList {
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr);
+        column-gap: 9px;
+    }
+
+    .log-done-row {
+        display: grid;
+        grid-column: 1 / -1;
+        grid-template-columns: subgrid;
+    }
+
+    .log-done-row .log-done-last {
+        grid-column: 3;
+        padding-left: 0;
+    }
+}
+
 .log-done-when {
+    min-width: 50px;
     white-space: nowrap;
     font-size: 13px;
     font-variant-numeric: tabular-nums;
@@ -2097,6 +2113,8 @@ body.network-fullscreen-open {
 }
 
 .log-done-piece {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2118,8 +2136,10 @@ body.network-fullscreen-open {
     color: var(--color-text-tertiary);
 }
 
+/* Under the piece name: the dot, the time and their two gaps. */
 .log-done-last {
-    grid-column: 3;
+    flex-basis: 100%;
+    padding-left: 81px;
     font-size: 12px;
     color: var(--color-text-tertiary);
 }
