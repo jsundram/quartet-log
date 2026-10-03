@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    blankEntry, carriedForward, resolveCarry, missingFields,
+    blankEntry, carriedForward, sheetCarry, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers, LABELS,
     impliedSlotParts, slotCell, slotPartKey, defaultSlotParts, canonicalOthersCell,
     rowPlan, setSlotPart,
@@ -45,6 +45,18 @@ test('carriedForward re-attaches the instrument annotation the pipeline split of
     assert.equal(carried.player3, 'Dana Ellis (p)');
     assert.equal(carried.player1, 'Alice Hart');
     assert.equal(carried.location, 'Home');
+});
+
+test('the first row of a session writes the sheet\'s text, not the alias guess', () => {
+    const carry = sheetCarry(row({
+        player1: 'Peter Lin', playerInstruments: ['va', null, null],
+        sheetPlayers: ['Peter (va)', 'Bob Bek', 'Carol Diaz'],
+    }));
+    assert.equal(carry.player1, 'Peter (va)');
+    assert.equal(carry.location, 'Home');
+    // A row this device saved has no aliases applied, so it is used as is.
+    assert.equal(sheetCarry(row()).player1, 'Alice Hart');
+    assert.deepEqual(sheetCarry(null), blankEntry());
 });
 
 test('carriedForward on no previous row is blank, not undefined', () => {

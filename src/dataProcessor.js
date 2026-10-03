@@ -37,6 +37,8 @@
  * @property {string} comments
  * @property {(string|null)[]} [playerInstruments] - per-slot "(instrument)"
  *   annotations, attached by normalizePlayerNames; null where a slot had none
+ * @property {(string|null)[]} [sheetPlayers] - player1..3 as fillForward left
+ *   them, before aliasing: the text a ditto in the sheet repeats
  * @property {OtherPlayer[]} [othersList] - attached by normalizePlayerNames
  */
 
@@ -222,6 +224,7 @@ export function normalizePlayerNames(data, aliases) {
         // which column they landed in. Unannotated slots are unchanged.
         const slotInstruments = [d.player1, d.player2, d.player3].map(instrumentFromSlot);
         d.playerInstruments = slotInstruments;
+        d.sheetPlayers = [d.player1, d.player2, d.player3];
         d.player1 = canonicalize(stripParens(d.player1), classOf(slotInstruments[0]) ?? SLOT_CLASS[0], aliases);
         d.player2 = canonicalize(stripParens(d.player2), classOf(slotInstruments[1]) ?? SLOT_CLASS[1], aliases);
         d.player3 = canonicalize(stripParens(d.player3), classOf(slotInstruments[2]) ?? SLOT_CLASS[2], aliases);

@@ -11,9 +11,9 @@ import { buildAggregateStatDefs } from './statDefs.js';
 import { tooltip } from './tooltip.js';
 import * as store from './logStore.js';
 import {
-    blankEntry, carriedForward, resolveCarry, missingFields,
+    blankEntry, carriedForward, sheetCarry, resolveCarry, missingFields,
     warnings, knownPlayers, knownLocations, nextInSession, frequentComposers,
-    impliedSlotParts, defaultSlotParts, rowPlan, locationCell, setSlotPart, PART_CHOICES,
+    impliedSlotParts, defaultSlotParts, rowPlan, setSlotPart, PART_CHOICES,
     rosterParts, seatParts, partCode, partLabel, othersKey,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, serializeOthersRows, canonicalOthersCell,
@@ -583,12 +583,10 @@ export class LogComponent {
             chosen: this.slotParts(),
             implied: impliedSlotParts(this.entry.part),
             others: this.otherRows,
-            newSession: this.opensSession(),
         });
     }
 
-    // Nothing in the window yet: this row opens the sitting, so it names
-    // everyone and the place rather than dittoing last week's.
+    // Nothing in the window yet: this row opens the sitting.
     opensSession() {
         return sessionRows(this.sessionSource()).length === 0;
     }
@@ -1278,19 +1276,17 @@ export class LogComponent {
         const entry = { ...this.entry };
         SEATS.forEach((field, i) => { entry[field] = cells[i]; });
         entry.others = mergeOthersCell(others, this.othersFree);
-        entry.location = locationCell({
-            typed: entry.location, carried: carried.location, newSession: this.opensSession(),
-        });
         // Resolve the blanks against what they ditto BEFORE advancing, so the
         // next piece of this session carries forward from what this row will
         // hold rather than from the row above it.
         const resolved = resolveCarry(entry, carried);
+        const sent = this.opensSession() ? resolveCarry(entry, sheetCarry(this.carrySource())) : entry;
 
         // Always through the queue, even online: anything already waiting has
         // to reach the sheet first, since fillForward reads each row against
         // the one above it and a jumped queue points a blank seat at the wrong
         // previous row.
-        const queued = store.enqueue(entry);
+        const queued = store.enqueue(sent);
         const button = d3.select('#logSubmit').property('disabled', true);
         await store.flush(e => postEntry(e, this.config));
         // A browser that won't write localStorage (private-mode Safari, a full
@@ -1302,7 +1298,7 @@ export class LogComponent {
         // to hold it and no later attempt coming.
         let lost = false;
         if (!queued) {
-            try { await postEntry(entry, this.config); }
+            try { await postEntry(sent, this.config); }
             catch { lost = true; }
         }
         button.property('disabled', false);
