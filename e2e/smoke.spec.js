@@ -725,6 +725,50 @@ test.describe('log form', () => {
         await expect(page.locator('.log-done-row')).toHaveCount(2);
     });
 
+    test('each piece in the sitting says when it was last played, and with whom', async ({ page }) => {
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '20#2');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 20#2');
+        // The fixture played it five days ago, on VA: same piece, any part.
+        // The day count is the unit test's; around midnight and DST, 5x24h
+        // back is not always five calendar days.
+        const last = page.locator('.log-done-row .log-done-last');
+        await expect(last).toHaveText(/^[A-Z][a-z]{2} \d{1,2} \(\d+d\): Alice \| Dave \| Carol$/);
+
+        await logAnother(page);
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+        await expect(last.first()).toHaveText('First time');
+        await expect(last.nth(1)).toContainText('Alice | Dave | Carol');
+        // It sits under the piece name, not under the time.
+        const lefts = await page.locator('.log-done-row').first().evaluate(row =>
+            ['.log-done-piece', '.log-done-last'].map(c => {
+                const n = row.querySelector(c);
+                return n.getBoundingClientRect().left + parseFloat(getComputedStyle(n).paddingLeft);
+            }));
+        expect(lefts[1]).toBeCloseTo(lefts[0], 0);
+    });
+
+    test('the sitting\'s times stay on one line at phone width', async ({ page }) => {
+        // A fixed column wrapped "10:22 PM", and only a real layout can see it.
+        await page.setViewportSize({ width: 390, height: 900 });
+        await pickComposer(page, 'Haydn');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.click('#logSubmit');
+        await expectLogged(page);
+        const [when, piece] = await page.locator('.log-done-row').first().evaluate(row => {
+            row.querySelector('.log-done-when').textContent = '10:22 PM';
+            return ['.log-done-when', '.log-done-piece']
+                .map(c => row.querySelector(c).getBoundingClientRect().height);
+        });
+        // The piece name never wraps, so it is one line tall.
+        expect(when).toBeLessThanOrEqual(piece);
+    });
+
     test('a partial movement is marked incomplete but still says it was sent', async ({ page }) => {
         // processData drops a ":" title, so the app's own copy of the sheet
         // will never hold it. Reported as "not landed" its dot sat hollow

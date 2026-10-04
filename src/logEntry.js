@@ -856,6 +856,56 @@ const foldPart = (/** @type {string} */ part) => (part.trim() === 'VA1' ? 'VA' :
 const workKey = (/** @type {string} */ composer, /** @type {string} */ title) =>
     (title ? `${composer}|${title}` : null);
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * The newest row of each piece before the sitting began, built once per
+ * redraw. Keyed as the "Unique pieces" tile is, so the two agree on what
+ * counts as the same piece; the tile only looks back a year, this the whole log.
+ * @param {Row[]} rows chronological @param {Date} before
+ * @returns {Map<string, Row>}
+ */
+export function lastPlayedByWork(rows, before) {
+    const t = before.getTime();
+    /** @type {Map<string, Row>} */
+    const out = new Map();
+    for (const d of rows) {
+        if (!d.timestamp || d.timestamp.getTime() >= t) continue;
+        const wk = workKey(d.composer, d.work?.title ?? '');
+        if (wk) out.set(wk, d);
+    }
+    return out;
+}
+
+/**
+ * The last time a piece was played, or null for a first time. A movement
+ * looks up its whole piece: the log the map was built from holds no movements.
+ * @param {Map<string, Row>} byWork @param {string} composer @param {string} title
+ * @returns {Row|null}
+ */
+export function lastPlayed(byWork, composer, title) {
+    const wk = workKey(composer, title.split(':')[0].trim());
+    return (wk && byWork.get(wk)) || null;
+}
+
+/**
+ * "Dec 7 (350d): Alice | Bob | Carol", or "First time". The year appears only
+ * once the date is a year or more back, where "Dec 7" alone could be either.
+ * @param {Row|null} row @param {Date} now @returns {string}
+ */
+export function lastPlayedText(row, now) {
+    if (!row?.timestamp) return 'First time';
+    const then = row.timestamp;
+    const day = (/** @type {Date} */ d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const days = Math.round((day(now) - day(then)) / 86_400_000);
+    const date = `${MONTHS[then.getMonth()]} ${then.getDate()}`
+        + (days >= 365 ? `, ${then.getFullYear()}` : '');
+    const people = peopleKeysFor(row);
+    // "(0d)" reads like a glitch for a piece played this afternoon.
+    const ago = days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days}d`;
+    return `${date} (${ago})` + (people.length ? `: ${people.join(' | ')}` : '');
+}
+
 // How a piece is recognised as "the same one" across the three records that
 // hold it. Trimmed, because they do not agree on whitespace: the outbox holds
 // the entry as TYPED (blanks left blank, so the sheet's own fillForward dittos
