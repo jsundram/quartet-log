@@ -17,7 +17,7 @@ import {
     rosterParts, seatParts, partCode, partLabel, othersKey,
     FIELDS, LABELS,
     splitOthersCell, mergeOthersCell, parseOthersRows, serializeOthersRows, canonicalOthersCell,
-    sessionPeople, sessionRows, sessionPieces, countNew, slotPartKey, lastPlayed, lastPlayedText,
+    sessionPeople, sessionRows, sessionPieces, countNew, slotPartKey, lastPlayed, lastPlayedByWork, lastPlayedText,
     PARTIAL_MOVEMENT_NOTE,
 } from './logEntry.js';
 
@@ -1089,14 +1089,11 @@ export class LogComponent {
         ].join(' \u00b7 '));
         d3.select('#logDoneWhere').text([entry.location, timeOfDay(at)].filter(Boolean).join(' \u00b7 '));
 
-        const { pieces, tiles } = this.doneStats(new Date(at));
+        const { pieces, tiles, start, byWork } = this.doneStats(new Date(at));
         const dots = new Map(pieces.map(p => [p, dotState(p)]));
         // Newest first: the piece just logged is the one being confirmed, and
         // scanning down is scanning back through the evening.
         const list = [...pieces].reverse();
-        // Before the sitting, not before each piece: a piece played twice
-        // tonight should say when it was last played, not "an hour ago".
-        const start = pieces[0]?.timestamp ?? new Date(at);
         d3.select('#logDoneSitting').text(list.length === 1
             ? 'First piece this sitting'
             : `${list.length} pieces this sitting`);
@@ -1135,7 +1132,7 @@ export class LogComponent {
                     .text(d => `${d.composer} ${d.title}`.trim())
                     .append('span').attr('class', 'log-done-part').text(d => ` \u00b7 ${d.part}`);
                 row.select('.log-done-last')
-                    .text(d => lastPlayedText(lastPlayed(this.rows, d.composer, d.title, start), start));
+                    .text(d => lastPlayedText(lastPlayed(byWork, d.composer, d.title), start));
             });
 
         const cells = d3.select('#logDoneTiles').selectAll('.stat-tile')
@@ -1227,10 +1224,11 @@ export class LogComponent {
         const inWindow = recentRows(this.rows, RECENT_WINDOW_DAYS);
         const agg = computeAggregateStats(inWindow);
         const unpublished = countNew(pieces.filter(p => !p.landed), inWindow);
-        const start = pieces[0]?.timestamp;
+        const first = pieces[0]?.timestamp;
         // Both sides of the delta come from the same window, or the tiles
         // would be measuring a year against all time.
-        const before = start ? inWindow.filter(d => d.timestamp < start) : inWindow;
+        const before = first ? inWindow.filter(d => d.timestamp < first) : inWindow;
+        const start = first ?? at;
         const added = countNew(pieces, before);
         const totals = {
             ...agg,
@@ -1246,6 +1244,10 @@ export class LogComponent {
         return {
             pieces,
             tiles: defs.slice(0, DONE_TILES).map((d, i) => ({ ...d, delta: deltas[i] })),
+            start,
+            // Before the sitting, not before each piece: a piece played twice
+            // tonight says when it was last played, not "an hour ago".
+            byWork: lastPlayedByWork(this.rows, start),
         };
     }
 

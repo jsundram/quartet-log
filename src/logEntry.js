@@ -859,24 +859,33 @@ const workKey = (/** @type {string} */ composer, /** @type {string} */ title) =>
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**
- * The last time a piece was played before the sitting began, or null for a
- * first time. Keyed as the "Unique pieces" tile is, so the two agree on what
- * counts as the same piece; the tile only looks back a year, this the whole log. A movement looks up its whole piece:
- * `rows` holds no movements to find.
- * @param {Row[]} rows chronological @param {string} composer
- * @param {string} title @param {Date} before
+ * The newest row of each piece before the sitting began, built once per
+ * redraw. Keyed as the "Unique pieces" tile is, so the two agree on what
+ * counts as the same piece; the tile only looks back a year, this the whole log.
+ * @param {Row[]} rows chronological @param {Date} before
+ * @returns {Map<string, Row>}
+ */
+export function lastPlayedByWork(rows, before) {
+    const t = before.getTime();
+    /** @type {Map<string, Row>} */
+    const out = new Map();
+    for (const d of rows) {
+        if (!d.timestamp || d.timestamp.getTime() >= t) continue;
+        const wk = workKey(d.composer, d.work?.title ?? '');
+        if (wk) out.set(wk, d);
+    }
+    return out;
+}
+
+/**
+ * The last time a piece was played, or null for a first time. A movement
+ * looks up its whole piece: the log the map was built from holds no movements.
+ * @param {Map<string, Row>} byWork @param {string} composer @param {string} title
  * @returns {Row|null}
  */
-export function lastPlayed(rows, composer, title, before) {
+export function lastPlayed(byWork, composer, title) {
     const wk = workKey(composer, title.split(':')[0].trim());
-    if (!wk) return null;
-    const t = before.getTime();
-    for (let i = rows.length - 1; i >= 0; i--) {
-        const d = rows[i];
-        if (!d.timestamp || d.timestamp.getTime() >= t) continue;
-        if (workKey(d.composer, d.work?.title ?? '') === wk) return d;
-    }
-    return null;
+    return (wk && byWork.get(wk)) || null;
 }
 
 /**
@@ -891,10 +900,7 @@ export function lastPlayedText(row, now) {
     const days = Math.round((day(now) - day(then)) / 86_400_000);
     const date = `${MONTHS[then.getMonth()]} ${then.getDate()}`
         + (days >= 365 ? `, ${then.getFullYear()}` : '');
-    const people = [
-        ...[row.player1, row.player2, row.player3],
-        ...(row.othersList ?? []).map(o => o.name),
-    ].filter(n => n && n !== '-');
+    const people = peopleKeysFor(row);
     // "(0d)" reads like a glitch for a piece played this afternoon.
     const ago = days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days}d`;
     return `${date} (${ago})` + (people.length ? `: ${people.join(' | ')}` : '');

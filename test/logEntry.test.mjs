@@ -11,7 +11,7 @@ import {
     PART_CHOICES, rosterParts, seatParts, partCode, partLabel,
     parseOthersRows, serializeOthersRows, splitOthersCell, mergeOthersCell,
     sessionRows, sessionPeople, sessionPieces, countNew, PARTIAL_MOVEMENT_NOTE,
-    lastPlayed, lastPlayedText,
+    lastPlayed, lastPlayedByWork, lastPlayedText,
 } from '../src/logEntry.js';
 import { SLOT_TO_PART, fillForward } from '../src/dataProcessor.js';
 
@@ -1292,12 +1292,12 @@ test('last played is the newest earlier row of the same piece, in any part', () 
         // Tonight's own row: the sitting is not its own last time.
         row({ timestamp: new Date('2026-11-22T19:30'), work: { title: '74#1' } }),
     ];
-    const tonight = new Date('2026-11-22T19:00');
-    assert.equal(lastPlayed(rows, 'Haydn', '74#1', tonight)?.part, 'V1');
+    const byWork = lastPlayedByWork(rows, new Date('2026-11-22T19:00'));
+    assert.equal(lastPlayed(byWork, 'Haydn', '74#1')?.part, 'V1');
     // A movement finds its whole piece.
-    assert.equal(lastPlayed(rows, 'Haydn', '74#1:II', tonight)?.part, 'V1');
-    assert.equal(lastPlayed(rows, 'Mozart', '74#1', tonight), null);
-    assert.equal(lastPlayed(rows, 'Haydn', '', tonight), null);
+    assert.equal(lastPlayed(byWork, 'Haydn', '74#1:II')?.part, 'V1');
+    assert.equal(lastPlayed(byWork, 'Mozart', '74#1'), null);
+    assert.equal(lastPlayed(byWork, 'Haydn', ''), null);
 });
 
 test('last played reads as a date, an age and everyone who was there', () => {
