@@ -42,9 +42,13 @@ export function pending() {
 // confirm a piece that nothing holds and nothing will retry.
 /** @param {Entry} entry @returns {Queued[]|null} */
 export function enqueue(entry) {
-    const list = [...pending(), { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, at: Date.now(), entry }];
+    const list = [...pending(), { id: newId(), at: Date.now(), entry }];
     return write(PENDING_KEY, list) ? list : null;
 }
+
+// The script refuses a second row with the same id, so this has to be unique
+// across every device writing to one sheet, not just within this queue.
+export const newId = () => crypto.randomUUID();
 
 /** @param {string} id @returns {Queued[]} */
 export function drop(id) {
@@ -67,10 +71,11 @@ export function drop(id) {
  * that field is the user's — but each entry keeps its own `at` so the UI can
  * show what is waiting and how long it has been.
  *
- * @param {(entry: Entry) => Promise<void>} post
- * @returns {Promise<{ sent: number, remaining: number }>}
+ * @param {(entry: Entry, id: string) => Promise<void>} post
+ * @returns {Promise<{ sent: number, remaining: number, error?: unknown }>}
+ *   `error` is why the head of the queue did not go
  */
-/** @type {Promise<{ sent: number, remaining: number }>|null} */
+/** @type {Promise<{ sent: number, remaining: number, error?: unknown }>|null} */
 let inFlight = null;
 
 export async function flush(post) {
@@ -92,6 +97,7 @@ export async function flush(post) {
     }
     inFlight = (async () => {
         let sent = 0;
+        let error;
         for (;;) {
             // Re-read every iteration rather than working from a snapshot: an
             // entry enqueued mid-flush must go out in this run, and writing a
@@ -99,7 +105,7 @@ export async function flush(post) {
             const list = pending();
             if (!list.length) break;
             const head = list[0];
-            try { await post(head.entry); } catch { break; }
+            try { await post(head.entry, head.id); } catch (e) { error = e; break; }
             sent++;
             // If the removal doesn't persist, stop. The loop re-reads the
             // queue, so carrying on would hand back the entry just sent and
@@ -108,7 +114,7 @@ export async function flush(post) {
             // wrong answer.
             if (!write(PENDING_KEY, pending().filter(q => q.id !== head.id))) break;
         }
-        return { sent, remaining: pending().length };
+        return { sent, remaining: pending().length, ...(error && { error }) };
     })();
     try { return await inFlight; } finally { inFlight = null; }
 }

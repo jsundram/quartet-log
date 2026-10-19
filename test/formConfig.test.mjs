@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import {
     parsePrefilledLink, readPrefilledLink, buildPrefilledLink, getFormConfig, setFormConfig,
     clearFormConfig, toFormBody, formAction, formViewUrl, consumeFormParam, proposalFromLink,
+    readScriptUrl, toScriptBody, postEntry, ScriptError,
 } from '../src/formConfig.js';
 import { FIELDS, LABELS, blankEntry } from '../src/logEntry.js';
 import { CSV_HEADERS } from '../src/csvFormat.js';
@@ -275,4 +276,54 @@ test('the form id is read as an id, not as arbitrary path text', () => {
     assert.equal(parsePrefilledLink(link('ABC-123_xyz'))?.formId, 'ABC-123_xyz');
     assert.equal(parsePrefilledLink(link('abc.def')), null);
     assert.equal(parsePrefilledLink(link('abc%2F..%2Fevil')), null);
+});
+
+// ------------------------------------------------------ the sheet's script --
+
+const SCRIPT = 'https://script.google.com/macros/s/AKfycbEXAMPLE_fixture-0/exec';
+
+test('a script URL is the /exec of a deployment, and nothing else', () => {
+    assert.equal(readScriptUrl(`  ${SCRIPT} `), SCRIPT);
+    assert.ok(readScriptUrl('https://script.google.com/a/macros/example.org/s/AKfyc_b-1/exec'));
+    assert.equal(readScriptUrl(SCRIPT.replace('/exec', '/dev')), null);
+    assert.equal(readScriptUrl(SCRIPT.replace('script.google.com', 'script.google.com.evil.example')), null);
+    assert.equal(readScriptUrl(''), null);
+});
+
+test('the script is sent every column by its sheet header, blanks included', () => {
+    // A blank is a ditto in the sheet, so it has to arrive as an empty cell.
+    const entry = { ...blankEntry(), composer: ' Haydn ', title: '76#1', part: 'V1', player1: 'Alice' };
+    const { id, row } = toScriptBody(entry, 'q1');
+    assert.equal(id, 'q1');
+    assert.deepEqual(Object.keys(row), CSV_HEADERS.slice(1));
+    assert.equal(row.Composer, 'Haydn');
+    assert.equal(row['Player 1'], 'Alice');
+    assert.equal(row['Player 2'], '');
+});
+
+test('a stored script survives a reload; a mangled one leaves the form alone', () => {
+    const config = parsePrefilledLink(LINK);
+    setFormConfig({ ...config, script: SCRIPT });
+    assert.equal(getFormConfig().script, SCRIPT);
+    setFormConfig({ ...config, script: 'https://example.com/exec' });
+    assert.equal(getFormConfig().script, undefined);
+    assert.equal(getFormConfig().formId, FORM_ID);
+});
+
+test('through the script, only an answer counts as sent', async () => {
+    const config = { ...parsePrefilledLink(LINK), script: SCRIPT };
+    const sent = [];
+    const reply = body => { globalThis.fetch = async (url, init) => {
+        sent.push({ url, body: JSON.parse(init.body) });
+        return { json: async () => body };
+    }; };
+    try {
+        reply({ ok: true, duplicate: false });
+        await postEntry({ composer: 'Haydn', title: '76#1' }, config, 'q1');
+        reply({ ok: true, duplicate: true });
+        await postEntry({ composer: 'Haydn', title: '76#1' }, config, 'q1');
+        reply({ ok: false, error: 'no column named Instrument' });
+        await assert.rejects(postEntry({}, config, 'q2'), ScriptError);
+        assert.deepEqual(sent.map(s => [s.url, s.body.id]), [[SCRIPT, 'q1'], [SCRIPT, 'q1'], [SCRIPT, 'q2']]);
+    } finally { delete globalThis.fetch; }
 });

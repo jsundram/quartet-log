@@ -1793,6 +1793,80 @@ test.describe('log form', () => {
         expect(bodies[1]).toBe(bodies[0]);
     });
 
+    const SCRIPT = 'https://script.google.com/macros/s/AKfycbEXAMPLE_fixture-0/exec';
+
+    // Stands in for apps-script/Code.gs: answers the setup check, and hands
+    // each POST's parsed body to `post` for its reply.
+    async function connectScript(page, post) {
+        const json = body => ({ status: 200, contentType: 'application/json',
+            headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(body) });
+        await page.route('https://script.google.com/**', route => {
+            const req = route.request();
+            if (req.method() === 'GET') return route.fulfill(json({ ok: true, app: 'quartet-log' }));
+            const reply = post(JSON.parse(req.postData()));
+            return reply ? route.fulfill(json(reply)) : route.abort('timedout');
+        });
+        await page.click('#logScript summary');
+        await page.fill('#logScriptUrl', SCRIPT);
+        await page.click('#logScriptSave');
+        await expect(page.locator('#logVia')).toHaveText(' through your sheet’s script');
+    }
+
+    test('through the script, a resend is turned away rather than written twice', async ({ page }) => {
+        const forms = await captureSubmits(page);
+        const seen = new Set();
+        const posts = [];
+        await connectScript(page, ({ id, row }) => {
+            posts.push({ id, row });
+            // The first arrival lands but its reply is lost.
+            if (posts.length === 1) { seen.add(id); return null; }
+            const duplicate = seen.has(id);
+            seen.add(id);
+            return { ok: true, duplicate };
+        });
+
+        await pickComposer(page, 'Haydn');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+        await page.evaluate(() => window.dispatchEvent(new Event('online')));
+        await expect(page.locator('#logDoneNote')).toContainText('already');
+
+        expect(posts).toHaveLength(2);
+        expect(posts[1].id).toBe(posts[0].id);
+        expect(posts[0].row['Work Title']).toBe('76#1');
+        expect(forms).toHaveLength(0);
+        // Survives a reload: the script is part of this device's config.
+        await page.reload();
+        await expect(page.locator('#logVia')).toHaveText(' through your sheet’s script');
+    });
+
+    test('a piece the script refuses says why, and stays queued', async ({ page }) => {
+        await connectScript(page, () => ({ ok: false, error: 'no column named Others?' }));
+        await pickComposer(page, 'Haydn');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+        await expect(page.locator('#logDoneNote')).toContainText('turned it away: no column named Others?');
+        await logAnother(page);
+        await expect(page.locator('.log-pending-row')).toHaveCount(1);
+    });
+
+    test('a URL that is not a reachable script is not saved', async ({ page }) => {
+        await page.route('https://script.google.com/**', route => route.fulfill({
+            status: 200, contentType: 'text/html', body: '<html>Sign in</html>' }));
+        await page.click('#logScript summary');
+        await page.fill('#logScriptUrl', 'https://example.com/exec');
+        await page.click('#logScriptSave');
+        await expect(page.locator('#logScriptError')).toContainText('/exec');
+        await page.fill('#logScriptUrl', SCRIPT);
+        await page.click('#logScriptSave');
+        await expect(page.locator('#logScriptError')).toContainText('No answer');
+        await expect(page.locator('#logVia')).toHaveText('');
+    });
+
     // A browser that won't write localStorage is not exotic: private-mode
     // Safari throws on every write, and this app caches the whole parsed CSV,
     // so a full quota is a state it already has a status line for. The submit

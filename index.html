@@ -307,7 +307,20 @@
             <!-- The id is a plain span; the <code> and the link inside it are
                  rendered, because the tail is only a useful answer to "am I
                  writing to my own sheet" if you can open the form and look. -->
-            <p class="log-connected">Writing to form <span id="logFormId"></span>. <a href="#" id="logChangeForm">Change</a></p>
+            <p class="log-connected">Writing to form <span id="logFormId"></span><span id="logVia"></span>. <a href="#" id="logChangeForm">Change</a></p>
+            <!-- Optional, so it waits behind a summary: the form alone works,
+                 and this only matters to someone who wants a retry to be safe. -->
+            <details id="logScript" class="log-script">
+                <summary>Send each piece exactly once</summary>
+                <p class="log-setup-help">On a weak connection the app cannot always tell whether a piece
+                   arrived, and resending through the form can write it twice. A script in your sheet
+                   answers, and turns a repeat away.
+                   <a href="howto.html#send-each-piece-exactly-once">Set it up</a>, then paste its web app
+                   URL here. Leave it empty to send through the form.</p>
+                <input id="logScriptUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+                <button type="button" id="logScriptSave" class="log-submit">Save</button>
+                <p id="logScriptError" class="log-status error" role="status" aria-live="polite"></p>
+            </details>
         </form>
 
         <!-- What the form has never been able to say. The submission response

@@ -2,7 +2,7 @@ import * as d3 from "d3";
 import { composerWorkIndex } from './catalog.js';
 import {
     postEntry, readPrefilledLink, getFormConfig, setFormConfig, clearFormConfig,
-    formViewUrl,
+    formViewUrl, readScriptUrl, checkScript, ScriptError,
 } from './formConfig.js';
 import {
     stripParens, computeAggregateStats, recentRows, RECENT_WINDOW_DAYS,
@@ -202,6 +202,11 @@ export class LogComponent {
         // flushQueue calls in flight.
         this.sending = 0;
         this.retry = null;
+        // What the script said when it last turned the head of the queue
+        // away. A retry will not change its mind, so it is said, not waited on.
+        this.refused = null;
+        /** @param {Record<string, string>} e @param {string} id */
+        this.send = (e, id) => postEntry(e, this.config, id);
         // A ?form= link that would replace this.config, awaiting a decision.
         this.proposed = null;
         // The piece just logged, while its confirmation is on screen.
@@ -324,12 +329,45 @@ export class LogComponent {
             this.proposed = null;
             this.renderMode();
         });
+        // Inside the log form, where Enter would log a piece instead.
+        d3.select('#logScriptUrl').on('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); this.saveScript(); }
+        });
+        d3.select('#logScriptSave').on('click', () => this.saveScript());
         d3.select('#logChangeForm').on('click', (e) => {
             e.preventDefault();
             clearFormConfig();
             this.config = null;
             this.renderMode();
         });
+    }
+
+    async saveScript() {
+        const text = d3.select('#logScriptUrl').property('value').trim();
+        const url = readScriptUrl(text);
+        const error = d3.select('#logScriptError');
+        if (text && !url) {
+            error.text('That is not a script web app URL. Copy the one ending in /exec from the deployment.');
+            return;
+        }
+        if (url) {
+            const button = d3.select('#logScriptSave').property('disabled', true).text('Checking\u2026');
+            const ok = await checkScript(url);
+            button.property('disabled', false).text('Save');
+            if (!ok) {
+                error.text('No answer from that script. Check it is deployed as a web app with access '
+                    + 'for Anyone, and that this is its /exec URL.');
+                return;
+            }
+        }
+        error.text('');
+        const { formId, entry } = this.config;
+        this.config = url ? { formId, entry, script: url } : { formId, entry };
+        setFormConfig(this.config);
+        d3.select('#logScript').property('open', false);
+        this.renderMode();
+        this.status(url ? 'Sending through your sheet\u2019s script.' : 'Sending through your form.', 'ok');
+        this.flushQueue();
     }
 
     renderSetupMap() {
@@ -370,6 +408,8 @@ export class LogComponent {
         d3.select('#logForm').property('hidden', deciding || confirming || !this.config);
         d3.select('#logSetup').property('hidden', deciding || !!this.config);
         setLinkedText(d3.select('#logFormId'), this.config ? [{ formId: this.config.formId }] : []);
+        d3.select('#logVia').text(this.config?.script ? ' through your sheet\u2019s script' : '');
+        d3.select('#logScriptUrl').property('value', this.config?.script ?? '');
         this.renderPending();
     }
 
@@ -1187,11 +1227,15 @@ export class LogComponent {
             ? `Sending now. Nothing is lost if the connection drops: ${waiting === 1
                 ? 'it stays on this device and goes out' : 'they stay on this device and go out'} `
               + `automatically, in the order you logged ${waiting === 1 ? 'it' : 'them'}.`
+            : waiting && this.refused
+            ? `Your sheet\u2019s script turned it away: ${this.refused}. It is held on this device `
+              + 'and sent again once the script takes it.'
             : waiting
             ? `${waiting} ${waiting === 1 ? 'piece is' : 'pieces are'} held on this device, `
               + 'waiting for a connection. They are sent automatically, in the order you logged '
               + 'them, and reach your sheet then.'
-            : 'It is in your Google Sheet already \u2014 this page writes through your form.'
+            : `It is in your Google Sheet already \u2014 this page writes through your ${
+                this.config?.script ? 'sheet\u2019s script' : 'form'}.`
               + (settling
                   ? ' The calendar and charts here read a published copy of that sheet, which '
                     + 'Google refreshes every few minutes, so the hollow dot fills in shortly.'
@@ -1278,9 +1322,10 @@ export class LogComponent {
         this.sending++;
         if (this.done) this.renderDone();
         let result;
-        try { result = await store.flush(e => postEntry(e, this.config)); }
+        try { result = await store.flush(this.send); }
         finally { this.sending--; }
-        const { sent, remaining } = result;
+        const { sent, remaining, error } = result;
+        this.refused = error instanceof ScriptError ? error.message : null;
         if (remaining && !this.retry) {
             this.retry = setTimeout(() => { this.retry = null; this.flushQueue(); }, RETRY_MS);
         }
@@ -1289,7 +1334,9 @@ export class LogComponent {
         if (this.done) this.renderDone();
         // A queue that is still draining is the other state worth explaining:
         // what is left, why the order matters, and that nothing is lost.
-        if (sent && announce) {
+        if (this.refused) {
+            this.status(`Your sheet\u2019s script turned a piece away: ${this.refused}`, 'error');
+        } else if (sent && announce) {
             this.status(remaining ? `Sent ${sent}; ${remaining} still waiting.` : `Sent ${sent}.`,
                 'ok', remaining ? 'queued' : '');
         }
@@ -1337,8 +1384,8 @@ export class LogComponent {
         let lost = false;
         if (!queued) {
             const button = d3.select('#logSubmit').property('disabled', true);
-            await store.flush(e => postEntry(e, this.config));
-            try { await postEntry(sent, this.config); }
+            await store.flush(this.send);
+            try { await this.send(sent, store.newId()); }
             catch { lost = true; }
             button.property('disabled', false);
         }

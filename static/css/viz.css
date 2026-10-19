@@ -1935,6 +1935,34 @@ body.network-fullscreen-open {
     color: var(--color-accent);
 }
 
+.log-script {
+    grid-column: 1 / -1;
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+}
+
+.log-script summary {
+    text-align: center;
+    cursor: pointer;
+}
+
+.log-script input {
+    width: 100%;
+    margin: 10px 0;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 16px;
+    color: var(--color-text-primary);
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-border-standard);
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+
+.log-script .log-submit {
+    width: 100%;
+}
+
 /* The line under the button and its (i). They share a row so the sentence can
    stay short enough for a phone: the states that need more than a sentence put
    the rest behind the button instead of into the line. */

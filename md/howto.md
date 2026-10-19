@@ -330,3 +330,27 @@ and totals leave it out, so there the dot means only that the entry was sent.
 
 No signal? The summary says so. The piece is held on the device and sent
 automatically, in the order you logged them, once you're back on a network.
+
+### 12. Send each piece exactly once
+
+On a weak connection a send can stall, and the app can't tell a piece that
+never arrived from one that arrived but whose reply was lost. It sends again,
+because losing a piece is worse, and through the form that second send can
+write the row twice. A short script in your sheet closes that: it answers each
+send, and turns away one it has already written. Optional, and once per sheet:
+
+1. In your response sheet, **Extensions → Apps Script**.
+2. Replace everything in `Code.gs` with
+   [this file](https://github.com/jsundram/quartet-log/blob/main/apps-script/Code.gs),
+   and save.
+3. **Deploy → New deployment**, type **Web app**. Execute as **Me**, access
+   **Anyone**. Deploy, and allow it access to your spreadsheet. Google warns
+   that the app is unverified, since it's yours: **Advanced → Go to …**.
+4. Copy the **Web app** URL, the one ending in `/exec`. In **Log a Piece**, open
+   **Send each piece exactly once** under the button, paste it, and **Save**.
+   The app checks that the script answers before it uses it.
+
+Do step 4 on each device you log from; **Copy setup link** doesn't carry it.
+Rows the script writes go straight into the sheet, so they don't appear in the
+form's own **Responses** tab — the sheet is the record either way. As with the
+form, anyone holding the URL could add a row, so keep it to yourself.

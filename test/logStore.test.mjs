@@ -41,6 +41,16 @@ test('enqueue appends and pending reads back in order', () => {
     assert.deepEqual(pending().map(q => q.entry.title), ['76#1', '76#2']);
 });
 
+test('flush hands each entry its queue id, the same on every attempt', async () => {
+    enqueue(entry('76#1'));
+    const ids = [];
+    await flush(async (_, id) => { ids.push(id); throw new Error('offline'); });
+    await flush(async (_, id) => { ids.push(id); });
+    assert.equal(ids.length, 2);
+    assert.equal(ids[0], ids[1]);
+    assert.ok(ids[0]);
+});
+
 test('flush sends oldest first and empties the queue', async () => {
     ['76#1', '76#2', '76#3'].forEach(t => enqueue(entry(t)));
     const sentTitles = [];
@@ -58,7 +68,7 @@ test('flush stops at the first failure and keeps the rest queued, in order', asy
         sentTitles.push(e.title);
     });
     assert.deepEqual(sentTitles, ['76#1']);
-    assert.deepEqual(result, { sent: 1, remaining: 2 });
+    assert.deepEqual({ ...result, error: result.error.message }, { sent: 1, remaining: 2, error: 'offline' });
     // Crucially it did NOT skip past the failure to send 76#3: the sheet would
     // then hold 76#3 above 76#2 and read 76#2's blank seats against it.
     assert.deepEqual(pending().map(q => q.entry.title), ['76#2', '76#3']);

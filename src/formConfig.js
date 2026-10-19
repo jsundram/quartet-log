@@ -13,11 +13,14 @@
 // their own log stayed empty. A form belongs to whoever configured the sheet
 // it feeds.
 import { FIELDS } from './logEntry.js';
+import { CSV_HEADERS } from './csvFormat.js';
 
 /**
  * @typedef {object} FormConfig
  * @property {string} formId
  * @property {Record<string, string>} entry - log field name -> "entry.NNN"
+ * @property {string} [script] - the sheet's apps-script/Code.gs web app; when
+ *   set, rows go there instead of through the form
  */
 
 const STORAGE_KEY = 'quartetlog_form';
@@ -145,7 +148,10 @@ export function getFormConfig() {
         const parsed = raw ? JSON.parse(raw) : null;
         // A shape check, not decoration: a half-written config would submit
         // rows with missing columns and no visible failure (see postEntry).
-        return parsed?.formId && FIELDS.every(f => parsed.entry?.[f]) ? parsed : null;
+        if (!parsed?.formId || !FIELDS.every(f => parsed.entry?.[f])) return null;
+        // A config from before the script, or a mangled one: the form alone.
+        if (parsed.script && !readScriptUrl(parsed.script)) delete parsed.script;
+        return parsed;
     } catch { return null; }
 }
 
@@ -184,9 +190,9 @@ export function toFormBody(entry, config) {
     return body;
 }
 
-// Fire-and-forget by necessity: Forms sends no CORS headers, so the response
-// is opaque and an accepted submission is indistinguishable from a rejected
-// one. Resolving means the request left the device, which is the only fact
+// Through the form, fire-and-forget by necessity: Forms sends no CORS headers,
+// so the response is opaque and an accepted submission is indistinguishable
+// from a rejected one. Resolving means the request left the device, which is the only fact
 // available — hence the client-side required-field check in logEntry, and the
 // sheet itself as the real confirmation on the next refresh. A rejection is
 // therefore a TRANSPORT failure, which is exactly the signal the queue wants.
@@ -194,17 +200,67 @@ export function toFormBody(entry, config) {
 // preflight to be blocked.
 //
 // Bounded because weak wifi hangs a request rather than failing it, and the
-// queue cannot move past a send that never settles. Giving up may abandon a
-// row Forms already took, and the retry then writes it twice; that is safe
-// only because prepareRows drops a row identical to the one above it.
+// queue cannot move past a send that never settles. Through the form, giving
+// up may abandon a row Forms already took, and the retry writes it twice. The
+// script exists to close that: it answers, and it turns a repeated id away.
 export const SEND_TIMEOUT_MS = 30_000;
 
-/** @param {Record<string, string>} entry @param {FormConfig} config */
-export async function postEntry(entry, config) {
-    await fetch(formAction(config.formId), {
-        method: 'POST', mode: 'no-cors', body: toFormBody(entry, config),
-        signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+/** The script answered and said no: a reason to show, not a dropped packet. */
+export class ScriptError extends Error {}
+
+/**
+ * The web app URL a deployment of apps-script/Code.gs prints, or null.
+ * Workspace accounts get a /a/macros/<domain>/ form of the same URL.
+ * @param {string} text
+ */
+export function readScriptUrl(text) {
+    const t = (text ?? '').trim();
+    return /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+|macros)\/s\/[\w-]+\/exec$/.test(t) ? t : null;
+}
+
+/**
+ * Is this URL that script, deployed so this page can reach it? Asked once, at
+ * setup: access left at "only myself" answers with a sign-in page, and a
+ * different script answers with something else, and either would otherwise
+ * surface as every piece waiting forever.
+ * @param {string} url
+ */
+export async function checkScript(url) {
+    try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
+        const body = await res.json();
+        return body?.app === 'quartet-log';
+    } catch { return false; }
+}
+
+/**
+ * The script's request: the row keyed by the sheet's own headers, so it can
+ * place each cell by name, and the queue's id, so it can refuse a repeat.
+ * @param {Record<string, string>} entry @param {string} id
+ */
+export function toScriptBody(entry, id) {
+    const row = Object.fromEntries(FIELDS.map((f, i) => [CSV_HEADERS[i + 1], (entry[f] ?? '').trim()]));
+    return { id, row };
+}
+
+/**
+ * @param {Record<string, string>} entry @param {FormConfig} config
+ * @param {string} id - the same on every attempt at this entry
+ */
+export async function postEntry(entry, config, id) {
+    const signal = AbortSignal.timeout(SEND_TIMEOUT_MS);
+    if (!config.script) {
+        await fetch(formAction(config.formId), {
+            method: 'POST', mode: 'no-cors', body: toFormBody(entry, config), signal,
+        });
+        return;
+    }
+    // A string body goes as text/plain, which needs no preflight.
+    const res = await fetch(config.script, {
+        method: 'POST', body: JSON.stringify(toScriptBody(entry, id)), signal,
     });
+    const reply = await res.json();
+    if (!reply?.ok) throw new ScriptError(reply?.error ?? 'no answer');
 }
 
 /**
