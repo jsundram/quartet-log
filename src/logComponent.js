@@ -100,6 +100,10 @@ const dotState = (/** @type {import('./logEntry.js').Piece} */ p, sending = fals
         : { filled: false, label: 'Not in your charts yet' };
 };
 
+// A stalled send fires no `online` event, so nothing else would retry it while
+// the page stays open.
+const RETRY_MS = 60_000;
+
 // Enough of a form id to tell two apart without printing the whole thing.
 const shortId = (/** @type {string} */ id) => `...${id.slice(-6)}`;
 
@@ -197,6 +201,7 @@ export class LogComponent {
         this._otherId = 0;
         // flushQueue calls in flight.
         this.sending = 0;
+        this.retry = null;
         // A ?form= link that would replace this.config, awaiting a decision.
         this.proposed = null;
         // The piece just logged, while its confirmation is on screen.
@@ -1276,6 +1281,9 @@ export class LogComponent {
         try { result = await store.flush(e => postEntry(e, this.config)); }
         finally { this.sending--; }
         const { sent, remaining } = result;
+        if (remaining && !this.retry) {
+            this.retry = setTimeout(() => { this.retry = null; this.flushQueue(); }, RETRY_MS);
+        }
         this.renderPending();
         // The confirmation's note counts the queue, so it moves when this does.
         if (this.done) this.renderDone();

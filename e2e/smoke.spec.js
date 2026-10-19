@@ -1770,6 +1770,29 @@ test.describe('log form', () => {
             .toEqual(['76#1', '76#2']);
     });
 
+    // Still online, so no `online` event comes: the timer is all that retries it.
+    test('a failed send is retried without waiting for the network to come back', async ({ page }) => {
+        await page.clock.install();
+        await page.reload();
+        await expect(page.locator('#logForm')).toBeVisible();
+        const bodies = [];
+        await page.route('https://docs.google.com/forms/**', route => {
+            bodies.push(route.request().postData());
+            return bodies.length === 1 ? route.abort('timedout') : route.fulfill({ status: 200, body: '' });
+        });
+
+        await pickComposer(page, 'Haydn');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+        await expect(page.locator('#logDoneNote')).toContainText('waiting for a connection');
+        await page.clock.fastForward(61_000);
+        await expect(page.locator('#logDoneNote')).toContainText('already');
+        expect(bodies).toHaveLength(2);
+        expect(bodies[1]).toBe(bodies[0]);
+    });
+
     // A browser that won't write localStorage is not exotic: private-mode
     // Safari throws on every write, and this app caches the whole parsed CSV,
     // so a full quota is a state it already has a status line for. The submit

@@ -192,10 +192,18 @@ export function toFormBody(entry, config) {
 // therefore a TRANSPORT failure, which is exactly the signal the queue wants.
 // URLSearchParams keeps the content type CORS-safelisted, so there is no
 // preflight to be blocked.
+//
+// Bounded because weak wifi hangs a request rather than failing it, and the
+// queue cannot move past a send that never settles. Giving up may abandon a
+// row Forms already took, and the retry then writes it twice; that is safe
+// only because prepareRows drops a row identical to the one above it.
+export const SEND_TIMEOUT_MS = 30_000;
+
 /** @param {Record<string, string>} entry @param {FormConfig} config */
 export async function postEntry(entry, config) {
     await fetch(formAction(config.formId), {
         method: 'POST', mode: 'no-cors', body: toFormBody(entry, config),
+        signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     });
 }
 
