@@ -1739,6 +1739,37 @@ test.describe('log form', () => {
             .toEqual(['76#1', '76#2']);
     });
 
+    // A weak signal neither fails nor finishes, and the queue already holds
+    // the piece, so a slow send must not hold the next one.
+    test('a send that hangs does not hold up the next piece', async ({ page }) => {
+        const held = [];
+        const bodies = [];
+        await page.route('https://docs.google.com/forms/**', route => {
+            bodies.push(route.request().postData());
+            held.push(route);
+        });
+
+        await pickComposer(page, 'Haydn');
+        await page.click('#logPart .part-btn[data-part="V1"]');
+        await page.fill('#logTitle', '76#1');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#1');
+        await expect(page.locator('#logDoneNote')).toContainText('Sending now');
+        await logAnother(page);
+        await page.fill('#logTitle', '76#2');
+        await page.click('#logSubmit');
+        await expectLogged(page, 'Haydn 76#2');
+
+        // Still one at a time, in order, with the second behind the first.
+        await expect.poll(() => held.length).toBe(1);
+        await held.shift().fulfill({ status: 200, body: '' });
+        await expect.poll(() => held.length).toBe(1);
+        await held.shift().fulfill({ status: 200, body: '' });
+        await expect(page.locator('#logDoneNote')).toContainText('already');
+        expect(bodies.map(b => new URLSearchParams(b).get(TITLE_ID)))
+            .toEqual(['76#1', '76#2']);
+    });
+
     // A browser that won't write localStorage is not exotic: private-mode
     // Safari throws on every write, and this app caches the whole parsed CSV,
     // so a full quota is a state it already has a status line for. The submit

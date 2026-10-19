@@ -92,8 +92,8 @@ const timeOfDay = (/** @type {number|Date} */ at) =>
 // whether it left this device. The italic on the row is what says the two are
 // not the same claim, so one mark can mean the nearest true thing in each case
 // instead of sitting hollow forever under a note promising it will fill in.
-const dotState = (/** @type {import('./logEntry.js').Piece} */ p) => {
-    if (p.queued) return { filled: false, label: 'Waiting for a network' };
+const dotState = (/** @type {import('./logEntry.js').Piece} */ p, sending = false) => {
+    if (p.queued) return { filled: false, label: sending ? 'Sending' : 'Waiting for a network' };
     if (p.partial) return { filled: true, label: 'Sent to your sheet; this app leaves movements out of its charts' };
     return p.landed
         ? { filled: true, label: 'Showing in your charts' }
@@ -195,6 +195,8 @@ export class LogComponent {
         this.otherRows = [];
         this.othersFree = '';
         this._otherId = 0;
+        // flushQueue calls in flight.
+        this.sending = 0;
         // A ?form= link that would replace this.config, awaiting a decision.
         this.proposed = null;
         // The piece just logged, while its confirmation is on screen.
@@ -1063,7 +1065,8 @@ export class LogComponent {
         // The queue as it stands, not as it stood at submit time: `online`
         // fires while this screen is up and drains it, and the note would go
         // on claiming the piece was held on the device after it had gone.
-        const waiting = store.pending().length;
+        const outbox = store.pending();
+        const waiting = outbox.length;
         // Written on the way in, not when the text differs. Both stop the
         // five-minute revalidate re-announcing a panel someone is reading, but
         // comparing the text also swallowed the second reading of one piece in
@@ -1090,7 +1093,14 @@ export class LogComponent {
         d3.select('#logDoneWhere').text([entry.location, timeOfDay(at)].filter(Boolean).join(' \u00b7 '));
 
         const { pieces, tiles, start, byWork } = this.doneStats(new Date(at));
-        const dots = new Map(pieces.map(p => [p, dotState(p)]));
+        // Only the head of the outbox is on the wire; the rest wait behind it.
+        // Matched by work, so a head left from an earlier sitting lends its
+        // label to tonight's reading of the same piece. Only the label.
+        const head = outbox[0]?.entry;
+        const onWire = this.sending > 0 && head
+            ? pieces.find(p => p.queued && p.composer === head.composer && p.title === head.title)
+            : null;
+        const dots = new Map(pieces.map(p => [p, dotState(p, p === onWire)]));
         // Newest first: the piece just logged is the one being confirmed, and
         // scanning down is scanning back through the evening.
         const list = [...pieces].reverse();
@@ -1169,7 +1179,11 @@ export class LogComponent {
         if (pieces.some(p => p.partial)) notes.add(PARTIAL_MOVEMENT_NOTE);
         d3.select('#logDoneWarn').text([...notes].join(' ')).property('hidden', !notes.size);
         const settling = pieces.some(p => !dots.get(p).filled && !p.queued);
-        d3.select('#logDoneNote').text(waiting
+        d3.select('#logDoneNote').text(waiting && this.sending > 0
+            ? `Sending now. Nothing is lost if the connection drops: ${waiting === 1
+                ? 'it stays on this device and goes out' : 'they stay on this device and go out'} `
+              + `automatically, in the order you logged ${waiting === 1 ? 'it' : 'them'}.`
+            : waiting
             ? `${waiting} ${waiting === 1 ? 'piece is' : 'pieces are'} held on this device, `
               + 'waiting for a connection. They are sent automatically, in the order you logged '
               + 'them, and reach your sheet then.'
@@ -1251,16 +1265,25 @@ export class LogComponent {
         };
     }
 
-    async flushQueue() {
+    /** @param {boolean} [announce] false from submit, whose confirmation says it instead */
+    async flushQueue(announce = true) {
         // Nothing can be sent without knowing where to; the entries keep.
         if (!this.config || !store.pending().length) return;
-        const { sent, remaining } = await store.flush(e => postEntry(e, this.config));
+        // A count, not a flag: overlapping calls join one store.flush but
+        // return separately, and the first back must not report the idle.
+        this.sending++;
+        let result;
+        try {
+            if (this.done) this.renderDone();
+            result = await store.flush(e => postEntry(e, this.config));
+        } finally { this.sending--; }
+        const { sent, remaining } = result;
         this.renderPending();
         // The confirmation's note counts the queue, so it moves when this does.
         if (this.done) this.renderDone();
         // A queue that is still draining is the other state worth explaining:
         // what is left, why the order matters, and that nothing is lost.
-        if (sent) {
+        if (sent && announce) {
             this.status(remaining ? `Sent ${sent}; ${remaining} still waiting.` : `Sent ${sent}.`,
                 'ok', remaining ? 'queued' : '');
         }
@@ -1295,8 +1318,6 @@ export class LogComponent {
         // the one above it and a jumped queue points a blank seat at the wrong
         // previous row.
         const queued = store.enqueue(sent);
-        const button = d3.select('#logSubmit').property('disabled', true);
-        await store.flush(e => postEntry(e, this.config));
         // A browser that won't write localStorage (private-mode Safari, a full
         // quota) drops the entry on the floor: flush re-reads storage, finds
         // nothing, and reports a clean run for a piece that never left the
@@ -1304,12 +1325,17 @@ export class LogComponent {
         // that DID persist still reaches the sheet first — and let a transport
         // failure be a failure the user is told about, since there is no queue
         // to hold it and no later attempt coming.
+        // That case is the only one that waits on the network: everywhere
+        // else the queue holds the piece, so a slow connection delays the row
+        // and never the next piece.
         let lost = false;
         if (!queued) {
+            const button = d3.select('#logSubmit').property('disabled', true);
+            await store.flush(e => postEntry(e, this.config));
             try { await postEntry(sent, this.config); }
             catch { lost = true; }
+            button.property('disabled', false);
         }
-        button.property('disabled', false);
         if (lost) {
             // No confirmation screen for this one: the piece is still in the
             // fields above, which is where it has to be picked up from, and
@@ -1364,5 +1390,6 @@ export class LogComponent {
         // message it would carry is on there instead. Clear it so the next
         // piece does not open under the last one's.
         this.status('');
+        if (queued) this.flushQueue(false);
     }
 }
