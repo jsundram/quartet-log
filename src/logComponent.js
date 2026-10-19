@@ -1094,7 +1094,8 @@ export class LogComponent {
 
         const { pieces, tiles, start, byWork } = this.doneStats(new Date(at));
         // Only the head of the outbox is on the wire; the rest wait behind it.
-        // A head from an earlier sitting is not on this list at all.
+        // Matched by work, so a head left from an earlier sitting lends its
+        // label to tonight's reading of the same piece. Only the label.
         const head = outbox[0]?.entry;
         const onWire = this.sending > 0 && head
             ? pieces.find(p => p.queued && p.composer === head.composer && p.title === head.title)
@@ -1271,10 +1272,11 @@ export class LogComponent {
         // A count, not a flag: overlapping calls join one store.flush but
         // return separately, and the first back must not report the idle.
         this.sending++;
-        if (this.done) this.renderDone();
         let result;
-        try { result = await store.flush(e => postEntry(e, this.config)); }
-        finally { this.sending--; }
+        try {
+            if (this.done) this.renderDone();
+            result = await store.flush(e => postEntry(e, this.config));
+        } finally { this.sending--; }
         const { sent, remaining } = result;
         this.renderPending();
         // The confirmation's note counts the queue, so it moves when this does.
