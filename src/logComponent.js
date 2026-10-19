@@ -1065,7 +1065,8 @@ export class LogComponent {
         // The queue as it stands, not as it stood at submit time: `online`
         // fires while this screen is up and drains it, and the note would go
         // on claiming the piece was held on the device after it had gone.
-        const waiting = store.pending().length;
+        const outbox = store.pending();
+        const waiting = outbox.length;
         // Written on the way in, not when the text differs. Both stop the
         // five-minute revalidate re-announcing a panel someone is reading, but
         // comparing the text also swallowed the second reading of one piece in
@@ -1092,7 +1093,13 @@ export class LogComponent {
         d3.select('#logDoneWhere').text([entry.location, timeOfDay(at)].filter(Boolean).join(' \u00b7 '));
 
         const { pieces, tiles, start, byWork } = this.doneStats(new Date(at));
-        const dots = new Map(pieces.map(p => [p, dotState(p, this.sending > 0)]));
+        // Only the head of the outbox is on the wire; the rest wait behind it.
+        // A head from an earlier sitting is not on this list at all.
+        const head = outbox[0]?.entry;
+        const onWire = this.sending > 0 && head
+            ? pieces.find(p => p.queued && p.composer === head.composer && p.title === head.title)
+            : null;
+        const dots = new Map(pieces.map(p => [p, dotState(p, p === onWire)]));
         // Newest first: the piece just logged is the one being confirmed, and
         // scanning down is scanning back through the evening.
         const list = [...pieces].reverse();
@@ -1172,8 +1179,9 @@ export class LogComponent {
         d3.select('#logDoneWarn').text([...notes].join(' ')).property('hidden', !notes.size);
         const settling = pieces.some(p => !dots.get(p).filled && !p.queued);
         d3.select('#logDoneNote').text(waiting && this.sending > 0
-            ? 'Sending now. Nothing is lost if the connection drops: it stays on this device '
-              + 'and goes out automatically, in the order you logged it.'
+            ? `Sending now. Nothing is lost if the connection drops: ${waiting === 1
+                ? 'it stays on this device and goes out' : 'they stay on this device and go out'} `
+              + `automatically, in the order you logged ${waiting === 1 ? 'it' : 'them'}.`
             : waiting
             ? `${waiting} ${waiting === 1 ? 'piece is' : 'pieces are'} held on this device, `
               + 'waiting for a connection. They are sent automatically, in the order you logged '
