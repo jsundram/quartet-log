@@ -71,6 +71,10 @@ refetches it on every visit behind a cache-first boot.
 - The log form is four modules split by what they answer: `formConfig` (where
   does a row go), `logEntry` (what is a row), `logStore` (what survives a
   reload), `logComponent` (the UI). Everything but the send works offline.
+- `apps-script/Code.gs` is the optional writer that makes a resend safe. Users
+  paste and deploy it themselves, so a deploy never updates it: the
+  `{ id, row }` request `formConfig.toScriptBody` sends has to stay one that
+  every copy already out there accepts.
 - `src/catalog.js` is data-driven from `static/data/all_works.json`. Adding
   another multi-composer tab (`5+`, `MISC`) is a JSON-only change.
 
