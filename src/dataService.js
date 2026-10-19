@@ -246,12 +246,9 @@ export class DataService {
         // Sort by timestamp and drop invalid-date rows before anything else —
         // fillForward's session-window math and the row-0-is-earliest
         // assumption (setBegin) both require chronological order.
-        const { rows, dropped, resends } = prepareRows(rawData);
+        const { rows, dropped } = prepareRows(rawData);
         if (dropped) {
             console.warn(`Dropped ${dropped} row(s) with unparseable timestamps`);
-        }
-        if (resends.length) {
-            console.warn(`Ignored ${resends.length} resent row(s): ${resends.map(r => r.timestamp).join(', ')}`);
         }
 
         let processedData = fillForward(rows, PLAYER_ABBREVIATIONS);

@@ -807,37 +807,18 @@ export function parseWork(title) {
 // the top of the sheet would otherwise mis-anchor BEGIN (`data[0]`) and
 // produce negative time deltas in fillForward. Sort is stable, so rows
 // sharing a timestamp keep their sheet order. Does not mutate the input
-// array. Returns { rows, dropped, resends } where `dropped` counts the removed
+// array. Returns { rows, dropped } where `dropped` counts the removed
 // invalid-timestamp rows (callers may want to log it).
-//
-// `resends` are rows identical, cell for cell, to the row before them in the
-// same sitting. The log form's send can't tell "never arrived" from "arrived,
-// reply lost", so it resends, and the second case leaves the same row twice in
-// the sheet. A real repeat within a sitting never looks like that: the owner's
-// convention is that playing a piece again with the same people always gets a
-// comment saying so. Across sittings it can — the same piece and people a day
-// apart — hence the window. Here rather than later because fillForward would
-// make a ditto row identical to its parent.
 /**
  * @param {Row[]} rows
- * @returns {{ rows: Row[], dropped: number, resends: Row[] }}
+ * @returns {{ rows: Row[], dropped: number }}
  */
 export function prepareRows(rows) {
-    const valid = rows.filter(
+    const kept = rows.filter(
         /** @type {(r: Row) => r is Row & { timestamp: Date }} */
         (r => r.timestamp instanceof Date && !Number.isNaN(r.timestamp.getTime())));
-    valid.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-    const cells = (/** @type {Row} */ r) => JSON.stringify([r.composer, r.work.title, r.part,
-        r.player1, r.player2, r.player3, r.others, r.location, r.comments]);
-    /** @type {Row[]} */ const resends = [];
-    const kept = valid.filter((r, i) => {
-        const prev = valid[i - 1];
-        const same = !!prev && cells(r) === cells(prev)
-            && r.timestamp.getTime() - prev.timestamp.getTime() < SESSION_WINDOW_HOURS * 3600_000;
-        if (same) resends.push(r);
-        return !same;
-    });
-    return { rows: kept, dropped: rows.length - valid.length, resends };
+    kept.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    return { rows: kept, dropped: rows.length - kept.length };
 }
 
 // Sheet columns processRow reads. Checked up front so a renamed/missing

@@ -722,8 +722,8 @@ test('the session-window gap is measured from the row above, as fillForward does
     // are blank continuation rows, so the two differ on exactly the sessions
     // this section exists to describe.
     const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Grace Brown', p2: 'Beryl', p3: 'Carol' }),
-        raw({ ts: '1/1/2024 12:00:00', title: '76#2' }),
-        raw({ ts: '1/1/2024 15:00:00', title: '76#3' }),
+        raw({ ts: '1/1/2024 12:00:00' }),
+        raw({ ts: '1/1/2024 15:00:00' }),
         raw({ ts: '1/1/2024 16:00:00', p1: 'Grace', p2: 'Beryl', p3: 'Carol' })];
     const views = buildViews(rows, NO_TABLES);
     // The app expanded it: the gap it saw was 1h, from the blank row above.
@@ -740,7 +740,7 @@ test('an expanded shorthand does not become the reference entry', () => {
     // them on the real sheet.
     const rows = [raw({ ts: '1/1/2024 10:00:00', p1: 'Grace Brown', p2: 'Beryl', p3: 'Carol' }),
         raw({ ts: '1/1/2024 11:00:00', p1: 'Grace', p2: 'Beryl', p3: 'Carol' }),
-        raw({ ts: '1/1/2024 12:00:00', title: '76#2', p1: 'Grace', p2: 'Beryl', p3: 'Carol' })];
+        raw({ ts: '1/1/2024 12:00:00', p1: 'Grace', p2: 'Beryl', p3: 'Carol' })];
     const views = buildViews(rows, NO_TABLES);
     assert.deepEqual(views.filled.map(r => r.player1),
         ['Grace Brown', 'Grace Brown', 'Grace Brown']);

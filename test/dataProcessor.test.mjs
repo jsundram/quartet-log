@@ -1071,7 +1071,7 @@ function rawRow(overrides = {}) {
 }
 
 describe('prepareRows', () => {
-    const at = iso => ({ timestamp: new Date(iso), id: iso, work: { title: iso } });
+    const at = iso => ({ timestamp: new Date(iso), id: iso });
 
     it('sorts out-of-order rows by timestamp ascending', () => {
         const rows = [at('2024-03-01'), at('2024-01-01'), at('2024-02-01')];
@@ -1090,28 +1090,7 @@ describe('prepareRows', () => {
     });
 
     it('handles empty input', () => {
-        assert.deepEqual(prepareRows([]), { rows: [], dropped: 0, resends: [] });
-    });
-
-    // A send whose reply was lost is resent, and both copies reach the sheet.
-    const row = (ts, fields = {}) => processRow(rawRow({ Timestamp: ts, ...fields }));
-
-    it('drops a row identical to the one above it in the same sitting', () => {
-        const { rows, resends } = prepareRows([row('1/1/2024 20:00:00'), row('1/1/2024 20:01:30')]);
-        assert.equal(rows.length, 1);
-        assert.deepEqual(resends.map(r => r.timestamp), [new Date('1/1/2024 20:01:30')]);
-    });
-
-    it('keeps an identical row from another sitting, or one a cell apart', () => {
-        assert.equal(prepareRows([row('1/1/2024 20:00:00'), row('1/2/2024 20:00:00')]).rows.length, 2);
-        assert.equal(prepareRows([row('1/1/2024 20:00:00'),
-            row('1/1/2024 20:40:00', { Comments: 'again' })]).rows.length, 2);
-    });
-
-    it('only compares neighbours, so a repeat later in the sitting stays', () => {
-        const rows = [row('1/1/2024 20:00:00'), row('1/1/2024 20:30:00', { 'Work Title': '76#3' }),
-            row('1/1/2024 21:00:00')];
-        assert.equal(prepareRows(rows).rows.length, 3);
+        assert.deepEqual(prepareRows([]), { rows: [], dropped: 0 });
     });
 
     it('does not mutate the input array', () => {
@@ -1122,8 +1101,8 @@ describe('prepareRows', () => {
 
     it('keeps sheet order for rows sharing a timestamp (stable sort)', () => {
         const rows = [
-            { timestamp: new Date('2024-01-01T10:00'), id: 'first', work: { title: '1' } },
-            { timestamp: new Date('2024-01-01T10:00'), id: 'second', work: { title: '2' } },
+            { timestamp: new Date('2024-01-01T10:00'), id: 'first' },
+            { timestamp: new Date('2024-01-01T10:00'), id: 'second' },
         ];
         assert.deepEqual(prepareRows(rows).rows.map(r => r.id), ['first', 'second']);
     });
