@@ -61,6 +61,8 @@ import { parseCsv } from './parseCsv.mjs';
  *   than of the rows, and an input for the same reason the three row views
  *   are: the audit that reports on fill-forward reads what it did instead of
  *   reimplementing it.
+ * @property {Row[]} resends - rows prepareRows ignored as a resend of the row
+ *   above. Surfaced so they can be deleted from the sheet, where they still are.
  */
 
 /**
@@ -91,6 +93,7 @@ export function buildViews(rawRows, { aliases, abbreviations }) {
         filled: filled.rows,
         processed: processed.rows.filter(d => !d.work.incomplete),
         dropped: written.dropped,
+        resends: written.resends,
         fillDecisions,
     };
 }
@@ -116,13 +119,19 @@ export function loadViews(csvPath, tables) {
  * @param {string} [suffix] - appended to the row-count line
  * @returns {string[]}
  */
-export function viewsHeader({ dropped }, rows, suffix = '') {
+export function viewsHeader({ dropped, resends }, rows, suffix = '') {
     const lines = [`Rows: ${rows.length}${suffix}`];
     if (dropped) {
         lines.push(
             `  !! ${dropped} row(s) have a timestamp that will not parse and are`,
             '     absent from everything below — the app drops them too, so they',
             '     count for nothing until the Timestamp cell is fixed.');
+    }
+    if (resends.length) {
+        lines.push(
+            `  !! ${resends.length} row(s) repeat the row above cell for cell — a resend from`,
+            '     the log form — and are ignored everywhere. Delete them from the sheet:',
+            ...resends.map(r => `       ${r.timestamp?.toLocaleString()}  ${r.composer} ${r.work.title}`));
     }
     return lines;
 }

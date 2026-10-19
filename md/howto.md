@@ -211,6 +211,10 @@ Alice. Coming back to someone after a long time, type the name in full.
 lets a room inside a larger place be its own entry: `AKM` after `AKM (chapel)`
 gives you `AKM`, not the chapel again.
 
+**A row identical to the one above it in the same sitting counts once.** That
+is what a send repeated over a weak connection leaves behind, and the app
+ignores it. Playing a piece again with the same people, say so in `Comments`.
+
 ### 8. Naming people
 
 **Type someone's full name the first time you log them.** After that, whatever
