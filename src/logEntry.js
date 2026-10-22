@@ -282,13 +282,15 @@ export function rosterParts(part) {
 }
 
 /**
- * What a player COLUMN offers: the string chairs.
+ * What a player COLUMN offers: the string chairs, and piano.
  *
- * Six keys cover the trade that actually happens between two pieces —
+ * The string chairs cover the trade that actually happens between two pieces —
  * everybody shifts within their own family when a sextet reads a second
- * sextet. Moving INTO a column still works from the `Others?` side, so the
- * short list costs only the other direction, which in this log is the pianists
- * (8 rows in 3465) and an octet's `v3`/`v4` (~16).
+ * sextet. Piano is here for a different reason: a piano quartet is three names
+ * typed into three seats, and with no Piano beside the third the logger
+ * concluded the form had nowhere to put the pianist. Counting the rows where a
+ * pianist moves in from a column (8 in 3465) measured the wrong thing.
+ * An octet's `v3`/`v4` still go through `Others?`.
  * @param {string} part your own part
  * @returns {SlotPart[]}
  */
@@ -298,7 +300,7 @@ export function seatParts(part) {
 
 // The string chairs a quartet has, plus the second viola and second cello a
 // sextet adds — the parts a player column is allowed to offer.
-const SEAT_KEYS = ['V1', 'V2', 'VA', 'VA2', 'VC', 'VC2'];
+const SEAT_KEYS = ['V1', 'V2', 'VA', 'VA2', 'VC', 'VC2', 'P'];
 
 // Only the violas have more than one spelling of one chair.
 const OWN_SEAT = {

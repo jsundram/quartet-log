@@ -319,20 +319,20 @@ test('an extra is offered every part but your own', () => {
     assert.equal(partLabel('VA2'), 'VA2');
 });
 
-test('a player column offers the string chairs, and nothing else', () => {
+test('a player column offers the string chairs and piano, and nothing else', () => {
     // The columns hold a quartet, and the move they exist to make easy is the
     // one that happens between two pieces: everybody shifts within their own
-    // family when a sextet reads a second sextet. Six keys cover that, and
-    // your own part comes off the same way it does for an extra.
+    // family when a sextet reads a second sextet. Your own part comes off the
+    // same way it does for an extra.
     const keys = part => seatParts(part).map(p => p.key);
-    assert.deepEqual(keys(''), ['V1', 'V2', 'VA', 'VA2', 'VC', 'VC2']);
-    assert.deepEqual(keys('V1'), ['V2', 'VA', 'VA2', 'VC', 'VC2']);
-    assert.deepEqual(keys('VA1'), ['V1', 'V2', 'VA2', 'VC', 'VC2']);
-    assert.deepEqual(keys('VA2'), ['V1', 'V2', 'VC', 'VC2']);
-    // Piano, the winds and an octet's v3/v4 are Others? parts. Nobody moves
-    // into them from a column often enough to earn a tap target on every row:
-    // in this log, the pianists are 8 rows in 3465 and v3/v4 about 16.
-    for (const k of ['P', 'CL', 'BASS', 'V3', 'V4', 'VA1']) {
+    assert.deepEqual(keys(''), ['V1', 'V2', 'VA', 'VA2', 'VC', 'VC2', 'P']);
+    assert.deepEqual(keys('V1'), ['V2', 'VA', 'VA2', 'VC', 'VC2', 'P']);
+    assert.deepEqual(keys('VA1'), ['V1', 'V2', 'VA2', 'VC', 'VC2', 'P']);
+    assert.deepEqual(keys('VA2'), ['V1', 'V2', 'VC', 'VC2', 'P']);
+    // Piano is on a seat because a piano quartet is typed into the three
+    // seats, and without it there was no visible place for the pianist.
+    // The winds and an octet's v3/v4 stay Others?-only.
+    for (const k of ['CL', 'BASS', 'V3', 'V4', 'VA1']) {
         assert.ok(!keys('V1').includes(k), `${k} is not a column part`);
         assert.ok(rosterParts('V1').some(p => p.key === k), `${k} is an Others? part`);
     }
