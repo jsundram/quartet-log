@@ -254,7 +254,7 @@ const PARTS = [
     // Bass is here and flute is not: this log holds eleven of the one and none
     // of the other. What the catalog lacks round-trips as the raw cell text.
     { key: 'BASS', label: 'Bass', code: 'bass', reads: ['bass', 'contrabass', 'db', 'cb'] },
-    { key: 'P', label: 'Piano', code: 'p', reads: ['p', 'pf', 'pno', 'piano'] },
+    { key: 'P', label: 'P', code: 'p', reads: ['p', 'pf', 'pno', 'piano'] },
     { key: 'CL', label: 'Clarinet', code: 'cl', reads: ['cl', 'clar', 'clarinet'] },
 ];
 
@@ -286,11 +286,9 @@ export function rosterParts(part) {
  *
  * The string chairs cover the trade that actually happens between two pieces —
  * everybody shifts within their own family when a sextet reads a second
- * sextet. Piano is here for a different reason: a piano quartet is three names
- * typed into three seats, and with no Piano beside the third the logger
- * concluded the form had nowhere to put the pianist. Counting the rows where a
- * pianist moves in from a column (8 in 3465) measured the wrong thing.
- * An octet's `v3`/`v4` still go through `Others?`.
+ * sextet. Piano is here because a piano quartet is typed into the three seats;
+ * that pianists rarely move in from a column (8 rows in 3465) is not a reason
+ * to leave it off. An octet's `v3`/`v4` still go through `Others?`.
  * @param {string} part your own part
  * @returns {SlotPart[]}
  */
@@ -298,8 +296,8 @@ export function seatParts(part) {
     return rosterParts(part).filter(p => SEAT_KEYS.includes(p.key));
 }
 
-// The string chairs a quartet has, plus the second viola and second cello a
-// sextet adds — the parts a player column is allowed to offer.
+// The string chairs a quartet has, the second viola and second cello a sextet
+// adds, and piano — the parts a player column is allowed to offer.
 const SEAT_KEYS = ['V1', 'V2', 'VA', 'VA2', 'VC', 'VC2', 'P'];
 
 // Only the violas have more than one spelling of one chair.
@@ -322,8 +320,8 @@ export function partCode(key) {
 /**
  * The label an option key shows. The counterpart to partCode, and needed for
  * the same reason: the key a dropdown offers as a passthrough may still be one
- * the catalog knows — your own part, left out of the list — and "Piano" reads
- * better than "P".
+ * the catalog knows — your own part, left out of the list — and "Bass" reads
+ * better than "BASS".
  * @param {string} key
  * @returns {string}
  */

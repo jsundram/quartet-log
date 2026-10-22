@@ -314,8 +314,10 @@ test('an extra is offered every part but your own', () => {
     assert.equal(partCode('klavier'), 'klavier');
     assert.equal(partLabel('klavier'), 'klavier');
     // partLabel covers the keys too: a part offered as a passthrough (your own,
-    // carried in from a row that named it) should still read "Piano".
-    assert.equal(partLabel('P'), 'Piano');
+    // carried in from a row that named it) should still read "Bass".
+    assert.equal(partLabel('BASS'), 'Bass');
+    // Piano is labelled as the sheet writes it, "(p)".
+    assert.equal(partLabel('P'), 'P');
     assert.equal(partLabel('VA2'), 'VA2');
 });
 
@@ -329,8 +331,6 @@ test('a player column offers the string chairs and piano, and nothing else', () 
     assert.deepEqual(keys('V1'), ['V2', 'VA', 'VA2', 'VC', 'VC2', 'P']);
     assert.deepEqual(keys('VA1'), ['V1', 'V2', 'VA2', 'VC', 'VC2', 'P']);
     assert.deepEqual(keys('VA2'), ['V1', 'V2', 'VC', 'VC2', 'P']);
-    // Piano is on a seat because a piano quartet is typed into the three
-    // seats, and without it there was no visible place for the pianist.
     // The winds and an octet's v3/v4 stay Others?-only.
     for (const k of ['CL', 'BASS', 'V3', 'V4', 'VA1']) {
         assert.ok(!keys('V1').includes(k), `${k} is not a column part`);
