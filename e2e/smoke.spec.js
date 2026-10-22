@@ -1197,17 +1197,18 @@ test.describe('log form', () => {
         await pickComposer(page, 'Mozart');
         await page.fill('#logTitle', 'K515');
         await page.click('#logPart .part-btn[data-part="V1"]');
-        // A column offers the string chairs and my own part is not among them;
-        // which column someone lands in follows from the part rather than the
-        // other way round. The second column comes up on the part it holds.
+        // A column offers the string chairs and piano, and my own part is not
+        // among them; which column someone lands in follows from the part
+        // rather than the other way round. The second column comes up on the
+        // part it holds.
         await expect(page.locator('#logSlotPart2')).toHaveValue('VA');
         await expect(page.locator('#logSlotPart2 option')).toHaveText(
-            ['V2', 'VA', 'VA2', 'VC', 'VC2']);
-        // An extra is offered the whole catalog: this is where a pianist, an
-        // octet's second quartet and a wind player actually turn up.
+            ['V2', 'VA', 'VA2', 'VC', 'VC2', 'P']);
+        // An extra is offered the whole catalog: this is where an octet's
+        // second quartet and a wind player turn up.
         await page.click('#logOthersAdd');
         await expect(page.locator('.log-other-row').first().locator('option')).toHaveText(
-            ['part?', 'V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'Bass', 'Piano', 'Clarinet']);
+            ['part?', 'V2', 'V3', 'V4', 'VA', 'VA1', 'VA2', 'VC', 'VC2', 'Bass', 'P', 'Clarinet']);
         // Everyone past the four is an Others? entry with a tag.
         const row = page.locator('.log-other-row').first();
         await row.locator('input').fill('Erin Fry');
@@ -1246,7 +1247,7 @@ test.describe('log form', () => {
 
     test('a part that belonged to a person is not handed to the next seat', async ({ page }) => {
         // The sheet's last row seats a pianist in a string seat (howto s5), so
-        // that seat's dropdown comes up on Piano. Moving it to V2 is not a swap
+        // that seat's dropdown comes up on P. Moving it to V2 is not a swap
         // with anybody: the part given up was that person's, not the chair's.
         const bodies = await captureSubmits(page);
         await page.route('https://docs.google.com/spreadsheets/**', route => route.fulfill({

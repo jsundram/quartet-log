@@ -276,13 +276,16 @@ for nothing at all.
 
 **The two dropdowns differ.** A column offers the string chairs — V1, V2, VA,
 VA2, VC, VC2, less your own — because the trade it exists for is the one
-between two sextets, where everybody shifts within their own family. `Others?`
+between two sextets, where everybody shifts within their own family. It also
+offers `P` for piano, so a piano quartet is the three names in the three fields
+with `P` beside the pianist; the form moves them to `Others?` for you. `Others?`
 offers all of those plus V3 and V4 for an octet, VA1 for when you're the second
-viola, and bass, piano and clarinet. Anything else — an oboe, a flute — you
+viola, and bass and clarinet. Anything else — an oboe, a flute — you
 type in the parens as always, and the dropdown shows it back rather than
 rewriting it. Moving someone *into* a column works from either list, so a
 pianist who picks up a violin is one tap. Only the other direction isn't on
-offer; there, clear the name and add them as an extra by hand.
+offer for bass, clarinet, VA1 and the octet parts; there, clear the name and add
+them as an extra by hand.
 
 ### 10. Connect your form
 
