@@ -116,3 +116,37 @@ test("_onStart bailing mid-pull clears the indicator", () => {
     assert.equal(props.get("--ptr-y"), "0px");
     assert.equal(props.get("--ptr-opacity"), "0");
 });
+
+test("touchcancel mid-refresh leaves the refresh running", async () => {
+    const classes = new Set();
+    let calls = 0;
+    let settle;
+    const ptr = new PullToRefresh({
+        onRefresh: () => { calls++; return new Promise((resolve) => { settle = resolve; }); },
+    });
+    ptr.indicator = {
+        classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c) },
+        style: { setProperty: () => {} },
+    };
+    ptr._scrollTop = () => 0;
+    ptr._startedInScroller = () => false;
+
+    const pull = () => {
+        ptr._onStart({ touches: [{ clientY: 0 }], target: {} });
+        ptr._onMove({ touches: [{ clientY: 1000 }], preventDefault: () => {} });
+        ptr._onEnd();
+    };
+
+    pull();
+    ptr._onCancel();
+    assert.equal(ptr.refreshing, true);
+    assert.equal(classes.has("refreshing"), true);
+
+    pull();
+    assert.equal(calls, 1);
+
+    settle();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(ptr.refreshing, false);
+    assert.equal(classes.has("refreshing"), false);
+});

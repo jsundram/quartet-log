@@ -66,7 +66,7 @@ export class PullToRefresh {
         // active pull (otherwise iOS rubber-bands the whole page).
         document.addEventListener('touchmove', (e) => this._onMove(e), { passive: false });
         document.addEventListener('touchend', () => this._onEnd(), { passive: true });
-        document.addEventListener('touchcancel', () => this._reset(), { passive: true });
+        document.addEventListener('touchcancel', () => this._onCancel(), { passive: true });
     }
 
     _createIndicator() {
@@ -125,6 +125,13 @@ export class PullToRefresh {
         } else {
             this._reset();
         }
+    }
+
+    _onCancel() {
+        // Mid-refresh, clearing `refreshing` would let the next pull start a
+        // second onRefresh on top of the first; _trigger() resets once it settles.
+        if (this.refreshing) return;
+        this._reset();
     }
 
     async _trigger() {
