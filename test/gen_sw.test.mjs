@@ -48,7 +48,7 @@ test("buildShellList", async (t) => {
 test("computeVersion", async (t) => {
     const entries = [["index.html", "aaa"], ["favicon.ico", "bbb"], ["bundle.js", "ccc"]];
 
-    await t.test("has the ql- prefix app.js uses to find the installed cache", () => {
+    await t.test("has the ql- prefix updateChecker.js uses to recognize the worker's cache", () => {
         assert.match(computeVersion(entries), /^ql-[0-9a-f]{16}$/);
     });
 
