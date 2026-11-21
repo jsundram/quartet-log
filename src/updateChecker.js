@@ -1,14 +1,12 @@
 // Shell-update detection + the force-update hammer. Split out of app.js.
 //
-// The service-worker cache name IS the deployed version (sw.js: `const V =
-// "ql-<hash>"`), so the installed version is just the ql- cache key. The
-// latest version comes from version.json, which scripts/gen_sw.mjs emits
-// next to sw.js on every prod build and the SW never intercepts/caches —
-// this replaces the old approach of regex-parsing the live sw.js source
-// (a fragile textual coupling on `const V = "..."`).
+// The running version is the app-version meta gen_sw.mjs stamps into
+// index.html, never the ql- cache key: once a new worker activates and
+// collects the old generation, the key names the new V while this page still
+// runs the old bundle, and a key-based check reported "Up to date" with the
+// force-update tap hidden (pwa-starter cef3cd2). The latest version comes from
+// version.json, which the SW never intercepts or caches.
 
-// Prefix of the service-worker cache name; also how the installed shell
-// version is identified among cache keys.
 export const VER_PREFIX = 'ql-';
 
 // Read the deployed version off the server. Cache-busted + no-store so even
@@ -33,23 +31,24 @@ export async function checkVersion() {
     const tag = document.getElementById('ver');
     if (!tag) return;
 
-    let installed = '';
+    const running = document.querySelector('meta[name="app-version"]')?.getAttribute('content') || '';
+    let installed = false;
     try {
-        installed = (await caches.keys()).find(k => k.startsWith(VER_PREFIX)) || '';
+        installed = (await caches.keys()).some(k => k.startsWith(VER_PREFIX));
     } catch { /* caches unavailable */ }
 
-    // No SW cache yet (dev, or first load before install): keep the row hidden.
-    if (!installed) { tag.hidden = true; return; }
+    // Dev (unstamped meta) or no worker yet: keep the row hidden.
+    if (!installed || !running.startsWith(VER_PREFIX)) { tag.hidden = true; return; }
 
     const latest = await fetchLatestVersion();
-    const behind = Boolean(latest) && latest !== installed;
+    const behind = Boolean(latest) && latest !== running;
     const label = tag.querySelector('[data-ver-label]');
     tag.hidden = false;
     tag.classList.toggle('menu-item--update', behind);
     if (label) label.textContent = behind ? 'Update available' : 'Up to date';
     tag.title = behind
         ? `New version available (${latest}) — tap to update`
-        : `Up to date (${installed}) — tap to force refresh`;
+        : `Up to date (${running}) — tap to force refresh`;
 }
 
 // The hammer for a wedged home-screen app: drop every cache and reload so
