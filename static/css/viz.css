@@ -177,9 +177,8 @@ body, html {
    so we have to lay out around the status bar, home indicator, and (in
    landscape) the side notches. body padding handles in-flow content;
    absolute/fixed chrome (#menu, fullscreen overlay) handles its own insets
-   since absolute positioning ignores body padding. The top matters beyond
-   legibility: iOS 26 blurs whatever sits under the status bar, and that blur
-   reaches well below it. */
+   since absolute positioning ignores body padding. iOS 26 also blurs whatever
+   sits under the status bar, so the top inset is what keeps the title legible. */
 body {
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
