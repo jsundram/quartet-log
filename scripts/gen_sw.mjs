@@ -43,8 +43,8 @@ export function buildShellList(fileNames) {
 
 // V from a hash over (name, content-hash) of every precached file, so ANY
 // asset change — icon, manifest, catalog, code — produces a new version.
-// Keeps the "ql-" prefix: app.js identifies the installed SW cache by that
-// prefix, and _checkVersion compares V strings for equality only.
+// Keeps the "ql-" prefix: updateChecker.js finds the SW cache by it, and
+// compares V strings for equality only.
 /**
  * @param {Iterable<[name: string, contentHash: string]>} entries
  * @returns {string}
@@ -76,6 +76,18 @@ export function generateSW(template, { version, shell }) {
     return out;
 }
 
+// index.html is hashed with the token still in it, so stamping V afterwards
+// isn't circular and a change to the page itself still moves V.
+/**
+ * @param {string} html
+ * @param {string} version
+ * @returns {string}
+ */
+export function stampVersion(html, version) {
+    if (!html.includes('__APP_VERSION__')) throw new Error('index.html is missing __APP_VERSION__');
+    return html.replace('__APP_VERSION__', version);
+}
+
 /** @param {string} deployDir */
 function main(deployDir) {
     // Top-level files only: the build emits a flat deploy dir today. If a
@@ -93,6 +105,8 @@ function main(deployDir) {
     const template = readFileSync(new URL('../static/sw.js', import.meta.url), 'utf8');
     writeFileSync(join(deployDir, 'sw.js'), generateSW(template, { version, shell }));
     writeFileSync(join(deployDir, 'version.json'), JSON.stringify({ version }) + '\n');
+    const html = join(deployDir, 'index.html');
+    writeFileSync(html, stampVersion(readFileSync(html, 'utf8'), version));
     console.log(`Service worker: ${join(deployDir, 'sw.js')} (${version}, ${shell.length} precached)`);
 }
 

@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildShellList, computeVersion, generateSW } from "../scripts/gen_sw.mjs";
+import { buildShellList, computeVersion, generateSW, stampVersion } from "../scripts/gen_sw.mjs";
 
 const TEMPLATE = readFileSync(new URL("../static/sw.js", import.meta.url), "utf8");
 
@@ -48,7 +48,7 @@ test("buildShellList", async (t) => {
 test("computeVersion", async (t) => {
     const entries = [["index.html", "aaa"], ["favicon.ico", "bbb"], ["bundle.js", "ccc"]];
 
-    await t.test("has the ql- prefix app.js uses to find the installed cache", () => {
+    await t.test("has the ql- prefix updateChecker.js uses to recognize the worker's cache", () => {
         assert.match(computeVersion(entries), /^ql-[0-9a-f]{16}$/);
     });
 
@@ -63,6 +63,19 @@ test("computeVersion", async (t) => {
 
     await t.test("changes when a file is added", () => {
         assert.notEqual(computeVersion([...entries, ["new.png", "ddd"]]), computeVersion(entries));
+    });
+});
+
+test("stampVersion", async (t) => {
+    const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+    await t.test("stamps V into the app-version meta of the real index.html", () => {
+        assert.match(stampVersion(html, "ql-0123456789abcdef"),
+            /<meta name="app-version" content="ql-0123456789abcdef">/);
+    });
+
+    await t.test("throws when the token is gone (guards against index.html drift)", () => {
+        assert.throws(() => stampVersion("<html></html>", "ql-x"), /__APP_VERSION__/);
     });
 });
 
