@@ -175,10 +175,13 @@ body, html {
 /* iOS standalone safe-area handling. viewport-fit=cover (set in <head>) makes
    env(safe-area-inset-*) report real values on notched/Dynamic Island devices,
    so we have to lay out around the status bar, home indicator, and (in
-   landscape) the side notches. body padding handles bottom + sides for normal
-   in-flow content; absolute/fixed chrome (#menu, fullscreen overlay) handles
-   its own top inset since absolute positioning ignores body padding. */
+   landscape) the side notches. body padding handles in-flow content;
+   absolute/fixed chrome (#menu, fullscreen overlay) handles its own insets
+   since absolute positioning ignores body padding. The top matters beyond
+   legibility: iOS 26 blurs whatever sits under the status bar, and that blur
+   reaches well below it. */
 body {
+    padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
