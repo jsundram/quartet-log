@@ -236,7 +236,7 @@ function offlineFallback(req) {
   return new Response(
     `<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>Offline — musiclog</title>
+<title>Offline — Quartet Log</title>
 <style>
   body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
        background:#fafafa;color:#222;font:16px/1.5 system-ui,-apple-system,sans-serif}
@@ -250,7 +250,7 @@ function offlineFallback(req) {
 </style>
 <main>
   <h1>Offline, and nothing cached yet</h1>
-  <p>The offline copy of musiclog hasn't been stored on this device — or the system reclaimed
+  <p>The offline copy of Quartet Log hasn't been stored on this device — or the system reclaimed
      it to free up space.</p>
   <p>Open it once with a connection and it will rebuild itself for offline use.</p>
   <button onclick="location.reload()">Try again</button>
